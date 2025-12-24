@@ -30,14 +30,12 @@ import { Card } from "@/components/ui/card"
 // This is sample data.
 const data = {
   apps: [
-    { title: "Dashboard", icon: LayoutDashboard, url: "", },
-    { title: "My Profile", icon: User, url: "", },
-    { title: "Schools", icon: School, url: "", },
-    { title: "Resume Builder", icon: FileUser, url: "", },
+    { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard", },
+    { title: "My Profile", icon: User, url: "/profile", },
+    { title: "Schools", icon: School, url: "/schools", },
+    { title: "Resume Builder", icon: FileUser, url: "/resume-builder", },
   ]
 }
-
-
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
