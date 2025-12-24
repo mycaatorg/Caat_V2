@@ -3,11 +3,23 @@ import {
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
-  BreadcrumbSeparator,
-  BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { Input } from "@/components/ui/input"
+
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSeparator,
+  FieldSet,
+  FieldTitle,
+} from "@/components/ui/field"
 
 export default function ProfilePage() {
   return (
@@ -27,8 +39,25 @@ export default function ProfilePage() {
         </Breadcrumb>
       </header>
 
-      <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-        <h1 className="text-2xl font-bold">My Profile</h1>
+
+      <div className="flex flex-1 flex-col items-center p-4">
+        <div className="w-full max-w-3xl p-4">
+          <FieldSet>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="Name">Name</FieldLabel>
+                <Input
+                  id="First Name"
+                  placeholder="First Name"
+                />  
+                <Input
+                  id="Last Name"
+                  placeholder="Last Name"
+                />
+              </Field>
+            </FieldGroup>
+          </FieldSet>
+        </div>
       </div>
     </>
   )
