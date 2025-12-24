@@ -36,7 +36,6 @@ const data = {
     { title: "Resume Builder", icon: FileUser, url: "/resume-builder", },
   ]
 }
-
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
