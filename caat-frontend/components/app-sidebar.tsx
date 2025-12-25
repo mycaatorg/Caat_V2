@@ -38,7 +38,8 @@ const data = {
 }
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
-    <Sidebar collapsible="icon" {...props}>
+    // <Sidebar collapsible="icon" {...props}>
+    <Sidebar {...props}>
       <SidebarHeader className="p-0">
         <Card className="m-2">
           {/* Header container with your branding color #8b1723 */}
@@ -75,6 +76,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter>
+        <Card>
+          Login or Sign Out
+        </Card>
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )
