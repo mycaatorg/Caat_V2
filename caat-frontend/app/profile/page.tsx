@@ -56,6 +56,15 @@ export default function ProfilePage() {
                 />
               </Field>
             </FieldGroup>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="Name">Email</FieldLabel>
+                <Input
+                  id="Email"
+                  placeholder="jane.doe@email.com"
+                />
+              </Field>
+            </FieldGroup>
           </FieldSet>
         </div>
       </div>
