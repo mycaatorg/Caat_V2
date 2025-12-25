@@ -12,6 +12,12 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Input } from "@/components/ui/input"
 
+import { Calendar } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ChevronDownIcon } from "lucide-react";
+
+
 import {
   Field,
   FieldContent,
@@ -30,7 +36,26 @@ type ProfileRow = {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  birth_date: string | null;
+  phone: string | null;
+  linkedin: string | null;
+  github: string | null;
 };
+
+function toISODateString(d: Date) {
+  // local date -> YYYY-MM-DD (no timezone shifting)
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function fromISODateString(s: string) {
+  // "YYYY-MM-DD" -> Date (local)
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y || !m || !d) return undefined;
+  return new Date(y, m - 1, d);
+}
 
 export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
@@ -44,6 +69,12 @@ export default function ProfilePage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [birthDate, setBirthDate] = useState<Date | undefined>(undefined);
+  const [phone, setPhone] = useState("");
+  const [linkedin, setLinkedin] = useState("");
+  const [github, setGithub] = useState("");
+
+  const [dobOpen, setDobOpen] = useState(false);
 
   // load logged in user's profile
   useEffect(() => {
@@ -60,6 +91,10 @@ export default function ProfilePage() {
         setFirstName("");
         setLastName("");
         setEmail("");
+        setBirthDate(undefined);
+        setPhone("");
+        setLinkedin("");
+        setGithub("");
         setLoading(false);
         return;
       }
@@ -69,7 +104,7 @@ export default function ProfilePage() {
       // fetch profile row if it exists
       const { data: profile, error: profileErr } = await supabase
         .from("profiles")
-        .select("id, first_name, last_name, email")
+        .select("id, first_name, last_name, email, birth_date, phone, linkedin, github")
         .eq("id", user.id)
         .maybeSingle();
       
@@ -86,6 +121,10 @@ export default function ProfilePage() {
           first_name: null,
           last_name: null,
           email: user.email ?? null,
+          birth_date: null,
+          phone: null,
+          linkedin: null,
+          github: null,
         };
 
         const { error: upsertErr } = await supabase
@@ -101,6 +140,10 @@ export default function ProfilePage() {
         setFirstName("");
         setLastName("");
         setEmail(user.email ?? "");
+        setBirthDate(undefined);
+        setPhone("");
+        setLinkedin("");
+        setGithub("");
         setLoading(false);
         return;
       }
@@ -108,6 +151,11 @@ export default function ProfilePage() {
       setFirstName(profile.first_name ?? "");
       setLastName(profile.last_name ?? "");
       setEmail(profile.email ?? user.email ?? "");
+      setBirthDate(profile.birth_date ? fromISODateString(profile.birth_date) : undefined);
+      setPhone(profile.phone ?? "");
+      setLinkedin(profile.linkedin ?? "");
+      setGithub(profile.github ?? "");
+
 
       setLoading(false);
     };
@@ -142,6 +190,10 @@ export default function ProfilePage() {
       first_name: firstName.trim() || null,
       last_name: lastName.trim() || null,
       email: email.trim() || null,
+      birth_date: birthDate ? toISODateString(birthDate) : null,
+      phone: phone.trim() || null,
+      linkedin: linkedin.trim() || null,
+      github: github.trim() || null,
     };
 
     const { error: saveErr } = await supabase
@@ -226,6 +278,77 @@ export default function ProfilePage() {
                   placeholder={isAuthed ? "you@email.com" : "Email (guest)"}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading || saving}
+                />
+              </Field>
+            </FieldGroup>
+
+            <FieldGroup>
+              <Field>
+                <FieldLabel>Date of birth</FieldLabel>
+
+                <Popover open={dobOpen} onOpenChange={setDobOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-60 justify-between font-normal"
+                      disabled={loading || saving}
+                    >
+                      {birthDate ? birthDate.toLocaleDateString() : "Select date"}
+                      <ChevronDownIcon className="h-4 w-4 opacity-70" />
+                    </Button>
+                  </PopoverTrigger>
+
+                  <PopoverContent className="w-auto overflow-hidden p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={birthDate}
+                      captionLayout="dropdown"
+                      onSelect={(d) => {
+                        setBirthDate(d);
+                        setDobOpen(false);
+                      }}
+                      disabled={(d) => d > new Date()}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </Field>
+            </FieldGroup>
+
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="phone">Phone</FieldLabel>
+                <Input
+                  id="phone"
+                  placeholder=""
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={loading || saving}
+                />
+              </Field>
+            </FieldGroup>
+
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="linkedin">LinkedIn</FieldLabel>
+                <Input
+                  id="linkedin"
+                  placeholder="https://linkedin.com/in/..."
+                  value={linkedin}
+                  onChange={(e) => setLinkedin(e.target.value)}
+                  disabled={loading || saving}
+                />
+              </Field>
+            </FieldGroup>
+
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="github">GitHub</FieldLabel>
+                <Input
+                  id="github"
+                  placeholder="https://github.com/..."
+                  value={github}
+                  onChange={(e) => setGithub(e.target.value)}
                   disabled={loading || saving}
                 />
               </Field>
