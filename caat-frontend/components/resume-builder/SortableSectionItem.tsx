@@ -10,11 +10,27 @@ export default function SortableSectionItem({
   label,
   active,
   onClick,
+
+  onDoubleClick,
+
+  isEditing,
+  draftLabel,
+  onDraftChange,
+  onCommit,
+  onCancel,
 }: {
   id: string;
   label: string;
   active: boolean;
   onClick: () => void;
+
+  onDoubleClick: () => void;
+
+  isEditing: boolean;
+  draftLabel: string;
+  onDraftChange: (v: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
 }) {
   const { setNodeRef, attributes, listeners, transform, transition, isDragging } =
     useSortable({ id });
@@ -37,21 +53,37 @@ export default function SortableSectionItem({
       <button
         type="button"
         className="cursor-grab rounded p-1 hover:bg-muted"
-        {...attributes}
-        {...listeners}
+        {...(!isEditing ? attributes : {})}
+        {...(!isEditing ? listeners : {})}
         aria-label="Drag section"
+        disabled={isEditing}
       >
         <GripVertical className="h-4 w-4 text-muted-foreground" />
       </button>
 
       {/* Click selects section */}
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex-1 text-left text-sm font-medium"
-      >
-        {label}
-      </button>
+      {isEditing ? (
+        <input
+          value={draftLabel}
+          onChange={(e) => onDraftChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onCommit();
+            if (e.key === "Escape") onCancel();
+          }}
+          onBlur={() => onCommit()}
+          autoFocus
+          className="flex-1 rounded border px-2 py-1 text-sm"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={onClick}
+          onDoubleClick={onDoubleClick}
+          className="flex-1 text-left text-sm font-medium"
+        >
+          {label}
+        </button>
+      )}
     </div>
   );
 }

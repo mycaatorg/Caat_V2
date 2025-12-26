@@ -3,7 +3,7 @@ import { ResumeSection } from "./types";
 export function getDefaultSections(): ResumeSection[] {
   return [
     {
-      id: "personal",
+      id: crypto.randomUUID(),
       type: "personal",
       label: "Personal Information",
       mode: "guided",
@@ -17,21 +17,21 @@ export function getDefaultSections(): ResumeSection[] {
       },
     },
     {
-      id: "education",
+      id: crypto.randomUUID(),
       type: "education",
       label: "Education",
       mode: "free",
       contentHtml: "",
     },
     {
-      id: "experience",
+      id: crypto.randomUUID(),
       type: "experience",
       label: "Experience",
       mode: "free",
       contentHtml: "",
     },
     {
-      id: "skills",
+      id: crypto.randomUUID(),
       type: "skills",
       label: "Skills & Interests",
       mode: "free",
