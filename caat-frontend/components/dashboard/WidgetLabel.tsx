@@ -8,9 +8,9 @@ interface WidgetLabelProps {
 
 export function WidgetLabel({ icon, title }: WidgetLabelProps) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border p-4 shadow-sm hover:bg-muted/50 transition">
-      <div className="text-xl">{icon}</div>
-      <span className="font-medium">{title}</span>
+    <div className="flex items-center gap-3 rounded-lg border m-5 p-2 hover:bg-muted/50 transition">
+        <div className="text-xl">{icon}</div>
+        <span className="font-medium">{title}</span>
     </div>
   )
 }

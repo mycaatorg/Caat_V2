@@ -4,7 +4,7 @@ import {
   BreadcrumbLink,
   BreadcrumbList,
 } from "@/components/ui/breadcrumb"
-import { Menu } from "lucide-react"
+import { Menu, ListTodo, CalendarDays, Newspaper, University } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Card } from "@/components/ui/card"
@@ -20,7 +20,32 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 
-export default function DashboardPage() {
+import { WidgetLabel } from "@/components/dashboard/WidgetLabel"
+import { WidgetSection } from "@/components/dashboard/WidgetSection"
+import { getWidgetsFromDB } from "@/lib/widgets/getWidgetsFromDB"
+
+const iconMap = {
+  list_todo: <ListTodo />,
+  calendar: <CalendarDays />,
+  news: <Newspaper />,
+  university: <University />
+}
+
+export default async function DashboardPage() {
+  const widgets = await getWidgetsFromDB()
+
+  const main = widgets
+    .filter(w => w.position === 'main')
+    .sort((a, b) => a.order - b.order)
+    
+  const active = widgets
+    .filter(w => w.position === 'active')
+    .sort((a, b) => a.order - b.order)
+
+  const hidden = widgets
+    .filter(w => w.position === 'hidden')
+    .sort((a, b) => a.order - b.order)
+
   return (
     <>
       <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
@@ -52,7 +77,33 @@ export default function DashboardPage() {
                 Rearrange your preference of widgets here.
               </SheetDescription>
             </SheetHeader>
-            
+              <WidgetSection title="Main">
+                {main.map(widget => (
+                  <WidgetLabel
+                    key={widget.id}
+                    icon={iconMap[widget.type as keyof typeof iconMap]}
+                    title={widget.title}
+                  />
+                ))}
+              </WidgetSection>
+              <WidgetSection title="Active">
+                {active.map(widget => (
+                  <WidgetLabel
+                    key={widget.id}
+                    icon={iconMap[widget.type as keyof typeof iconMap]}
+                    title={widget.title}
+                  />
+                ))}
+              </WidgetSection>
+              <WidgetSection title="Hidden">
+                {hidden.map(widget => (
+                  <WidgetLabel
+                    key={widget.id}
+                    icon={iconMap[widget.type as keyof typeof iconMap]}
+                    title={widget.title}
+                  />
+                ))}
+              </WidgetSection>
             <SheetFooter>
               <Button type="submit">Save changes</Button>
               <SheetClose asChild>
