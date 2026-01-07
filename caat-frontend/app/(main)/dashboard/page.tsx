@@ -22,7 +22,7 @@ import {
 
 import { WidgetLabel } from "@/components/dashboard/WidgetLabel"
 import { WidgetSection } from "@/components/dashboard/WidgetSection"
-import { getWidgetsFromDB } from "@/lib/widgets/getWidgetsFromDB"
+import { getWidgetsFromDB } from "@/components/dashboard/api"
 
 const iconMap = {
   list_todo: <ListTodo />,
@@ -33,6 +33,7 @@ const iconMap = {
 
 export default async function DashboardPage() {
   const widgets = await getWidgetsFromDB()
+
 
   const main = widgets
     .filter(w => w.position === 'main')
