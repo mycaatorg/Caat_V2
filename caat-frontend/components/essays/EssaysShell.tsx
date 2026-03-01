@@ -21,7 +21,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ChevronDown, ChevronRight, FileText, Lightbulb, Plus, Save, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Lightbulb, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import {
   fetchEssayPrompts,
@@ -397,10 +397,6 @@ export default function EssaysShell() {
                                             handleSwitchDraft(draft);
                                             setDraftsPopoverOpen(false);
                                           }}
-                                          onDoubleClick={(e) => {
-                                            e.preventDefault();
-                                            startRename(draft);
-                                          }}
                                           className={cn(
                                             "flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1.5 text-left text-sm transition-colors",
                                             activeDraft?.id === draft.id
@@ -416,6 +412,18 @@ export default function EssaysShell() {
                                             {format(new Date(draft.updated_at), "MMM d")}
                                           </span>
                                         </button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+                                          aria-label="Rename draft"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            startRename(draft);
+                                          }}
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </Button>
                                         <Button
                                           variant="ghost"
                                           size="icon"
