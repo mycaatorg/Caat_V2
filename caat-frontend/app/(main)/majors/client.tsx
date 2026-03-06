@@ -1,47 +1,77 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo, useEffect } from "react";
 import { ArrowLeftRight } from "lucide-react";
 import { Major, MajorCategory } from "@/types/majors";
 import MajorCard from "@/components/majors/major-card";
 import MajorFilters from "@/components/majors/major-filters";
+import CompareTable from "@/components/majors/compare-table";
 import { Button } from "@/components/ui/button";
+import * as Dialog from "@radix-ui/react-dialog";
+import { supabase } from "@/src/lib/supabaseClient";
+
+export type FilterView = MajorCategory | "All" | "Bookmarked";
 
 const MAX_COMPARE = 3;
 
 interface Props {
   majors: Major[];
-  // Phase 4: server will pass the user's existing bookmarked IDs
-  initialBookmarkedIds?: string[];
+  initialFilter?: FilterView;
 }
 
 export default function MajorsClient({
   majors,
-  initialBookmarkedIds = [],
+  initialFilter = "All",
 }: Props) {
-  const router = useRouter();
+  const [selectedFilter, setSelectedFilter] = useState<FilterView>(initialFilter);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<
-    MajorCategory | "All"
-  >("All");
   const [compareIds, setCompareIds] = useState<string[]>([]);
-  // Phase 4: this will be wired to server actions for persistence
-  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(
-    new Set(initialBookmarkedIds)
-  );
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Load current user and their bookmarks on mount
+  useEffect(() => {
+    async function loadBookmarks() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      setUserId(session.user.id);
+
+      const { data } = await supabase
+        .from("user_bookmarked_majors")
+        .select("major_id")
+        .eq("user_id", session.user.id);
+
+      if (data) {
+        setBookmarkedIds(new Set(data.map((row) => row.major_id)));
+      }
+    }
+
+    loadBookmarks();
+  }, []);
 
   const filtered = useMemo(() => {
     return majors.filter((m) => {
-      const matchesCategory =
-        selectedCategory === "All" || m.category === selectedCategory;
+      if (selectedFilter === "Bookmarked") {
+        if (!bookmarkedIds.has(m.id)) return false;
+        if (!searchQuery) return true;
+        const q = searchQuery.toLowerCase();
+        return m.name.toLowerCase().includes(q) || m.description?.toLowerCase().includes(q);
+      }
+      const matchesCategory = selectedFilter === "All" || m.category === selectedFilter;
       const q = searchQuery.toLowerCase();
       const matchesSearch =
         m.name.toLowerCase().includes(q) ||
         m.description?.toLowerCase().includes(q);
       return matchesCategory && matchesSearch;
     });
-  }, [majors, searchQuery, selectedCategory]);
+  }, [majors, searchQuery, selectedFilter, bookmarkedIds]);
+
+  const selectedMajors = useMemo(
+    () => compareIds.map((id) => majors.find((m) => m.id === id)).filter(Boolean) as Major[],
+    [compareIds, majors]
+  );
 
   function handleToggleSelect(id: string) {
     setCompareIds((prev) => {
@@ -51,17 +81,29 @@ export default function MajorsClient({
     });
   }
 
-  function handleToggleBookmark(id: string) {
-    // Phase 4: call server action here for persistence
+  async function handleToggleBookmark(id: string) {
+    if (!userId) return;
+
+    const isCurrentlyBookmarked = bookmarkedIds.has(id);
+
+    // Optimistic update
     setBookmarkedIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      isCurrentlyBookmarked ? next.delete(id) : next.add(id);
       return next;
     });
-  }
 
-  function handleCompare() {
-    router.push(`/majors/compare?ids=${compareIds.join(",")}`);
+    if (isCurrentlyBookmarked) {
+      await supabase
+        .from("user_bookmarked_majors")
+        .delete()
+        .eq("user_id", userId)
+        .eq("major_id", id);
+    } else {
+      await supabase
+        .from("user_bookmarked_majors")
+        .upsert({ user_id: userId, major_id: id });
+    }
   }
 
   return (
@@ -70,19 +112,25 @@ export default function MajorsClient({
         <MajorFilters
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          selectedCategory={selectedCategory}
-          onCategoryChange={setSelectedCategory}
+          selectedFilter={selectedFilter}
+          onFilterChange={setSelectedFilter}
+          bookmarkedCount={bookmarkedIds.size}
         />
 
         <p className="text-sm text-muted-foreground mb-6">
           {filtered.length} major{filtered.length !== 1 ? "s" : ""}
-          {selectedCategory !== "All" ? ` in ${selectedCategory}` : ""}
+          {selectedFilter === "Bookmarked" ? " bookmarked" : ""}
+          {selectedFilter !== "All" && selectedFilter !== "Bookmarked"
+            ? ` in ${selectedFilter}`
+            : ""}
           {searchQuery ? ` matching "${searchQuery}"` : ""}
         </p>
 
         {filtered.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
-            No majors found. Try adjusting your search or filters.
+            {selectedFilter === "Bookmarked"
+              ? "No bookmarked majors yet. Bookmark a major to see it here."
+              : "No majors found. Try adjusting your search or filters."}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-24">
@@ -111,7 +159,7 @@ export default function MajorsClient({
             <span className="text-sm font-medium">
               {compareIds.length} majors selected
             </span>
-            <Button size="sm" onClick={handleCompare}>
+            <Button size="sm" onClick={() => setIsCompareOpen(true)}>
               <ArrowLeftRight />
               Compare
             </Button>
@@ -125,6 +173,17 @@ export default function MajorsClient({
           </div>
         </div>
       )}
+
+      {/* Compare modal */}
+      <Dialog.Root open={isCompareOpen} onOpenChange={setIsCompareOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] max-w-5xl max-h-[85vh] overflow-auto rounded-xl shadow-2xl bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+            <Dialog.Title className="sr-only">Compare Majors</Dialog.Title>
+            <CompareTable majors={selectedMajors} />
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }
