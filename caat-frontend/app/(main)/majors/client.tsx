@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { ArrowLeftRight } from "lucide-react";
 import { Major, MajorCategory } from "@/types/majors";
 import MajorCard from "@/components/majors/major-card";
 import MajorFilters from "@/components/majors/major-filters";
+import CompareTable from "@/components/majors/compare-table";
 import { Button } from "@/components/ui/button";
+import * as Dialog from "@radix-ui/react-dialog";
 import { supabase } from "@/src/lib/supabaseClient";
 
 export type FilterView = MajorCategory | "All" | "Bookmarked";
@@ -22,10 +23,10 @@ export default function MajorsClient({
   majors,
   initialFilter = "All",
 }: Props) {
-  const router = useRouter();
   const [selectedFilter, setSelectedFilter] = useState<FilterView>(initialFilter);
   const [searchQuery, setSearchQuery] = useState("");
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -67,6 +68,11 @@ export default function MajorsClient({
     });
   }, [majors, searchQuery, selectedFilter, bookmarkedIds]);
 
+  const selectedMajors = useMemo(
+    () => compareIds.map((id) => majors.find((m) => m.id === id)).filter(Boolean) as Major[],
+    [compareIds, majors]
+  );
+
   function handleToggleSelect(id: string) {
     setCompareIds((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
@@ -98,10 +104,6 @@ export default function MajorsClient({
         .from("user_bookmarked_majors")
         .upsert({ user_id: userId, major_id: id });
     }
-  }
-
-  function handleCompare() {
-    router.push(`/majors/compare?ids=${compareIds.join(",")}`);
   }
 
   return (
@@ -157,7 +159,7 @@ export default function MajorsClient({
             <span className="text-sm font-medium">
               {compareIds.length} majors selected
             </span>
-            <Button size="sm" onClick={handleCompare}>
+            <Button size="sm" onClick={() => setIsCompareOpen(true)}>
               <ArrowLeftRight />
               Compare
             </Button>
@@ -171,6 +173,17 @@ export default function MajorsClient({
           </div>
         </div>
       )}
+
+      {/* Compare modal */}
+      <Dialog.Root open={isCompareOpen} onOpenChange={setIsCompareOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] max-w-5xl max-h-[85vh] overflow-auto rounded-xl shadow-2xl bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+            <Dialog.Title className="sr-only">Compare Majors</Dialog.Title>
+            <CompareTable majors={selectedMajors} />
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }
