@@ -14,6 +14,7 @@ export interface Major {
   description: string | null;
   career_paths: string[];
   typical_coursework: string[];
+  qs_ranking_url: string | null;
   created_at: string;
 }
 

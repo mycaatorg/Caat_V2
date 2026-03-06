@@ -42,3 +42,6 @@ next-env.d.ts
 
 # repomix
 repomix-output.xml
+
+# claude
+.claude
