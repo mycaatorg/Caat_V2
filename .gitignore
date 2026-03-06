@@ -52,3 +52,8 @@ Vercel / deployment
 Supabase local (if used later)
 ####################################
 .supabase/
+
+####################################
+Claude files
+####################################
+caat-frontend/MAJORS_FEATURE_PLAN.md

@@ -5,11 +5,12 @@ import * as React from "react"
 import logo from "@/components/assets/logo.webp"
 import Image from "next/image"
 import {
-  User, 
-  School, 
-  FileUser, 
+  User,
+  School,
+  FileUser,
   LayoutDashboard,
-  FileText
+  FileText,
+  BookOpen,
 } from "lucide-react"
 
 import {
@@ -40,6 +41,7 @@ const data = {
     { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard", },
     { title: "My Profile", icon: User, url: "/profile", },
     { title: "Schools", icon: School, url: "/schools", },
+    { title: "Majors", icon: BookOpen, url: "/majors", },
     { title: "Resume Builder", icon: FileUser, url: "/resume-builder", },
     { title: "Essays", icon: FileText, url: "/essays", },
   ]
