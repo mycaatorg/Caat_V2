@@ -10,6 +10,7 @@ export default function DocumentStructurePanel({
   onSelect,
   onAdd,
   onRename,
+  onDelete,
   renamingSectionId,
   onFinishRenaming,
 }: {
@@ -19,6 +20,7 @@ export default function DocumentStructurePanel({
   onAdd: () => void;
 
   onRename: (id: string, label: string) => void;
+  onDelete: (id: string) => void;
 
   // If set, that section should immediately be in rename mode
   renamingSectionId: string | null;
@@ -77,10 +79,10 @@ export default function DocumentStructurePanel({
             active={s.id === activeSectionId}
             onClick={() => onSelect(s.id)}
             onDoubleClick={() => {
-              // Only allow rename for custom sections
-              if (s.type !== "custom") return;
               startEdit(s.id);
             }}
+            onStartEdit={() => startEdit(s.id)}
+            onDelete={() => onDelete(s.id)}
             isEditing={editingId === s.id}
             draftLabel={draft}
             onDraftChange={setDraft}

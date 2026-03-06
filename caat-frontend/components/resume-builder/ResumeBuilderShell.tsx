@@ -165,6 +165,26 @@ export default function ResumeBuilderShell() {
   }
 
   // --------------------------------------------------
+  // Delete section
+  // --------------------------------------------------
+  function deleteSection(id: string) {
+    setSections((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+
+      if (next.length === 0) {
+        setActiveSectionId("");
+        return next;
+      }
+
+      if (activeSectionId === id) {
+        setActiveSectionId(next[0].id);
+      }
+
+      return next;
+    });
+  }
+
+  // --------------------------------------------------
   // Save (universal save button)
   // --------------------------------------------------
   async function onSave() {
@@ -228,6 +248,7 @@ export default function ResumeBuilderShell() {
               onSelect={setActiveSectionId}
               onAdd={addSection}
               onRename={(id, label) => updateSection(id, { label })}
+              onDelete={deleteSection}
               renamingSectionId={renamingSectionId}
               onFinishRenaming={() => setRenamingSectionId(null)}
             />
