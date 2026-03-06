@@ -415,7 +415,7 @@ export default function EssaysShell() {
                                         <Button
                                           variant="ghost"
                                           size="icon"
-                                          className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+                                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
                                           aria-label="Rename draft"
                                           onClick={(e) => {
                                             e.stopPropagation();
@@ -427,7 +427,7 @@ export default function EssaysShell() {
                                         <Button
                                           variant="ghost"
                                           size="icon"
-                                          className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
                                           aria-label="Delete draft"
                                           disabled={deletingId === draft.id}
                                           onClick={(e) => {

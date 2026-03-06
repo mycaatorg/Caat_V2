@@ -3,7 +3,7 @@
 import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Pencil, Trash2 } from "lucide-react";
 
 export default function SortableSectionItem({
   id,
@@ -12,6 +12,9 @@ export default function SortableSectionItem({
   onClick,
 
   onDoubleClick,
+
+  onStartEdit,
+  onDelete,
 
   isEditing,
   draftLabel,
@@ -25,6 +28,9 @@ export default function SortableSectionItem({
   onClick: () => void;
 
   onDoubleClick: () => void;
+
+  onStartEdit: () => void;
+  onDelete: () => void;
 
   isEditing: boolean;
   draftLabel: string;
@@ -61,29 +67,52 @@ export default function SortableSectionItem({
         <GripVertical className="h-4 w-4 text-muted-foreground" />
       </button>
 
-      {/* Click selects section */}
-      {isEditing ? (
-        <input
-          value={draftLabel}
-          onChange={(e) => onDraftChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") onCommit();
-            if (e.key === "Escape") onCancel();
-          }}
-          onBlur={() => onCommit()}
-          autoFocus
-          className="flex-1 rounded border px-2 py-1 text-sm"
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={onClick}
-          onDoubleClick={onDoubleClick}
-          className="flex-1 text-left text-sm font-medium"
-        >
-          {label}
-        </button>
-      )}
+      {/* Label + inline actions */}
+      <div className="flex flex-1 items-center gap-2">
+        {isEditing ? (
+          <input
+            value={draftLabel}
+            onChange={(e) => onDraftChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onCommit();
+              if (e.key === "Escape") onCancel();
+            }}
+            onBlur={() => onCommit()}
+            autoFocus
+            className="flex-1 rounded border px-2 py-1 text-sm"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={onClick}
+            onDoubleClick={onDoubleClick}
+            className="flex-1 text-left text-sm font-medium"
+          >
+            {label}
+          </button>
+        )}
+
+        {!isEditing && (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onStartEdit}
+              className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+              aria-label="Rename section"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+              aria-label="Delete section"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
