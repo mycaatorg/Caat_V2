@@ -122,4 +122,46 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Shared typography for resume preview content.
+     Used in both the hidden measurement container and the visible preview
+     so pagination calculations match what the user sees. */
+  .resume-preview-content {
+    font-size: 11px;
+    line-height: 1.4;
+    /* Respect inline TipTap styles for font-size / font-family etc. */
+    font-family: inherit;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .resume-preview-content p {
+    margin: 0 0 0.4rem 0;
+  }
+
+  .resume-preview-content ul,
+  .resume-preview-content ol {
+    margin: 0 0 0.4rem 1.25rem;
+    padding: 0;
+  }
+
+  .resume-preview-content li {
+    margin-bottom: 0.15rem;
+  }
+
+  .resume-preview-content a {
+    color: rgb(37 99 235); /* blue-600 */
+    text-decoration: underline;
+  }
+
+  .resume-preview-content h1,
+  .resume-preview-content h2,
+  .resume-preview-content h3,
+  .resume-preview-content h4,
+  .resume-preview-content h5,
+  .resume-preview-content h6 {
+    margin: 0 0 0.4rem 0;
+    font-weight: 600;
+  }
 }
