@@ -39,6 +39,7 @@ jobs:
     name: Lint (non-blocking)
     needs: discover-projects
     runs-on: ubuntu-latest
+    continue-on-error: true  # Lint failures show red on the job but do not fail the PR
     strategy:
       # Run lint for every discovered project, but keep it as a separate job so
       # it can be marked as a non-required check in branch protection rules.
