@@ -1,7 +1,8 @@
-import { Search } from "lucide-react";
+import { Search, Bookmark } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { MajorCategory } from "@/types/majors";
+import { FilterView } from "@/app/(main)/majors/client";
 
 const CATEGORIES: (MajorCategory | "All")[] = [
   "All",
@@ -17,15 +18,17 @@ const CATEGORIES: (MajorCategory | "All")[] = [
 interface Props {
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  selectedCategory: MajorCategory | "All";
-  onCategoryChange: (cat: MajorCategory | "All") => void;
+  selectedFilter: FilterView;
+  onFilterChange: (filter: FilterView) => void;
+  bookmarkedCount: number;
 }
 
 export default function MajorFilters({
   searchQuery,
   onSearchChange,
-  selectedCategory,
-  onCategoryChange,
+  selectedFilter,
+  onFilterChange,
+  bookmarkedCount,
 }: Props) {
   return (
     <div className="mb-8 space-y-4">
@@ -44,12 +47,35 @@ export default function MajorFilters({
           <Button
             key={cat}
             size="sm"
-            variant={selectedCategory === cat ? "default" : "outline"}
-            onClick={() => onCategoryChange(cat)}
+            variant={selectedFilter === cat ? "default" : "outline"}
+            onClick={() => onFilterChange(cat)}
           >
             {cat}
           </Button>
         ))}
+
+        <Button
+          size="sm"
+          variant={selectedFilter === "Bookmarked" ? "default" : "outline"}
+          onClick={() => onFilterChange("Bookmarked")}
+          className="gap-1.5"
+        >
+          <Bookmark
+            className={`h-3.5 w-3.5 ${selectedFilter === "Bookmarked" ? "fill-current" : ""}`}
+          />
+          Bookmarked
+          {bookmarkedCount > 0 && (
+            <span
+              className={`text-xs rounded-full px-1.5 py-0.5 font-medium ${
+                selectedFilter === "Bookmarked"
+                  ? "bg-primary-foreground/20 text-primary-foreground"
+                  : "bg-secondary text-secondary-foreground"
+              }`}
+            >
+              {bookmarkedCount}
+            </span>
+          )}
+        </Button>
       </div>
     </div>
   );

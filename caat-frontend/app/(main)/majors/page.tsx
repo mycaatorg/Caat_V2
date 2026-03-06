@@ -9,7 +9,14 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import MajorsClient from "./client";
 
-export default async function MajorsPage() {
+export default async function MajorsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>;
+}) {
+  const { filter } = await searchParams;
+  const initialFilter = filter === "bookmarked" ? "Bookmarked" : "All";
+
   const { data: majors, error } = await supabase
     .from("majors")
     .select("*")
@@ -36,7 +43,7 @@ export default async function MajorsPage() {
         </Breadcrumb>
       </header>
 
-      <MajorsClient majors={majors ?? []} />
+      <MajorsClient majors={majors ?? []} initialFilter={initialFilter} />
     </>
   );
 }
