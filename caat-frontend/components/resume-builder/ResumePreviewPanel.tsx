@@ -17,7 +17,9 @@ const PAGE_WIDTH_PX = 420;
 const PAGE_HEIGHT_PX = PAGE_WIDTH_PX * Math.SQRT2;
 const PAGE_PADDING_PX = 40; // p-10
 const FIRST_PAGE_GAP_PX = 32; // mt-8
-const SECTION_GROUP_GAP_PX = 24; // space-y-6
+const SECTION_GROUP_GAP_PX = 24; // mt-6 between sections
+const SECTION_HEADER_MARGIN_PX = 12; // mb-3 on section header (not captured by offsetHeight)
+const PAGE_BOTTOM_RESERVE_PX = 32; // whitespace reserved at bottom of each page (Word-like gap)
 
 type RenderBlock = {
   id: string;
@@ -247,7 +249,7 @@ export default function ResumePreviewPanel({
     if (!pageBody) return;
 
     const pageBodyHeight =
-      PAGE_HEIGHT_PX - PAGE_PADDING_PX * 2;
+      PAGE_HEIGHT_PX - PAGE_PADDING_PX * 2 - PAGE_BOTTOM_RESERVE_PX;
 
     const firstHeaderHeight = firstPageHeader?.offsetHeight ?? 0;
     const firstPageAvailable =
@@ -336,6 +338,9 @@ export default function ResumePreviewPanel({
     let currentPageIndex = 0;
     let remainingHeight = firstPageAvailable;
     let currentPage: PageModel = { pageIndex: 0, sections: [] };
+    // Tracks which sections have had their header placed on any page already.
+    // Continuation chunks on subsequent pages must NOT repeat the header.
+    const sectionsWithHeader = new Set<string>();
 
     function pushCurrentPage() {
       resultPages.push(currentPage);
@@ -379,14 +384,25 @@ export default function ResumePreviewPanel({
       const lastSectionOnPage =
         currentPage.sections[currentPage.sections.length - 1];
 
+      // Show the section header only when this section is starting on this page AND
+      // it hasn't had its header placed on any previous page (i.e. not a continuation).
+      const isSectionContinuation = sectionsWithHeader.has(block.sectionId);
       const needsSectionHeader =
-        !lastSectionOnPage || lastSectionOnPage.sectionId !== block.sectionId;
+        !isSectionContinuation &&
+        (!lastSectionOnPage || lastSectionOnPage.sectionId !== block.sectionId);
 
-      const headerCost = needsSectionHeader ? sectionHeaderHeight : 0;
+      // headerCost = header element height + mb-3 margin + mt-6 gap before non-first sections
+      const isFirstSectionOnPage = currentPage.sections.length === 0;
+      const headerCost = needsSectionHeader
+        ? sectionHeaderHeight +
+          SECTION_HEADER_MARGIN_PX +
+          (!isFirstSectionOnPage ? SECTION_GROUP_GAP_PX : 0)
+        : 0;
       const fullBlockHeight = measureHtml(block.html);
       const totalNeeded = headerCost + fullBlockHeight;
 
       if (totalNeeded <= remainingHeight) {
+        // Block fits entirely on this page.
         const chunk = getOrCreatePageSectionChunk(
           block.sectionId,
           block.sectionLabel,
@@ -394,46 +410,53 @@ export default function ResumePreviewPanel({
         );
         chunk.htmlBlocks.push(block.html);
         remainingHeight -= totalNeeded;
+        if (needsSectionHeader) sectionsWithHeader.add(block.sectionId);
         continue;
       }
 
+      // Block doesn't fit entirely. Try to split it across this page and the next.
+      // availableForBlock is the space left after the header (if any).
+      const availableForBlock = remainingHeight - headerCost;
+
+      if (availableForBlock > 0 && block.splittable) {
+        const split = splitBlockToFit(block, availableForBlock);
+
+        if (split.headHtml) {
+          // Part of the block fits — place the head on this page.
+          const chunk = getOrCreatePageSectionChunk(
+            block.sectionId,
+            block.sectionLabel,
+            needsSectionHeader
+          );
+          chunk.htmlBlocks.push(split.headHtml);
+          if (needsSectionHeader) sectionsWithHeader.add(block.sectionId);
+
+          const placedHeight = headerCost + measureHtml(split.headHtml);
+          remainingHeight = Math.max(0, remainingHeight - placedHeight);
+
+          startNewPage();
+          if (split.tailBlock) queue.unshift(split.tailBlock);
+          continue;
+        }
+      }
+
+      // Can't split (non-splittable block, or no words fit in remaining space).
+      // If the page already has content, move to a fresh page and retry.
+      // If the page is empty (block is just too tall), force-place it to avoid an infinite loop.
       if (currentPage.sections.length > 0) {
         startNewPage();
         queue.unshift(block);
         continue;
       }
 
-      const availableForBlock = remainingHeight - headerCost;
-      const split = splitBlockToFit(block, availableForBlock);
-
-      if (split.headHtml) {
-        const chunk = getOrCreatePageSectionChunk(
-          block.sectionId,
-          block.sectionLabel,
-          true
-        );
-
-        chunk.htmlBlocks.push(split.headHtml);
-
-        const placedHeight = headerCost + measureHtml(split.headHtml);
-        remainingHeight = Math.max(0, remainingHeight - placedHeight);
-
-        if (split.tailBlock) {
-          startNewPage();
-          queue.unshift(split.tailBlock);
-        } else if (queue.length > 0) {
-          startNewPage();
-        }
-
-        continue;
-      }
-
+      // Force-place on empty page.
       const chunk = getOrCreatePageSectionChunk(
         block.sectionId,
         block.sectionLabel,
-        true
+        needsSectionHeader
       );
       chunk.htmlBlocks.push(block.html);
+      if (needsSectionHeader) sectionsWithHeader.add(block.sectionId);
       remainingHeight = 0;
 
       if (queue.length > 0) {
