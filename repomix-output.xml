@@ -40,107 +40,161 @@ The content is organized as follows:
 </file_summary>
 
 <directory_structure>
-.github/scripts/discover-projects.js
-.github/workflows/ci.yml
+.github/
+  scripts/
+    discover-projects.js
+  workflows/
+    ci.yml
+caat-frontend/
+  app/
+    (main)/
+      dashboard/
+        page.tsx
+      essays/
+        client.tsx
+        page.tsx
+      majors/
+        [id]/
+          bookmark-button.tsx
+          page.tsx
+        client.tsx
+        page.tsx
+      profile/
+        page.tsx
+      resume-builder/
+        client.tsx
+        page.tsx
+      scholarships/
+        page.tsx
+      schools/
+        page.tsx
+      layout.tsx
+    login/
+      page.tsx
+    signup/
+      page.tsx
+    globals.css
+    layout.tsx
+    page.tsx
+  components/
+    assets/
+      logo.webp
+    essays/
+      api.ts
+      EssaysShell.tsx
+    majors/
+      compare-table.tsx
+      major-card.tsx
+      major-filters.tsx
+    resume-builder/
+      editors/
+        PersonalInfoGuided.tsx
+      api.ts
+      defaultSections.ts
+      DocumentStructurePanel.tsx
+      ResumeBuilderShell.tsx
+      ResumePreviewPanel.tsx
+      SectionEditorPanel.tsx
+      SortableSectionItem.tsx
+      TopBar.tsx
+      types.ts
+    scholarships/
+      scholarship-card.tsx
+    ui/
+      avatar.tsx
+      breadcrumb.tsx
+      button.tsx
+      calendar.tsx
+      card.tsx
+      collapsible.tsx
+      dropdown-menu.tsx
+      field.tsx
+      input.tsx
+      item.tsx
+      label.tsx
+      popover.tsx
+      separator.tsx
+      sheet.tsx
+      sidebar.tsx
+      skeleton.tsx
+      textarea.tsx
+      tooltip.tsx
+    app-sidebar.tsx
+    login-form.tsx
+    nav-user.tsx
+    RichTextEditor.tsx
+    signup-form.tsx
+  extensions/
+    FontSize.ts
+  hooks/
+    use-mobile.ts
+  lib/
+    utils.ts
+  public/
+    file.svg
+    globe.svg
+    logo.png
+    next.svg
+    vercel.svg
+    window.svg
+  src/
+    lib/
+      supabaseClient.ts
+  supabase/
+    seeds/
+      majors_qs_urls.sql
+      majors_seed.sql
+    seed_essay_prompts.sql
+  tests/
+    smoke.test.cjs
+  types/
+    images.d.ts
+    majors.ts
+    resume.ts
+  .gitignore
+  components.json
+  eslint.config.mjs
+  next.config.ts
+  package.json
+  postcss.config.mjs
+  README.md
+  tsconfig.json
+my-app/
+  app/
+    favicon.ico
+    globals.css
+    layout.tsx
+    page.tsx
+  public/
+    file.svg
+    globe.svg
+    next.svg
+    vercel.svg
+    window.svg
+  tests/
+    smoke.test.cjs
+  .gitignore
+  eslint.config.mjs
+  next.config.ts
+  package.json
+  postcss.config.mjs
+  README.md
+  tsconfig.json
 .gitignore
-caat-frontend/.gitignore
-caat-frontend/app/(main)/dashboard/page.tsx
-caat-frontend/app/(main)/essays/client.tsx
-caat-frontend/app/(main)/essays/page.tsx
-caat-frontend/app/(main)/layout.tsx
-caat-frontend/app/(main)/majors/client.tsx
-caat-frontend/app/(main)/majors/page.tsx
-caat-frontend/app/(main)/profile/page.tsx
-caat-frontend/app/(main)/resume-builder/client.tsx
-caat-frontend/app/(main)/resume-builder/page.tsx
-caat-frontend/app/(main)/schools/page.tsx
-caat-frontend/app/globals.css
-caat-frontend/app/layout.tsx
-caat-frontend/app/login/page.tsx
-caat-frontend/app/page.tsx
-caat-frontend/app/signup/page.tsx
-caat-frontend/components.json
-caat-frontend/components/app-sidebar.tsx
-caat-frontend/components/assets/logo.webp
-caat-frontend/components/essays/api.ts
-caat-frontend/components/essays/EssaysShell.tsx
-caat-frontend/components/login-form.tsx
-caat-frontend/components/majors/major-card.tsx
-caat-frontend/components/majors/major-filters.tsx
-caat-frontend/components/nav-user.tsx
-caat-frontend/components/resume-builder/api.ts
-caat-frontend/components/resume-builder/defaultSections.ts
-caat-frontend/components/resume-builder/DocumentStructurePanel.tsx
-caat-frontend/components/resume-builder/editors/PersonalInfoGuided.tsx
-caat-frontend/components/resume-builder/ResumeBuilderShell.tsx
-caat-frontend/components/resume-builder/ResumePreviewPanel.tsx
-caat-frontend/components/resume-builder/SectionEditorPanel.tsx
-caat-frontend/components/resume-builder/SortableSectionItem.tsx
-caat-frontend/components/resume-builder/TopBar.tsx
-caat-frontend/components/resume-builder/types.ts
-caat-frontend/components/RichTextEditor.tsx
-caat-frontend/components/signup-form.tsx
-caat-frontend/components/ui/avatar.tsx
-caat-frontend/components/ui/breadcrumb.tsx
-caat-frontend/components/ui/button.tsx
-caat-frontend/components/ui/calendar.tsx
-caat-frontend/components/ui/card.tsx
-caat-frontend/components/ui/collapsible.tsx
-caat-frontend/components/ui/dropdown-menu.tsx
-caat-frontend/components/ui/field.tsx
-caat-frontend/components/ui/input.tsx
-caat-frontend/components/ui/item.tsx
-caat-frontend/components/ui/label.tsx
-caat-frontend/components/ui/popover.tsx
-caat-frontend/components/ui/separator.tsx
-caat-frontend/components/ui/sheet.tsx
-caat-frontend/components/ui/sidebar.tsx
-caat-frontend/components/ui/skeleton.tsx
-caat-frontend/components/ui/textarea.tsx
-caat-frontend/components/ui/tooltip.tsx
-caat-frontend/eslint.config.mjs
-caat-frontend/extensions/FontSize.ts
-caat-frontend/hooks/use-mobile.ts
-caat-frontend/lib/utils.ts
-caat-frontend/next.config.ts
-caat-frontend/package.json
-caat-frontend/postcss.config.mjs
-caat-frontend/public/file.svg
-caat-frontend/public/globe.svg
-caat-frontend/public/next.svg
-caat-frontend/public/vercel.svg
-caat-frontend/public/window.svg
-caat-frontend/README.md
-caat-frontend/src/lib/supabaseClient.ts
-caat-frontend/supabase/seed_essay_prompts.sql
-caat-frontend/supabase/seeds/majors_seed.sql
-caat-frontend/tests/smoke.test.cjs
-caat-frontend/tsconfig.json
-caat-frontend/types/images.d.ts
-caat-frontend/types/majors.ts
-caat-frontend/types/resume.ts
-my-app/.gitignore
-my-app/app/favicon.ico
-my-app/app/globals.css
-my-app/app/layout.tsx
-my-app/app/page.tsx
-my-app/eslint.config.mjs
-my-app/next.config.ts
-my-app/package.json
-my-app/postcss.config.mjs
-my-app/public/file.svg
-my-app/public/globe.svg
-my-app/public/next.svg
-my-app/public/vercel.svg
-my-app/public/window.svg
-my-app/README.md
-my-app/tests/smoke.test.cjs
-my-app/tsconfig.json
+package.json
 README.md
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="package.json">
+{
+  "dependencies": {
+    "@supabase/supabase-js": "^2.89.0"
+  }
+}
+</file>
 
 <file path="caat-frontend/app/(main)/dashboard/page.tsx">
 import {
@@ -234,180 +288,60 @@ export default function EssaysPage() {
 }
 </file>
 
-<file path="caat-frontend/app/(main)/layout.tsx">
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app-sidebar"
-
-export default function MainLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        {children}
-      </SidebarInset>
-    </SidebarProvider>
-  );
-}
-</file>
-
-<file path="caat-frontend/app/(main)/majors/client.tsx">
-"use client";
-
-import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowLeftRight } from "lucide-react";
-import { Major, MajorCategory } from "@/types/majors";
-import MajorCard from "@/components/majors/major-card";
-import MajorFilters from "@/components/majors/major-filters";
-import { Button } from "@/components/ui/button";
-
-const MAX_COMPARE = 3;
-
-interface Props {
-  majors: Major[];
-  // Phase 4: server will pass the user's existing bookmarked IDs
-  initialBookmarkedIds?: string[];
-}
-
-export default function MajorsClient({
-  majors,
-  initialBookmarkedIds = [],
-}: Props) {
-  const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<
-    MajorCategory | "All"
-  >("All");
-  const [compareIds, setCompareIds] = useState<string[]>([]);
-  // Phase 4: this will be wired to server actions for persistence
-  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(
-    new Set(initialBookmarkedIds)
-  );
-
-  const filtered = useMemo(() => {
-    return majors.filter((m) => {
-      const matchesCategory =
-        selectedCategory === "All" || m.category === selectedCategory;
-      const q = searchQuery.toLowerCase();
-      const matchesSearch =
-        m.name.toLowerCase().includes(q) ||
-        m.description?.toLowerCase().includes(q);
-      return matchesCategory && matchesSearch;
-    });
-  }, [majors, searchQuery, selectedCategory]);
-
-  function handleToggleSelect(id: string) {
-    setCompareIds((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= MAX_COMPARE) return prev;
-      return [...prev, id];
-    });
-  }
-
-  function handleToggleBookmark(id: string) {
-    // Phase 4: call server action here for persistence
-    setBookmarkedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  function handleCompare() {
-    router.push(`/majors/compare?ids=${compareIds.join(",")}`);
-  }
-
-  return (
-    <div className="min-h-screen p-8">
-      <div className="max-w-5xl mx-auto">
-        <MajorFilters
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          selectedCategory={selectedCategory}
-          onCategoryChange={setSelectedCategory}
-        />
-
-        <p className="text-sm text-muted-foreground mb-6">
-          {filtered.length} major{filtered.length !== 1 ? "s" : ""}
-          {selectedCategory !== "All" ? ` in ${selectedCategory}` : ""}
-          {searchQuery ? ` matching "${searchQuery}"` : ""}
-        </p>
-
-        {filtered.length === 0 ? (
-          <div className="text-center py-20 text-muted-foreground">
-            No majors found. Try adjusting your search or filters.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-24">
-            {filtered.map((major) => (
-              <MajorCard
-                key={major.id}
-                major={major}
-                isBookmarked={bookmarkedIds.has(major.id)}
-                isSelected={compareIds.includes(major.id)}
-                canSelect={
-                  compareIds.length < MAX_COMPARE ||
-                  compareIds.includes(major.id)
-                }
-                onToggleSelect={handleToggleSelect}
-                onToggleBookmark={handleToggleBookmark}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Compare bar — appears when 2+ majors are selected */}
-      {compareIds.length >= 2 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="flex items-center gap-3 bg-background border rounded-full px-5 py-2.5 shadow-xl pointer-events-auto">
-            <span className="text-sm font-medium">
-              {compareIds.length} majors selected
-            </span>
-            <Button size="sm" onClick={handleCompare}>
-              <ArrowLeftRight />
-              Compare
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setCompareIds([])}
-            >
-              Clear
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-</file>
-
-<file path="caat-frontend/app/(main)/majors/page.tsx">
+<file path="caat-frontend/app/(main)/majors/[id]/page.tsx">
 import { supabase } from "@/src/lib/supabaseClient";
+import { notFound } from "next/navigation";
+import Link from "next/link";
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
+  BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import MajorsClient from "./client";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, CheckCircle2, ExternalLink } from "lucide-react";
+import BookmarkButton from "./bookmark-button";
 
-export default async function MajorsPage() {
-  const { data: majors, error } = await supabase
+const CATEGORY_COLORS: Record<string, string> = {
+  Engineering:
+    "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  Business:
+    "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  "Health Sciences":
+    "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  "Arts & Humanities":
+    "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  "Social Sciences":
+    "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300",
+  "Natural Sciences":
+    "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
+  Education:
+    "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+};
+
+export default async function MajorDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
+  const { data: major, error } = await supabase
     .from("majors")
     .select("*")
-    .order("name");
+    .eq("id", id)
+    .single();
 
-  if (error) {
-    return <div className="p-10 text-red-500">Error: {error.message}</div>;
+  if (error || !major) {
+    notFound();
   }
+
+  const categoryColor =
+    CATEGORY_COLORS[major.category] ??
+    "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
 
   return (
     <>
@@ -420,13 +354,87 @@ export default async function MajorsPage() {
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem className="hidden md:block">
-              <BreadcrumbLink>Majors</BreadcrumbLink>
+              <BreadcrumbLink href="/majors">Majors</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator className="hidden md:block" />
+            <BreadcrumbItem>
+              <BreadcrumbLink>{major.name}</BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
       </header>
 
-      <MajorsClient majors={majors ?? []} />
+      <div className="p-8 max-w-3xl mx-auto">
+        <Button variant="ghost" size="sm" asChild className="-ml-2 mb-6">
+          <Link href="/majors">
+            <ChevronLeft className="h-4 w-4" />
+            Back to Majors
+          </Link>
+        </Button>
+
+        <div className="flex items-start justify-between gap-4 mb-6">
+          <div className="space-y-2">
+            <span
+              className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${categoryColor}`}
+            >
+              {major.category}
+            </span>
+            <h1 className="text-3xl font-bold">{major.name}</h1>
+          </div>
+          <BookmarkButton majorId={major.id} />
+        </div>
+
+        {major.description && (
+          <p className="text-muted-foreground leading-relaxed mb-8">
+            {major.description}
+          </p>
+        )}
+
+        {major.career_paths?.length > 0 && (
+          <section className="mb-8">
+            <h2 className="text-lg font-semibold mb-3">Career Paths</h2>
+            <div className="flex flex-wrap gap-2">
+              {major.career_paths.map((path: string) => (
+                <span
+                  key={path}
+                  className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-secondary text-secondary-foreground"
+                >
+                  {path}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {major.typical_coursework?.length > 0 && (
+          <section className="mb-8">
+            <h2 className="text-lg font-semibold mb-3">Typical Coursework</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {major.typical_coursework.map((course: string) => (
+                <div key={course} className="flex items-center gap-2 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-primary flex-shrink-0" />
+                  {course}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {major.qs_ranking_url && (
+          <section className="mb-8">
+            <h2 className="text-lg font-semibold mb-3">World Rankings</h2>
+            <a
+              href={major.qs_ranking_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm text-primary hover:underline underline-offset-4"
+            >
+              <ExternalLink className="h-4 w-4" />
+              View QS World University Rankings for {major.name}
+            </a>
+          </section>
+        )}
+      </div>
     </>
   );
 }
@@ -447,28 +455,452 @@ export default function ResumeBuilderClient() {
 }
 </file>
 
-<file path="caat-frontend/components.json">
-{
-  "$schema": "https://ui.shadcn.com/schema.json",
-  "style": "new-york",
-  "rsc": true,
-  "tsx": true,
-  "tailwind": {
-    "config": "",
-    "css": "app/globals.css",
-    "baseColor": "neutral",
-    "cssVariables": true,
-    "prefix": ""
+<file path="caat-frontend/app/(main)/scholarships/page.tsx">
+"use client";
+
+import { useState, useMemo } from "react";
+import { Search, ChevronDown, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import ScholarshipCard, { Scholarship } from "@/components/scholarships/scholarship-card";
+
+// ---------------------------------------------------------------------------
+// Placeholder data — replace with real Supabase fetch when backend is ready
+// ---------------------------------------------------------------------------
+const MOCK_SCHOLARSHIPS: Scholarship[] = [
+  {
+    id: "1",
+    university: "Stanford University",
+    name: "Global Leadership Fellowship",
+    tags: ["FULL RIDE", "MERIT-BASED"],
+    amount: "$65,000",
+    amountSuffix: "/ year",
+    description:
+      "Awarded to incoming international students who demonstrate exceptional leadership potential and community impact through their academic and extracurricular achievements.",
   },
-  "iconLibrary": "lucide",
-  "aliases": {
-    "components": "@/components",
-    "utils": "@/lib/utils",
-    "ui": "@/components/ui",
-    "lib": "@/lib",
-    "hooks": "@/hooks"
+  {
+    id: "2",
+    university: "National University of Singapore",
+    name: "ASEAN Undergraduate Award",
+    tags: ["NEED-BLIND", "REGIONAL"],
+    amount: "$25,000",
+    amountSuffix: "/ year",
+    description:
+      "Supporting talented students from ASEAN member countries to pursue their undergraduate studies at NUS.",
   },
-  "registries": {}
+  {
+    id: "3",
+    university: "University of Toronto",
+    name: "Lester B. Pearson Scholarship",
+    tags: ["FULL RIDE", "MERIT-BASED"],
+    amount: "$52,000",
+    amountSuffix: "/ total",
+    description:
+      "Canada's most prestigious scholarship for international students who demonstrate exceptional academic achievement and impact in their school and community.",
+  },
+  {
+    id: "4",
+    university: "Oxford University",
+    name: "Rhodes Scholarship",
+    tags: ["POST-GRAD", "PRESTIGIOUS"],
+    amount: "Fully Funded",
+    description:
+      "Covering all fees and providing a living stipend for postgraduate study at the University of Oxford.",
+  },
+  {
+    id: "5",
+    university: "MIT",
+    name: "Science Excellence Award",
+    tags: ["STEM", "MERIT-BASED"],
+    amount: "$15,000",
+    amountSuffix: "/ year",
+    description:
+      "Targeted at undergraduate students who have shown exceptional research promise in the physical sciences.",
+  },
+  {
+    id: "6",
+    university: "University of Melbourne",
+    name: "Chancellor's Scholarship",
+    tags: ["FULL RIDE", "NEED-BLIND"],
+    amount: "50% Fee Remission",
+    description:
+      "Awarded to high-achieving students from various backgrounds based on ATAR scores and community impact.",
+  },
+  {
+    id: "7",
+    university: "Harvard University",
+    name: "Harvard International Scholarship",
+    tags: ["NEED-BLIND", "MERIT-BASED"],
+    amount: "$70,000",
+    amountSuffix: "/ year",
+    description:
+      "Need-based scholarship covering full cost of attendance for exceptional international students admitted to Harvard College.",
+  },
+  {
+    id: "8",
+    university: "ETH Zurich",
+    name: "Excellence Scholarship & Opportunity",
+    tags: ["MERIT-BASED", "POST-GRAD"],
+    amount: "$30,000",
+    amountSuffix: "/ year",
+    description:
+      "A merit-based scholarship programme for outstanding Master's students at one of the world's leading technical universities.",
+  },
+  {
+    id: "9",
+    university: "University of Edinburgh",
+    name: "Global Research Scholarship",
+    tags: ["STEM", "PRESTIGIOUS"],
+    amount: "£20,000",
+    amountSuffix: "/ year",
+    description:
+      "Open to international students pursuing postgraduate research degrees in STEM disciplines at the University of Edinburgh.",
+  },
+];
+
+const LOCATIONS = ["United States", "United Kingdom", "Singapore", "Canada", "Australia", "Switzerland"];
+const MAJOR_FIELDS = ["Engineering", "Business", "Natural Sciences", "Social Sciences", "Arts & Humanities", "Health Sciences"];
+const ELIGIBILITY_OPTIONS = ["Merit-Based", "Need-Based", "Need-Blind", "Full Ride", "Undergraduate", "Postgraduate"];
+
+const ITEMS_PER_PAGE = 6;
+
+export default function ScholarshipsPage() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [selectedFields, setSelectedFields] = useState<string[]>([]);
+  const [selectedEligibility, setSelectedEligibility] = useState<string[]>([]);
+  const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
+
+  function toggleBookmark(id: string) {
+    setBookmarked((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleMultiFilter<T>(
+    value: T,
+    setter: React.Dispatch<React.SetStateAction<T[]>>
+  ) {
+    setter((prev) =>
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+    );
+  }
+
+  function clearAll() {
+    setSelectedLocations([]);
+    setSelectedFields([]);
+    setSelectedEligibility([]);
+    setSearchQuery("");
+    setCurrentPage(1);
+  }
+
+  const hasActiveFilters =
+    selectedLocations.length > 0 ||
+    selectedFields.length > 0 ||
+    selectedEligibility.length > 0 ||
+    searchQuery.trim().length > 0;
+
+  // Client-side search filter (placeholder — swap for server-side when API is ready)
+  const filtered = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return MOCK_SCHOLARSHIPS.filter((s) => {
+      if (q && !s.name.toLowerCase().includes(q) && !s.university.toLowerCase().includes(q)) {
+        return false;
+      }
+      return true;
+    });
+  }, [searchQuery]);
+
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  const paginated = filtered.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  function goToPage(page: number) {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  }
+
+  // Build visible page numbers: always show 1, totalPages, and pages near current
+  const pageNumbers = useMemo(() => {
+    const pages: (number | "...")[] = [];
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || Math.abs(i - currentPage) <= 1) {
+        pages.push(i);
+      } else if (pages[pages.length - 1] !== "...") {
+        pages.push("...");
+      }
+    }
+    return pages;
+  }, [currentPage, totalPages]);
+
+  return (
+    <>
+      {/* ------------------------------------------------------------------ */}
+      {/* Top header bar — matches pattern used across (main) pages           */}
+      {/* ------------------------------------------------------------------ */}
+      <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+        <SidebarTrigger className="-ml-1" />
+        <Separator
+          orientation="vertical"
+          className="mr-2 data-[orientation=vertical]:h-4"
+        />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem className="hidden md:block">
+              <BreadcrumbLink href="/schools">Schools</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator className="hidden md:block" />
+            <BreadcrumbItem>
+              <BreadcrumbLink>Scholarships</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+
+        {/* Search — right side of the header */}
+        <div className="ml-auto relative w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            className="pl-9 h-9"
+            placeholder="Search by scholarship name or university..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
+          />
+        </div>
+      </header>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Page content                                                        */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="min-h-screen p-8 pt-4">
+        <main className="max-w-5xl mx-auto">
+
+          {/* Page title + filter row */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold tracking-tight mb-4">Scholarships</h1>
+
+            {/* Filter controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Location filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`gap-1.5 ${selectedLocations.length > 0 ? "border-primary" : ""}`}
+                  >
+                    Location
+                    {selectedLocations.length > 0 && (
+                      <span className="bg-primary text-primary-foreground text-[10px] font-semibold rounded-full px-1.5 py-0.5 leading-none">
+                        {selectedLocations.length}
+                      </span>
+                    )}
+                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  {LOCATIONS.map((loc) => (
+                    <DropdownMenuCheckboxItem
+                      key={loc}
+                      checked={selectedLocations.includes(loc)}
+                      onCheckedChange={() =>
+                        toggleMultiFilter(loc, setSelectedLocations)
+                      }
+                    >
+                      {loc}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Major/Field filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`gap-1.5 ${selectedFields.length > 0 ? "border-primary" : ""}`}
+                  >
+                    Major/Field
+                    {selectedFields.length > 0 && (
+                      <span className="bg-primary text-primary-foreground text-[10px] font-semibold rounded-full px-1.5 py-0.5 leading-none">
+                        {selectedFields.length}
+                      </span>
+                    )}
+                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  {MAJOR_FIELDS.map((field) => (
+                    <DropdownMenuCheckboxItem
+                      key={field}
+                      checked={selectedFields.includes(field)}
+                      onCheckedChange={() =>
+                        toggleMultiFilter(field, setSelectedFields)
+                      }
+                    >
+                      {field}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Eligibility filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`gap-1.5 ${selectedEligibility.length > 0 ? "border-primary" : ""}`}
+                  >
+                    <SlidersHorizontal className="h-3.5 w-3.5 opacity-60" />
+                    Eligibility
+                    {selectedEligibility.length > 0 && (
+                      <span className="bg-primary text-primary-foreground text-[10px] font-semibold rounded-full px-1.5 py-0.5 leading-none">
+                        {selectedEligibility.length}
+                      </span>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  {ELIGIBILITY_OPTIONS.map((opt) => (
+                    <DropdownMenuCheckboxItem
+                      key={opt}
+                      checked={selectedEligibility.includes(opt)}
+                      onCheckedChange={() =>
+                        toggleMultiFilter(opt, setSelectedEligibility)
+                      }
+                    >
+                      {opt}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Clear all */}
+              {hasActiveFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={clearAll}
+                >
+                  Clear all
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Scholarship grid */}
+          {paginated.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+              {paginated.map((scholarship) => (
+                <ScholarshipCard
+                  key={scholarship.id}
+                  scholarship={scholarship}
+                  isBookmarked={bookmarked.has(scholarship.id)}
+                  onToggleBookmark={toggleBookmark}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
+              <p className="text-lg font-medium">No scholarships found</p>
+              <p className="text-sm mt-1">Try adjusting your search or filters.</p>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={currentPage <= 1}
+                onClick={() => goToPage(currentPage - 1)}
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+
+              {pageNumbers.map((p, idx) =>
+                p === "..." ? (
+                  <span
+                    key={`ellipsis-${idx}`}
+                    className="px-2 text-sm text-muted-foreground select-none"
+                  >
+                    ...
+                  </span>
+                ) : (
+                  <Button
+                    key={p}
+                    variant={currentPage === p ? "default" : "outline"}
+                    size="icon"
+                    onClick={() => goToPage(p as number)}
+                    aria-label={`Page ${p}`}
+                    aria-current={currentPage === p ? "page" : undefined}
+                  >
+                    {p}
+                  </Button>
+                )
+              )}
+
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={currentPage >= totalPages}
+                onClick={() => goToPage(currentPage + 1)}
+                aria-label="Next page"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </main>
+      </div>
+    </>
+  );
+}
+</file>
+
+<file path="caat-frontend/app/(main)/layout.tsx">
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
+import { AppSidebar } from "@/components/app-sidebar"
+
+export default function MainLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>
+        {children}
+      </SidebarInset>
+    </SidebarProvider>
+  );
 }
 </file>
 
@@ -675,6 +1107,136 @@ export async function deleteDraft(draftId: string): Promise<void> {
 }
 </file>
 
+<file path="caat-frontend/components/majors/compare-table.tsx">
+import Link from "next/link";
+import { CheckCircle2 } from "lucide-react";
+import { Major } from "@/types/majors";
+
+const CATEGORY_COLORS: Record<string, string> = {
+  Engineering:
+    "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  Business:
+    "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  "Health Sciences":
+    "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  "Arts & Humanities":
+    "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  "Social Sciences":
+    "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300",
+  "Natural Sciences":
+    "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
+  Education:
+    "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+};
+
+interface Props {
+  majors: Major[];
+}
+
+export default function CompareTable({ majors }: Props) {
+  const cols = majors.length;
+
+  const gridStyle = {
+    gridTemplateColumns: `11rem repeat(${cols}, 1fr)`,
+  };
+
+  const cellBorder = (i: number) =>
+    `${i < cols - 1 ? "border-r" : ""}`;
+
+  return (
+    <div
+      className="grid overflow-hidden text-sm"
+      style={gridStyle}
+    >
+      {/* ── Major name headers ── */}
+      <div className="bg-muted/50 p-4 border-b border-r" />
+      {majors.map((major, i) => (
+        <div
+          key={major.id}
+          className={`bg-muted/50 p-4 border-b ${cellBorder(i)}`}
+        >
+          <Link
+            href={`/majors/${major.id}`}
+            className="font-semibold text-base hover:underline underline-offset-2"
+          >
+            {major.name}
+          </Link>
+        </div>
+      ))}
+
+      {/* ── Category ── */}
+      <div className="p-4 border-b border-r font-medium text-muted-foreground flex items-center">
+        Category
+      </div>
+      {majors.map((major, i) => (
+        <div
+          key={major.id}
+          className={`p-4 border-b ${cellBorder(i)} flex items-center`}
+        >
+          <span
+            className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${
+              CATEGORY_COLORS[major.category] ??
+              "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+            }`}
+          >
+            {major.category}
+          </span>
+        </div>
+      ))}
+
+      {/* ── Description ── */}
+      <div className="p-4 border-b border-r font-medium text-muted-foreground">
+        Description
+      </div>
+      {majors.map((major, i) => (
+        <div
+          key={major.id}
+          className={`p-4 border-b ${cellBorder(i)} text-muted-foreground leading-relaxed`}
+        >
+          {major.description ?? "—"}
+        </div>
+      ))}
+
+      {/* ── Career Paths ── */}
+      <div className="p-4 border-b border-r font-medium text-muted-foreground">
+        Career Paths
+      </div>
+      {majors.map((major, i) => (
+        <div key={major.id} className={`p-4 border-b ${cellBorder(i)}`}>
+          <div className="flex flex-wrap gap-1.5">
+            {major.career_paths.map((path) => (
+              <span
+                key={path}
+                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs bg-secondary text-secondary-foreground"
+              >
+                {path}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* ── Typical Coursework ── */}
+      <div className="p-4 border-r font-medium text-muted-foreground">
+        Typical Coursework
+      </div>
+      {majors.map((major, i) => (
+        <div key={major.id} className={`p-4 ${cellBorder(i)}`}>
+          <ul className="space-y-1.5">
+            {major.typical_coursework.map((course) => (
+              <li key={course} className="flex items-center gap-2">
+                <CheckCircle2 className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                {course}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+</file>
+
 <file path="caat-frontend/components/majors/major-card.tsx">
 import Link from "next/link";
 import { Bookmark, Check, Plus } from "lucide-react";
@@ -790,65 +1352,6 @@ export default function MajorCard({
 }
 </file>
 
-<file path="caat-frontend/components/majors/major-filters.tsx">
-import { Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { MajorCategory } from "@/types/majors";
-
-const CATEGORIES: (MajorCategory | "All")[] = [
-  "All",
-  "Engineering",
-  "Business",
-  "Health Sciences",
-  "Arts & Humanities",
-  "Social Sciences",
-  "Natural Sciences",
-  "Education",
-];
-
-interface Props {
-  searchQuery: string;
-  onSearchChange: (q: string) => void;
-  selectedCategory: MajorCategory | "All";
-  onCategoryChange: (cat: MajorCategory | "All") => void;
-}
-
-export default function MajorFilters({
-  searchQuery,
-  onSearchChange,
-  selectedCategory,
-  onCategoryChange,
-}: Props) {
-  return (
-    <div className="mb-8 space-y-4">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-        <Input
-          className="pl-9"
-          placeholder="Search majors..."
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
-        />
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {CATEGORIES.map((cat) => (
-          <Button
-            key={cat}
-            size="sm"
-            variant={selectedCategory === cat ? "default" : "outline"}
-            onClick={() => onCategoryChange(cat)}
-          >
-            {cat}
-          </Button>
-        ))}
-      </div>
-    </div>
-  );
-}
-</file>
-
 <file path="caat-frontend/components/resume-builder/editors/PersonalInfoGuided.tsx">
 "use client";
 
@@ -913,547 +1416,6 @@ export default function PersonalInfoGuided({
             placeholder="Sydney, Australia"
           />
         </div>
-      </div>
-    </div>
-  );
-}
-</file>
-
-<file path="caat-frontend/components/resume-builder/ResumePreviewPanel.tsx">
-"use client";
-
-import React, {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { ResumeSection } from "./types";
-
-function safeText(x: any) {
-  return typeof x === "string" ? x : "";
-}
-
-// A4 aspect ratio tied to the current preview width.
-const PAGE_WIDTH_PX = 420;
-const PAGE_HEIGHT_PX = PAGE_WIDTH_PX * Math.SQRT2;
-// Use a conservative content budget so we never visually overflow
-// the A4 box, even with margins, padding and measurement noise.
-const PAGE_CONTENT_HEIGHT = PAGE_HEIGHT_PX * 0.8;
-// Approximate vertical spacing between the personal header and first section
-// (the "mt-8" on the sections container). We subtract this from the first
-// page's content budget so pagination doesn't accidentally use that space.
-const FIRST_PAGE_TOP_SPACING = 32;
-
-type HtmlBlock = {
-  id: string;
-  sectionId: string;
-  sectionLabel: string;
-  html: string;
-};
-
-export type PageChunk = {
-  pageIndex: number;
-  sectionId: string;
-  sectionLabel: string;
-  includeSectionHeader: boolean;
-  htmlBlocks: string[];
-};
-
-function splitNodeIntoChunks(
-  baseId: string,
-  sectionId: string,
-  sectionLabel: string,
-  node: HTMLElement,
-  wordsPerChunk: number
-): HtmlBlock[] {
-  const text = node.textContent?.trim() ?? "";
-  if (!text) {
-    return [];
-  }
-
-  const words = text.split(/\s+/);
-  if (words.length <= wordsPerChunk) {
-    return [
-      {
-        id: `${baseId}-0`,
-        sectionId,
-        sectionLabel,
-        html: node.outerHTML,
-      },
-    ];
-  }
-
-  const chunks: HtmlBlock[] = [];
-  for (let i = 0; i < words.length; i += wordsPerChunk) {
-    const slice = words.slice(i, i + wordsPerChunk).join(" ");
-
-    const clone = node.cloneNode(false) as HTMLElement;
-    clone.textContent = slice;
-
-    chunks.push({
-      id: `${baseId}-${i / wordsPerChunk}`,
-      sectionId,
-      sectionLabel,
-      html: clone.outerHTML,
-    });
-  }
-
-  return chunks;
-}
-
-function extractBlocksFromHtml(
-  sectionId: string,
-  sectionLabel: string,
-  html: string
-): HtmlBlock[] {
-  if (typeof document === "undefined") return [];
-
-  const container = document.createElement("div");
-  container.innerHTML = html || "";
-
-  const blocks: HtmlBlock[] = [];
-
-  const children = Array.from(container.childNodes);
-  children.forEach((node, index) => {
-    // Bare text nodes -> paragraph chunks
-    if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent?.trim() ?? "";
-      if (!text) return;
-      const wrapper = document.createElement("p");
-      wrapper.textContent = text;
-      blocks.push(
-        ...splitNodeIntoChunks(
-          `${sectionId}-text-${index}`,
-          sectionId,
-          sectionLabel,
-          wrapper,
-          18
-        )
-      );
-      return;
-    }
-
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-
-    const el = node as HTMLElement;
-    const tag = el.tagName.toLowerCase();
-
-    // Lists: split into one block per list item, and chunk long items.
-    if (tag === "ul" || tag === "ol") {
-      const items = Array.from(el.children).filter(
-        (child) => child.tagName.toLowerCase() === "li"
-      ) as HTMLElement[];
-
-      items.forEach((li, liIndex) => {
-        const liBaseId = `${sectionId}-li-${index}-${liIndex}`;
-        const liChunks = splitNodeIntoChunks(
-          liBaseId,
-          sectionId,
-          sectionLabel,
-          li,
-          16
-        );
-
-        liChunks.forEach((chunk, chunkIndex) => {
-          // Wrap each li chunk back in its list container so bullets/indent stay correct.
-          const temp = document.createElement(tag);
-          temp.innerHTML = chunk.html;
-          blocks.push({
-            id: `${liBaseId}-${chunkIndex}`,
-            sectionId,
-            sectionLabel,
-            html: temp.outerHTML,
-          });
-        });
-      });
-      return;
-    }
-
-    // Paragraph-like blocks: chunk when text is long, otherwise keep as-is.
-    if (tag === "p" || tag === "div") {
-      const text = el.textContent?.trim() ?? "";
-      const wordCount = text ? text.split(/\s+/).length : 0;
-      if (wordCount > 25) {
-        blocks.push(
-          ...splitNodeIntoChunks(
-            `${sectionId}-block-${index}`,
-            sectionId,
-            sectionLabel,
-            el,
-            18
-          )
-        );
-        return;
-      }
-    }
-
-    const htmlString = el.outerHTML.trim();
-    if (!htmlString) return;
-    blocks.push({
-      id: `${sectionId}-block-${index}`,
-      sectionId,
-      sectionLabel,
-      html: htmlString,
-    });
-  });
-
-  if (blocks.length === 0) {
-    blocks.push({
-      id: `${sectionId}-placeholder`,
-      sectionId,
-      sectionLabel,
-      html: "<p class='text-muted-foreground'>...</p>",
-    });
-  }
-
-  return blocks;
-}
-
-export default function ResumePreviewPanel({
-  sections,
-}: {
-  sections: ResumeSection[];
-}) {
-  const personal = sections.find((s) => s.type === "personal")?.structuredData ?? {};
-  const contentSections = useMemo(
-    () => sections.filter((s) => s.type !== "personal"),
-    [sections]
-  );
-
-  // Flattened list of HTML blocks in section order.
-  const allBlocks = useMemo<HtmlBlock[]>(() => {
-    if (typeof document === "undefined") return [];
-
-    const result: HtmlBlock[] = [];
-    contentSections.forEach((section) => {
-      const blocks = extractBlocksFromHtml(
-        section.id,
-        section.label,
-        section.contentHtml
-      );
-      result.push(...blocks);
-    });
-    return result;
-  }, [contentSections]);
-
-  const measurementRef = useRef<HTMLDivElement | null>(null);
-  const [chunks, setChunks] = useState<PageChunk[]>([]);
-  const [fontsReady, setFontsReady] = useState(false);
-
-  // Wait for fonts to be ready before measuring, otherwise the first layout
-  // pass may measure with fallback fonts and produce incorrect pagination
-  // on the first page only.
-  useEffect(() => {
-    if (typeof document === "undefined") {
-      setFontsReady(true);
-      return;
-    }
-
-    const anyDoc = document as any;
-    const fonts = anyDoc.fonts;
-    if (fonts && fonts.ready) {
-      fonts.ready
-        .then(() => setFontsReady(true))
-        .catch(() => setFontsReady(true));
-    } else {
-      setFontsReady(true);
-    }
-  }, []);
-
-  // Measure layout and compute page chunks.
-  useLayoutEffect(() => {
-    if (!fontsReady || !measurementRef.current || allBlocks.length === 0) {
-      setChunks([]);
-      return;
-    }
-
-    const root = measurementRef.current;
-
-    const headerEl = root.querySelector<HTMLElement>("[data-role='page-header']");
-    const headerHeight = headerEl?.offsetHeight ?? 0;
-
-    const sectionHeaderEls = Array.from(
-      root.querySelectorAll<HTMLElement>("[data-section-header-id]")
-    );
-    const sectionHeaderHeights: Record<string, number> = {};
-    sectionHeaderEls.forEach((el) => {
-      const id = el.dataset.sectionHeaderId;
-      if (!id) return;
-      sectionHeaderHeights[id] = el.offsetHeight;
-    });
-
-    const blockEls = Array.from(
-      root.querySelectorAll<HTMLElement>("[data-block-id]")
-    );
-    const blockHeights: Record<string, number> = {};
-    blockEls.forEach((el) => {
-      const id = el.dataset.blockId;
-      if (!id) return;
-      blockHeights[id] = el.offsetHeight;
-    });
-
-    const nextChunks: PageChunk[] = [];
-    let currentPageIndex = 0;
-    // First page has personal header + extra top spacing before sections.
-    let remainingOnPage =
-      PAGE_CONTENT_HEIGHT - headerHeight - FIRST_PAGE_TOP_SPACING;
-    if (remainingOnPage < 0) remainingOnPage = 0;
-    let hasBlocksOnCurrentPage = false;
-
-    let currentChunk: PageChunk | null = null;
-
-    const pushCurrentChunk = () => {
-      if (currentChunk && currentChunk.htmlBlocks.length > 0) {
-        nextChunks.push(currentChunk);
-      }
-      currentChunk = null;
-    };
-
-    const startNewPage = () => {
-      pushCurrentChunk();
-      currentPageIndex += 1;
-      // Subsequent pages don't have the personal header or mt-8 spacing.
-      remainingOnPage = PAGE_CONTENT_HEIGHT;
-      hasBlocksOnCurrentPage = false;
-    };
-
-    const getSectionHeaderHeight = (sectionId: string) =>
-      sectionHeaderHeights[sectionId] ?? 0;
-
-    // Walk blocks in order and pack them into pages by block.
-    allBlocks.forEach((block) => {
-      const sectionHeaderHeight = getSectionHeaderHeight(block.sectionId);
-      const blockHeight = blockHeights[block.id] ?? 0;
-
-      // If we are switching sections on the same page, finish the previous chunk.
-      if (currentChunk && currentChunk.sectionId !== block.sectionId) {
-        pushCurrentChunk();
-      }
-
-      const needsSectionHeaderOnThisPage =
-        !currentChunk || !currentChunk.includeSectionHeader;
-
-      let headerCost = needsSectionHeaderOnThisPage ? sectionHeaderHeight : 0;
-      let needed = headerCost + blockHeight;
-
-      // If this block (and header) won't fit on the current page and the page
-      // already has at least one block, move to a new page and recompute costs there.
-      if (needed > remainingOnPage && hasBlocksOnCurrentPage) {
-        startNewPage();
-        headerCost = sectionHeaderHeight;
-        needed = headerCost + blockHeight;
-      }
-
-      // Start a new chunk for this section on the current page if needed.
-      if (!currentChunk) {
-        currentChunk = {
-          pageIndex: currentPageIndex,
-          sectionId: block.sectionId,
-          sectionLabel: block.sectionLabel,
-          includeSectionHeader: headerCost > 0,
-          htmlBlocks: [],
-        };
-      } else if (headerCost > 0 && !currentChunk.includeSectionHeader) {
-        currentChunk.includeSectionHeader = true;
-      }
-
-      currentChunk.htmlBlocks.push(block.html);
-      remainingOnPage = Math.max(0, remainingOnPage - needed);
-      hasBlocksOnCurrentPage = true;
-    });
-
-    pushCurrentChunk();
-
-    setChunks(nextChunks);
-  }, [allBlocks, fontsReady]);
-
-  // Group chunks by page index for rendering.
-  const chunksByPage = useMemo(() => {
-    if (!chunks.length) return {};
-    return chunks.reduce<Record<number, PageChunk[]>>((acc, chunk) => {
-      if (!acc[chunk.pageIndex]) acc[chunk.pageIndex] = [];
-      acc[chunk.pageIndex].push(chunk);
-      return acc;
-    }, {});
-  }, [chunks]);
-
-  const pageIndices = useMemo(
-    () => Object.keys(chunksByPage).map((k) => Number(k)).sort((a, b) => a - b),
-    [chunksByPage]
-  );
-
-  // Fallback: single page with all sections if pagination hasn't run yet.
-  const hasPagination = pageIndices.length > 0;
-
-  return (
-    <div className="border-l bg-muted/30 p-4 overflow-auto">
-      <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
-        <div>A4</div>
-        <div>Professional Resume Style</div>
-        <div>100%</div>
-      </div>
-
-      {/* Hidden measurement container: same structure & styles as visible pages. */}
-      <div
-        ref={measurementRef}
-        className="pointer-events-none fixed -left-2499.75 -top-2499.75 w-105 border bg-white p-10"
-      >
-        <div data-role="page-header">
-          <div className="text-center">
-            <div className="text-2xl font-bold tracking-wide">
-              {safeText(personal.fullName) || "JOHN DOE"}
-            </div>
-            <div className="mt-1 text-[11px] text-muted-foreground">
-              {safeText(personal.email) || "john@example.com"}
-              {"  •  "}
-              {safeText(personal.phone) || "+1 234 567 890"}
-              {"  •  "}
-              {safeText(personal.location) || "Sydney, Australia"}
-              {"  •  "}
-              <span className="text-blue-600 underline">
-                {safeText(personal.linkedin) || "linkedin.com/in/johndoe"}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-8">
-          {contentSections.map((section) => {
-            const blocksForSection = allBlocks.filter(
-              (b) => b.sectionId === section.id
-            );
-            const headerId = section.id;
-
-            return (
-              <div key={section.id}>
-                <div
-                  data-section-header-id={headerId}
-                  className="mb-3"
-                >
-                  <div className="text-[11px] font-bold tracking-wider">
-                    {section.label.toUpperCase()}
-                  </div>
-                  <div className="mt-1 h-px w-full bg-black/40" />
-                </div>
-
-                {blocksForSection.map((block) => (
-                  <div
-                    key={block.id}
-                    data-block-id={block.id}
-                    className="resume-preview-content"
-                    dangerouslySetInnerHTML={{ __html: block.html }}
-                  />
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Visible paginated preview */}
-      <div className="flex flex-col items-center gap-6">
-        {hasPagination
-          ? pageIndices.map((pageIndex) => {
-              const pageChunks = chunksByPage[pageIndex] ?? [];
-
-              return (
-                <div
-                  key={pageIndex}
-                  className="mx-auto w-105 bg-white shadow-sm border p-10 overflow-hidden"
-                  style={{ height: PAGE_HEIGHT_PX }}
-                >
-                  {pageIndex === 0 && (
-                    <div className="text-center">
-                      <div className="text-2xl font-bold tracking-wide">
-                        {safeText(personal.fullName) || "JOHN DOE"}
-                      </div>
-                      <div className="mt-1 text-[11px] text-muted-foreground">
-                        {safeText(personal.email) || "john@example.com"}
-                        {"  •  "}
-                        {safeText(personal.phone) || "+1 234 567 890"}
-                        {"  •  "}
-                        {safeText(personal.location) || "Sydney, Australia"}
-                        {"  •  "}
-                        <span className="text-blue-600 underline">
-                          {safeText(personal.linkedin) ||
-                            "linkedin.com/in/johndoe"}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className={pageIndex === 0 ? "mt-8 space-y-6" : "space-y-6"}>
-                    {pageChunks.map((chunk, idx) => (
-                      <div key={`${chunk.sectionId}-${idx}`}>
-                        {chunk.includeSectionHeader && (
-                          <div className="mb-3">
-                            <div className="text-[11px] font-bold tracking-wider">
-                              {chunk.sectionLabel.toUpperCase()}
-                            </div>
-                            <div className="mt-1 h-px w-full bg-black/40" />
-                          </div>
-                        )}
-
-                        {chunk.htmlBlocks.map((html, i) => (
-                          <div
-                            key={i}
-                            className="resume-preview-content"
-                            dangerouslySetInnerHTML={{ __html: html }}
-                          />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })
-          : // Fallback single-page render while pagination hasn't run.
-            (
-              <div
-                className="mx-auto w-105 bg-white shadow-sm border p-10 overflow-hidden"
-                style={{ height: PAGE_HEIGHT_PX }}
-              >
-                <div className="text-center">
-                  <div className="text-2xl font-bold tracking-wide">
-                    {safeText(personal.fullName) || "JOHN DOE"}
-                  </div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">
-                    {safeText(personal.email) || "john@example.com"}
-                    {"  •  "}
-                    {safeText(personal.phone) || "+1 234 567 890"}
-                    {"  •  "}
-                    {safeText(personal.location) || "Sydney, Australia"}
-                    {"  •  "}
-                    <span className="text-blue-600 underline">
-                      {safeText(personal.linkedin) || "linkedin.com/in/johndoe"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-8 space-y-6">
-                  {contentSections.map((section) => (
-                    <div key={section.id}>
-                      <div className="mb-3">
-                        <div className="text-[11px] font-bold tracking-wider">
-                          {section.label.toUpperCase()}
-                        </div>
-                        <div className="mt-1 h-px w-full bg-black/40" />
-                      </div>
-                      <div
-                        className="resume-preview-content"
-                        dangerouslySetInnerHTML={{
-                          __html:
-                            section.contentHtml ||
-                            "<p class='text-muted-foreground'>...</p>",
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
       </div>
     </div>
   );
@@ -1529,153 +1491,118 @@ export default function SectionEditorPanel({
 
 </file>
 
-<file path="caat-frontend/components/RichTextEditor.tsx">
+<file path="caat-frontend/components/scholarships/scholarship-card.tsx">
 "use client";
 
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import TextAlign from "@tiptap/extension-text-align";
-import FontFamily from "@tiptap/extension-font-family";
-import { TextStyle } from "@tiptap/extension-text-style";
-import React, { useEffect } from "react";
-import { FontSizeExtension } from "@/extensions/FontSize";
+import { Bookmark } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
 
-const ToolbarButton = ({
-  onClick,
-  isActive,
-  children,
-}: {
-  onClick: () => void;
-  isActive: boolean;
-  children: React.ReactNode;
-}) => (
-  <button
-    onClick={onClick}
-    className={`px-2 py-1 rounded-md transition text-sm font-medium ${
-      isActive ? "bg-blue-600 text-white" : "bg-white text-gray-800 hover:bg-gray-200"
-    }`}
-  >
-    {children}
-  </button>
-);
+const TAG_COLORS: Record<string, string> = {
+  "FULL RIDE":   "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  "MERIT-BASED": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  "NEED-BLIND":  "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  "REGIONAL":    "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+  "POST-GRAD":   "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
+  "PRESTIGIOUS": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  "STEM":        "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
+};
 
-interface RichTextEditorProps {
-  content: string;
-  onChange: (value: string) => void;
+export interface Scholarship {
+  id: string;
+  university: string;
+  name: string;
+  tags: string[];
+  /** Primary display amount, e.g. "$65,000" or "Fully Funded" */
+  amount: string;
+  /** Optional suffix shown in muted text, e.g. "/ year" or "/ total" */
+  amountSuffix?: string;
+  description: string;
 }
 
-export default function RichTextEditor({
-  content,
-  onChange,
-}: RichTextEditorProps) {
-  const editor = useEditor({
-    immediatelyRender: false,
-    extensions: [
-      StarterKit,
-      TextStyle,
-      FontFamily.configure({ types: ["textStyle"] }),
-      FontSizeExtension,
-      TextAlign.configure({ types: ["paragraph"] }),
-    ],
-    content,
-    onUpdate: ({ editor }) => onChange(editor.getHTML()),
-  });
+interface Props {
+  scholarship: Scholarship;
+  isBookmarked: boolean;
+  onToggleBookmark: (id: string) => void;
+}
 
-  useEffect(() => {
-  if (!editor) return;
-
-  const current = editor.getHTML();
-  if (content !== current) {
-    editor.commands.setContent(content, { emitUpdate: false });
-  }
-}, [content, editor]);
-
-if (!editor) {
-    return (
-      <div className="border border-gray-300 rounded-md p-2 min-h-[120px]">
-        Loading editor...
-      </div>
-    );
-  }
-
+export default function ScholarshipCard({
+  scholarship,
+  isBookmarked,
+  onToggleBookmark,
+}: Props) {
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-2 mb-3 bg-gray-100 p-2 rounded-md shadow-sm">
-        <ToolbarButton
-          onClick={() => editor.chain().focus().toggleBold().run()}
-          isActive={editor.isActive("bold")}
-        >
-          B
-        </ToolbarButton>
+    <Card className="flex flex-col h-full hover:shadow-lg transition-shadow">
+      <CardHeader className="pb-3 gap-2">
+        {/* University name + bookmark */}
+        <div className="flex items-start justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-400 leading-tight">
+            {scholarship.university}
+          </span>
+          <Button
+            size="icon-sm"
+            variant={isBookmarked ? "default" : "outline"}
+            className="shrink-0"
+            onClick={() => onToggleBookmark(scholarship.id)}
+            aria-label={isBookmarked ? "Remove bookmark" : "Bookmark scholarship"}
+          >
+            <Bookmark className={`h-3.5 w-3.5 ${isBookmarked ? "fill-current" : ""}`} />
+          </Button>
+        </div>
 
-        <ToolbarButton
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-          isActive={editor.isActive("italic")}
-        >
-          I
-        </ToolbarButton>
+        {/* Scholarship title */}
+        <h3 className="font-semibold text-[15px] leading-snug">
+          {scholarship.name}
+        </h3>
 
-        <ToolbarButton
-          onClick={() => editor.chain().focus().setTextAlign("left").run()}
-          isActive={editor.isActive({ textAlign: "left" })}
-        >
-          Left
-        </ToolbarButton>
+        {/* Tag badges */}
+        {scholarship.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {scholarship.tags.map((tag) => {
+              const color =
+                TAG_COLORS[tag] ??
+                "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+              return (
+                <span
+                  key={tag}
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${color}`}
+                >
+                  {tag}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </CardHeader>
 
-        <ToolbarButton
-          onClick={() => editor.chain().focus().setTextAlign("center").run()}
-          isActive={editor.isActive({ textAlign: "center" })}
-        >
-          Center
-        </ToolbarButton>
+      <CardContent className="flex-grow pb-3">
+        {/* Amount */}
+        <p className="text-2xl font-bold leading-tight">
+          {scholarship.amount}
+          {scholarship.amountSuffix && (
+            <span className="text-sm font-normal text-muted-foreground ml-1">
+              {scholarship.amountSuffix}
+            </span>
+          )}
+        </p>
 
-        <ToolbarButton
-          onClick={() => editor.chain().focus().setTextAlign("right").run()}
-          isActive={editor.isActive({ textAlign: "right" })}
-        >
-          Right
-        </ToolbarButton>
+        {/* Description */}
+        <p className="text-sm text-muted-foreground line-clamp-3 mt-2">
+          {scholarship.description}
+        </p>
+      </CardContent>
 
-        <select
-          onChange={(e) =>
-            editor.chain().focus().setFontFamily(e.target.value).run()
-          }
-          value={editor.getAttributes("textStyle").fontFamily || "default"}
-          className="border rounded px-2 py-1 text-sm"
-        >
-          <option value="default">Font</option>
-          <option value="Arial">Arial</option>
-          <option value="Georgia">Georgia</option>
-          <option value="Times New Roman">Times New Roman</option>
-          <option value="Comic Sans MS">Comic Sans</option>
-          <option value="Verdana">Verdana</option>
-          <option value="Courier New">Courier</option>
-        </select>
-
-        <select
-  onChange={(e) =>
-    editor.chain().focus().setMark("textStyle", { fontSize: e.target.value }).run()
-  }
-  value={editor.getAttributes("textStyle").fontSize || "default"}
-  className="border rounded px-2 py-1 text-sm"
->
-  <option value="default">Font Size</option>
-  <option value="12px">12</option>
-  <option value="14px">14</option>
-  <option value="16px">16</option>
-  <option value="18px">18</option>
-  <option value="20px">20</option>
-  <option value="24px">24</option>
-  <option value="28px">28</option>
-  <option value="32px">32</option>
-</select>
-
-      </div>
-
-      <div className="border border-gray-300 rounded-md p-2 min-h-[120px] focus:outline-none">
-        <EditorContent editor={editor} />
-      </div>
-    </div>
+      <CardFooter className="pt-0">
+        <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-600 dark:hover:bg-blue-700">
+          View Details
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 </file>
@@ -4079,25 +4006,155 @@ function TooltipContent({
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
 </file>
 
-<file path="caat-frontend/eslint.config.mjs">
-import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
+<file path="caat-frontend/components/RichTextEditor.tsx">
+"use client";
 
-const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
-  // Override default ignores of eslint-config-next.
-  globalIgnores([
-    // Default ignores of eslint-config-next:
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
-  ]),
-]);
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import TextAlign from "@tiptap/extension-text-align";
+import FontFamily from "@tiptap/extension-font-family";
+import { TextStyle } from "@tiptap/extension-text-style";
+import React, { useEffect } from "react";
+import { FontSizeExtension } from "@/extensions/FontSize";
 
-export default eslintConfig;
+const ToolbarButton = ({
+  onClick,
+  isActive,
+  children,
+}: {
+  onClick: () => void;
+  isActive: boolean;
+  children: React.ReactNode;
+}) => (
+  <button
+    onClick={onClick}
+    className={`px-2 py-1 rounded-md transition text-sm font-medium ${
+      isActive ? "bg-blue-600 text-white" : "bg-white text-gray-800 hover:bg-gray-200"
+    }`}
+  >
+    {children}
+  </button>
+);
+
+interface RichTextEditorProps {
+  content: string;
+  onChange: (value: string) => void;
+}
+
+export default function RichTextEditor({
+  content,
+  onChange,
+}: RichTextEditorProps) {
+  const editor = useEditor({
+    immediatelyRender: false,
+    extensions: [
+      StarterKit,
+      TextStyle,
+      FontFamily.configure({ types: ["textStyle"] }),
+      FontSizeExtension,
+      TextAlign.configure({ types: ["paragraph"] }),
+    ],
+    content,
+    onUpdate: ({ editor }) => onChange(editor.getHTML()),
+  });
+
+  useEffect(() => {
+  if (!editor) return;
+
+  const current = editor.getHTML();
+  if (content !== current) {
+    editor.commands.setContent(content, { emitUpdate: false });
+  }
+}, [content, editor]);
+
+if (!editor) {
+    return (
+      <div className="border border-gray-300 rounded-md p-2 min-h-[120px]">
+        Loading editor...
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2 mb-3 bg-gray-100 p-2 rounded-md shadow-sm">
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          isActive={editor.isActive("bold")}
+        >
+          B
+        </ToolbarButton>
+
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          isActive={editor.isActive("italic")}
+        >
+          I
+        </ToolbarButton>
+
+        <ToolbarButton
+          onClick={() => editor.chain().focus().setTextAlign("left").run()}
+          isActive={editor.isActive({ textAlign: "left" })}
+        >
+          Left
+        </ToolbarButton>
+
+        <ToolbarButton
+          onClick={() => editor.chain().focus().setTextAlign("center").run()}
+          isActive={editor.isActive({ textAlign: "center" })}
+        >
+          Center
+        </ToolbarButton>
+
+        <ToolbarButton
+          onClick={() => editor.chain().focus().setTextAlign("right").run()}
+          isActive={editor.isActive({ textAlign: "right" })}
+        >
+          Right
+        </ToolbarButton>
+
+        <select
+          onChange={(e) =>
+            editor.chain().focus().setFontFamily(e.target.value).run()
+          }
+          value={editor.getAttributes("textStyle").fontFamily || "default"}
+          className="border rounded px-2 py-1 text-sm"
+        >
+          <option value="default">Font</option>
+          <option value="Arial">Arial</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Times New Roman">Times New Roman</option>
+          <option value="Comic Sans MS">Comic Sans</option>
+          <option value="Verdana">Verdana</option>
+          <option value="Courier New">Courier</option>
+        </select>
+
+        <select
+  onChange={(e) =>
+    editor.chain().focus().setMark("textStyle", { fontSize: e.target.value }).run()
+  }
+  value={editor.getAttributes("textStyle").fontSize || "default"}
+  className="border rounded px-2 py-1 text-sm"
+>
+  <option value="default">Font Size</option>
+  <option value="12px">12</option>
+  <option value="14px">14</option>
+  <option value="16px">16</option>
+  <option value="18px">18</option>
+  <option value="20px">20</option>
+  <option value="24px">24</option>
+  <option value="28px">28</option>
+  <option value="32px">32</option>
+</select>
+
+      </div>
+
+      <div className="border border-gray-300 rounded-md p-2 min-h-[120px] focus:outline-none">
+        <EditorContent editor={editor} />
+      </div>
+    </div>
+  );
+}
 </file>
 
 <file path="caat-frontend/extensions/FontSize.ts">
@@ -4162,26 +4219,6 @@ export function cn(...inputs: ClassValue[]) {
 }
 </file>
 
-<file path="caat-frontend/next.config.ts">
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  /* config options here */
-};
-
-export default nextConfig;
-</file>
-
-<file path="caat-frontend/postcss.config.mjs">
-const config = {
-  plugins: {
-    "@tailwindcss/postcss": {},
-  },
-};
-
-export default config;
-</file>
-
 <file path="caat-frontend/public/file.svg">
 <svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 13.5V5.41a1 1 0 0 0-.3-.7L9.8.29A1 1 0 0 0 9.08 0H1.5v13.5A2.5 2.5 0 0 0 4 16h8a2.5 2.5 0 0 0 2.5-2.5m-1.5 0v-7H8v-5H3v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1M9.5 5V2.12L12.38 5zM5.13 5h-.62v1.25h2.12V5zm-.62 3h7.12v1.25H4.5zm.62 3h-.62v1.25h7.12V11z" clip-rule="evenodd" fill="#666" fill-rule="evenodd"/></svg>
 </file>
@@ -4202,41 +4239,136 @@ export default config;
 <svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
 </file>
 
-<file path="caat-frontend/supabase/seed_essay_prompts.sql">
--- Seed essay_prompts (run once in Supabase SQL Editor if the table is empty)
--- id, created_at, updated_at are set by defaults
+<file path="caat-frontend/supabase/seeds/majors_qs_urls.sql">
+-- Populate qs_ranking_url for all majors
+-- Source: QS World University Rankings by Subject 2025 (topuniversities.com)
+-- Run in Supabase SQL Editor
 
-insert into public.essay_prompts (slug, title, description, tips, sort_order)
-values
-  (
-    'personal-statement',
-    'Personal Statement',
-    'Common App main essay (650 words).',
-    'Focus on a specific moment or theme that reveals your character. Show, don''t tell. Be authentic—admissions officers read thousands of essays; yours should sound like you. Start with a hook that draws the reader in.',
-    0
-  ),
-  (
-    'why-this-college',
-    'Why This College?',
-    'Why do you want to attend this school?',
-    'Research specific programs, professors, or opportunities. Avoid generic praise. Tie your academic and career goals to what the school offers. Mention 2–3 concrete examples (e.g. a lab, a club, a course).',
-    1
-  ),
-  (
-    'why-this-major',
-    'Why This Major?',
-    'Why are you interested in this field of study?',
-    'Connect your past experiences (courses, projects, reading) to your chosen major. Discuss what you hope to learn and how it fits your long-term goals. Be specific to the department, not just the discipline.',
-    2
-  ),
-  (
-    'community-contribution',
-    'Community / Contribution',
-    'How will you contribute to our community?',
-    'Highlight unique perspectives, skills, or experiences you''ll bring. Mention clubs, initiatives, or campus culture you''re excited to join. Balance what you''ll give with what you hope to gain.',
-    3
-  )
-on conflict (slug) do nothing;
+-- ─── Engineering ─────────────────────────────────────────────────────────────
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/computer-science-information-systems'
+WHERE name = 'Computer Science';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/mechanical-aeronautical-manufacturing-engineering'
+WHERE name = 'Mechanical Engineering';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/electrical-electronic-engineering'
+WHERE name = 'Electrical Engineering';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/civil-structural-engineering'
+WHERE name = 'Civil Engineering';
+
+-- No dedicated Biomedical Engineering subject in QS; Anatomy & Physiology is the closest life-sciences match
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/anatomy-physiology'
+WHERE name = 'Biomedical Engineering';
+
+-- ─── Business ────────────────────────────────────────────────────────────────
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/business-management-studies'
+WHERE name = 'Business Administration';
+
+-- QS combines Finance under Accounting & Finance
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/accounting-finance'
+WHERE name = 'Finance';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/marketing'
+WHERE name = 'Marketing';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/accounting-finance'
+WHERE name = 'Accounting';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/economics-econometrics'
+WHERE name = 'Economics';
+
+-- ─── Health Sciences ─────────────────────────────────────────────────────────
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/nursing'
+WHERE name = 'Nursing';
+
+-- No dedicated Public Health subject in QS; Medicine is the closest match
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/medicine'
+WHERE name = 'Public Health';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/medicine'
+WHERE name = 'Pre-Medicine / Biology';
+
+-- Kinesiology maps to QS Sports-Related Subjects (exercise physiology, sport science)
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/sports-related-subjects'
+WHERE name = 'Kinesiology';
+
+-- ─── Arts & Humanities ───────────────────────────────────────────────────────
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/english-language-literature'
+WHERE name = 'English Literature';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/history'
+WHERE name = 'History';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/art-design'
+WHERE name = 'Fine Arts';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/philosophy'
+WHERE name = 'Philosophy';
+
+-- ─── Social Sciences ─────────────────────────────────────────────────────────
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/psychology'
+WHERE name = 'Psychology';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/politics'
+WHERE name = 'Political Science';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/sociology'
+WHERE name = 'Sociology';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/communication-media-studies'
+WHERE name = 'Communications';
+
+-- ─── Natural Sciences ────────────────────────────────────────────────────────
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/biological-sciences'
+WHERE name = 'Biology';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/chemistry'
+WHERE name = 'Chemistry';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/environmental-sciences'
+WHERE name = 'Environmental Science';
+
+-- ─── Education ───────────────────────────────────────────────────────────────
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/education-training'
+WHERE name = 'Elementary Education';
+
+UPDATE public.majors
+SET qs_ranking_url = 'https://www.topuniversities.com/university-subject-rankings/education-training'
+WHERE name = 'Special Education';
 </file>
 
 <file path="caat-frontend/supabase/seeds/majors_seed.sql">
@@ -4450,6 +4582,43 @@ INSERT INTO public.majors (name, category, description, career_paths, typical_co
 );
 </file>
 
+<file path="caat-frontend/supabase/seed_essay_prompts.sql">
+-- Seed essay_prompts (run once in Supabase SQL Editor if the table is empty)
+-- id, created_at, updated_at are set by defaults
+
+insert into public.essay_prompts (slug, title, description, tips, sort_order)
+values
+  (
+    'personal-statement',
+    'Personal Statement',
+    'Common App main essay (650 words).',
+    'Focus on a specific moment or theme that reveals your character. Show, don''t tell. Be authentic—admissions officers read thousands of essays; yours should sound like you. Start with a hook that draws the reader in.',
+    0
+  ),
+  (
+    'why-this-college',
+    'Why This College?',
+    'Why do you want to attend this school?',
+    'Research specific programs, professors, or opportunities. Avoid generic praise. Tie your academic and career goals to what the school offers. Mention 2–3 concrete examples (e.g. a lab, a club, a course).',
+    1
+  ),
+  (
+    'why-this-major',
+    'Why This Major?',
+    'Why are you interested in this field of study?',
+    'Connect your past experiences (courses, projects, reading) to your chosen major. Discuss what you hope to learn and how it fits your long-term goals. Be specific to the department, not just the discipline.',
+    2
+  ),
+  (
+    'community-contribution',
+    'Community / Contribution',
+    'How will you contribute to our community?',
+    'Highlight unique perspectives, skills, or experiences you''ll bring. Mention clubs, initiatives, or campus culture you''re excited to join. Balance what you''ll give with what you hope to gain.',
+    3
+  )
+on conflict (slug) do nothing;
+</file>
+
 <file path="caat-frontend/types/images.d.ts">
 // Minimal module declarations for image imports used in the app.
 // This allows TypeScript to understand imports like:
@@ -4459,56 +4628,6 @@ INSERT INTO public.majors (name, category, description, career_paths, typical_co
 declare module "*.webp" {
   const src: string;
   export default src;
-}
-</file>
-
-<file path="caat-frontend/types/majors.ts">
-export type MajorCategory =
-  | 'Engineering'
-  | 'Business'
-  | 'Health Sciences'
-  | 'Arts & Humanities'
-  | 'Social Sciences'
-  | 'Natural Sciences'
-  | 'Education';
-
-export interface Major {
-  id: string;
-  name: string;
-  category: MajorCategory;
-  description: string | null;
-  career_paths: string[];
-  typical_coursework: string[];
-  created_at: string;
-}
-
-// Row from the school_majors junction table, with school data joined in
-export interface SchoolMajor {
-  school_id: number;
-  major_id: string;
-  schools: {
-    id: number;
-    name: string;
-    country: string | null;
-    website: string | null;
-  };
-}
-
-// Row from user_bookmarked_majors
-export interface BookmarkedMajor {
-  user_id: string;
-  major_id: string;
-  created_at: string;
-}
-
-// Major with the list of schools that offer it — used on the detail page
-export interface MajorWithSchools extends Major {
-  school_majors: SchoolMajor[];
-}
-
-// Major card data — used on the browse page (school list not needed)
-export interface MajorCard extends Major {
-  isBookmarked: boolean;
 }
 </file>
 
@@ -4537,48 +4656,70 @@ export interface ResumeDoc {
 }
 </file>
 
-<file path="my-app/.gitignore">
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+<file path="caat-frontend/components.json">
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "app/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "lucide",
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "registries": {}
+}
+</file>
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+<file path="caat-frontend/eslint.config.mjs">
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
 
-# testing
-/coverage
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+  ]),
+]);
 
-# next.js
-/.next/
-/out/
+export default eslintConfig;
+</file>
 
-# production
-/build
+<file path="caat-frontend/next.config.ts">
+import type { NextConfig } from "next";
 
-# misc
-.DS_Store
-*.pem
+const nextConfig: NextConfig = {
+  /* config options here */
+};
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+export default nextConfig;
+</file>
 
-# env files (can opt-in for committing if needed)
-.env*
+<file path="caat-frontend/postcss.config.mjs">
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
 
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+export default config;
 </file>
 
 <file path="my-app/app/globals.css">
@@ -4715,6 +4856,108 @@ export default function Home() {
 }
 </file>
 
+<file path="my-app/public/file.svg">
+<svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 13.5V5.41a1 1 0 0 0-.3-.7L9.8.29A1 1 0 0 0 9.08 0H1.5v13.5A2.5 2.5 0 0 0 4 16h8a2.5 2.5 0 0 0 2.5-2.5m-1.5 0v-7H8v-5H3v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1M9.5 5V2.12L12.38 5zM5.13 5h-.62v1.25h2.12V5zm-.62 3h7.12v1.25H4.5zm.62 3h-.62v1.25h7.12V11z" clip-rule="evenodd" fill="#666" fill-rule="evenodd"/></svg>
+</file>
+
+<file path="my-app/public/globe.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g clip-path="url(#a)"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.27 14.1a6.5 6.5 0 0 0 3.67-3.45q-1.24.21-2.7.34-.31 1.83-.97 3.1M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.48-1.52a7 7 0 0 1-.96 0H7.5a4 4 0 0 1-.84-1.32q-.38-.89-.63-2.08a40 40 0 0 0 3.92 0q-.25 1.2-.63 2.08a4 4 0 0 1-.84 1.31zm2.94-4.76q1.66-.15 2.95-.43a7 7 0 0 0 0-2.58q-1.3-.27-2.95-.43a18 18 0 0 1 0 3.44m-1.27-3.54a17 17 0 0 1 0 3.64 39 39 0 0 1-4.3 0 17 17 0 0 1 0-3.64 39 39 0 0 1 4.3 0m1.1-1.17q1.45.13 2.69.34a6.5 6.5 0 0 0-3.67-3.44q.65 1.26.98 3.1M8.48 1.5l.01.02q.41.37.84 1.31.38.89.63 2.08a40 40 0 0 0-3.92 0q.25-1.2.63-2.08a4 4 0 0 1 .85-1.32 7 7 0 0 1 .96 0m-2.75.4a6.5 6.5 0 0 0-3.67 3.44 29 29 0 0 1 2.7-.34q.31-1.83.97-3.1M4.58 6.28q-1.66.16-2.95.43a7 7 0 0 0 0 2.58q1.3.27 2.95.43a18 18 0 0 1 0-3.44m.17 4.71q-1.45-.12-2.69-.34a6.5 6.5 0 0 0 3.67 3.44q-.65-1.27-.98-3.1" fill="#666"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h16v16H0z"/></clipPath></defs></svg>
+</file>
+
+<file path="my-app/public/next.svg">
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 394 80"><path fill="#000" d="M262 0h68.5v12.7h-27.2v66.6h-13.6V12.7H262V0ZM149 0v12.7H94v20.4h44.3v12.6H94v21h55v12.6H80.5V0h68.7zm34.3 0h-17.8l63.8 79.4h17.9l-32-39.7 32-39.6h-17.9l-23 28.6-23-28.6zm18.3 56.7-9-11-27.1 33.7h17.8l18.3-22.7z"/><path fill="#000" d="M81 79.3 17 0H0v79.3h13.6V17l50.2 62.3H81Zm252.6-.4c-1 0-1.8-.4-2.5-1s-1.1-1.6-1.1-2.6.3-1.8 1-2.5 1.6-1 2.6-1 1.8.3 2.5 1a3.4 3.4 0 0 1 .6 4.3 3.7 3.7 0 0 1-3 1.8zm23.2-33.5h6v23.3c0 2.1-.4 4-1.3 5.5a9.1 9.1 0 0 1-3.8 3.5c-1.6.8-3.5 1.3-5.7 1.3-2 0-3.7-.4-5.3-1s-2.8-1.8-3.7-3.2c-.9-1.3-1.4-3-1.4-5h6c.1.8.3 1.6.7 2.2s1 1.2 1.6 1.5c.7.4 1.5.5 2.4.5 1 0 1.8-.2 2.4-.6a4 4 0 0 0 1.6-1.8c.3-.8.5-1.8.5-3V45.5zm30.9 9.1a4.4 4.4 0 0 0-2-3.3 7.5 7.5 0 0 0-4.3-1.1c-1.3 0-2.4.2-3.3.5-.9.4-1.6 1-2 1.6a3.5 3.5 0 0 0-.3 4c.3.5.7.9 1.3 1.2l1.8 1 2 .5 3.2.8c1.3.3 2.5.7 3.7 1.2a13 13 0 0 1 3.2 1.8 8.1 8.1 0 0 1 3 6.5c0 2-.5 3.7-1.5 5.1a10 10 0 0 1-4.4 3.5c-1.8.8-4.1 1.2-6.8 1.2-2.6 0-4.9-.4-6.8-1.2-2-.8-3.4-2-4.5-3.5a10 10 0 0 1-1.7-5.6h6a5 5 0 0 0 3.5 4.6c1 .4 2.2.6 3.4.6 1.3 0 2.5-.2 3.5-.6 1-.4 1.8-1 2.4-1.7a4 4 0 0 0 .8-2.4c0-.9-.2-1.6-.7-2.2a11 11 0 0 0-2.1-1.4l-3.2-1-3.8-1c-2.8-.7-5-1.7-6.6-3.2a7.2 7.2 0 0 1-2.4-5.7 8 8 0 0 1 1.7-5 10 10 0 0 1 4.3-3.5c2-.8 4-1.2 6.4-1.2 2.3 0 4.4.4 6.2 1.2 1.8.8 3.2 2 4.3 3.4 1 1.4 1.5 3 1.5 5h-5.8z"/></svg>
+</file>
+
+<file path="my-app/public/vercel.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1155 1000"><path d="m577.3 0 577.4 1000H0z" fill="#fff"/></svg>
+</file>
+
+<file path="my-app/public/window.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
+</file>
+
+<file path="my-app/tests/smoke.test.cjs">
+// Basic smoke tests for the my-app project.
+// These are intentionally minimal and framework-free. They check that the core
+// Next.js app structure exists so CI can catch obvious misconfigurations.
+
+const fs = require('fs');
+const path = require('path');
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function expectFile(relativePath) {
+  const fullPath = path.join(__dirname, '..', relativePath);
+  assert(fs.existsSync(fullPath), `Expected file or directory to exist: ${relativePath}`);
+}
+
+function main() {
+  // Structural checks: verify key Next.js app files/folders exist.
+  expectFile('tsconfig.json');
+  expectFile('app');
+  expectFile('app/layout.tsx');
+  expectFile('app/page.tsx');
+
+  console.log('✅ my-app smoke tests passed.');
+}
+
+try {
+  main();
+} catch (err) {
+  console.error('❌ my-app smoke tests failed:');
+  console.error(err && err.stack ? err.stack : err);
+  process.exit(1);
+}
+</file>
+
+<file path="my-app/.gitignore">
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+</file>
+
 <file path="my-app/eslint.config.mjs">
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
@@ -4756,26 +4999,6 @@ const config = {
 export default config;
 </file>
 
-<file path="my-app/public/file.svg">
-<svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 13.5V5.41a1 1 0 0 0-.3-.7L9.8.29A1 1 0 0 0 9.08 0H1.5v13.5A2.5 2.5 0 0 0 4 16h8a2.5 2.5 0 0 0 2.5-2.5m-1.5 0v-7H8v-5H3v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1M9.5 5V2.12L12.38 5zM5.13 5h-.62v1.25h2.12V5zm-.62 3h7.12v1.25H4.5zm.62 3h-.62v1.25h7.12V11z" clip-rule="evenodd" fill="#666" fill-rule="evenodd"/></svg>
-</file>
-
-<file path="my-app/public/globe.svg">
-<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g clip-path="url(#a)"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.27 14.1a6.5 6.5 0 0 0 3.67-3.45q-1.24.21-2.7.34-.31 1.83-.97 3.1M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.48-1.52a7 7 0 0 1-.96 0H7.5a4 4 0 0 1-.84-1.32q-.38-.89-.63-2.08a40 40 0 0 0 3.92 0q-.25 1.2-.63 2.08a4 4 0 0 1-.84 1.31zm2.94-4.76q1.66-.15 2.95-.43a7 7 0 0 0 0-2.58q-1.3-.27-2.95-.43a18 18 0 0 1 0 3.44m-1.27-3.54a17 17 0 0 1 0 3.64 39 39 0 0 1-4.3 0 17 17 0 0 1 0-3.64 39 39 0 0 1 4.3 0m1.1-1.17q1.45.13 2.69.34a6.5 6.5 0 0 0-3.67-3.44q.65 1.26.98 3.1M8.48 1.5l.01.02q.41.37.84 1.31.38.89.63 2.08a40 40 0 0 0-3.92 0q.25-1.2.63-2.08a4 4 0 0 1 .85-1.32 7 7 0 0 1 .96 0m-2.75.4a6.5 6.5 0 0 0-3.67 3.44 29 29 0 0 1 2.7-.34q.31-1.83.97-3.1M4.58 6.28q-1.66.16-2.95.43a7 7 0 0 0 0 2.58q1.3.27 2.95.43a18 18 0 0 1 0-3.44m.17 4.71q-1.45-.12-2.69-.34a6.5 6.5 0 0 0 3.67 3.44q-.65-1.27-.98-3.1" fill="#666"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h16v16H0z"/></clipPath></defs></svg>
-</file>
-
-<file path="my-app/public/next.svg">
-<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 394 80"><path fill="#000" d="M262 0h68.5v12.7h-27.2v66.6h-13.6V12.7H262V0ZM149 0v12.7H94v20.4h44.3v12.6H94v21h55v12.6H80.5V0h68.7zm34.3 0h-17.8l63.8 79.4h17.9l-32-39.7 32-39.6h-17.9l-23 28.6-23-28.6zm18.3 56.7-9-11-27.1 33.7h17.8l18.3-22.7z"/><path fill="#000" d="M81 79.3 17 0H0v79.3h13.6V17l50.2 62.3H81Zm252.6-.4c-1 0-1.8-.4-2.5-1s-1.1-1.6-1.1-2.6.3-1.8 1-2.5 1.6-1 2.6-1 1.8.3 2.5 1a3.4 3.4 0 0 1 .6 4.3 3.7 3.7 0 0 1-3 1.8zm23.2-33.5h6v23.3c0 2.1-.4 4-1.3 5.5a9.1 9.1 0 0 1-3.8 3.5c-1.6.8-3.5 1.3-5.7 1.3-2 0-3.7-.4-5.3-1s-2.8-1.8-3.7-3.2c-.9-1.3-1.4-3-1.4-5h6c.1.8.3 1.6.7 2.2s1 1.2 1.6 1.5c.7.4 1.5.5 2.4.5 1 0 1.8-.2 2.4-.6a4 4 0 0 0 1.6-1.8c.3-.8.5-1.8.5-3V45.5zm30.9 9.1a4.4 4.4 0 0 0-2-3.3 7.5 7.5 0 0 0-4.3-1.1c-1.3 0-2.4.2-3.3.5-.9.4-1.6 1-2 1.6a3.5 3.5 0 0 0-.3 4c.3.5.7.9 1.3 1.2l1.8 1 2 .5 3.2.8c1.3.3 2.5.7 3.7 1.2a13 13 0 0 1 3.2 1.8 8.1 8.1 0 0 1 3 6.5c0 2-.5 3.7-1.5 5.1a10 10 0 0 1-4.4 3.5c-1.8.8-4.1 1.2-6.8 1.2-2.6 0-4.9-.4-6.8-1.2-2-.8-3.4-2-4.5-3.5a10 10 0 0 1-1.7-5.6h6a5 5 0 0 0 3.5 4.6c1 .4 2.2.6 3.4.6 1.3 0 2.5-.2 3.5-.6 1-.4 1.8-1 2.4-1.7a4 4 0 0 0 .8-2.4c0-.9-.2-1.6-.7-2.2a11 11 0 0 0-2.1-1.4l-3.2-1-3.8-1c-2.8-.7-5-1.7-6.6-3.2a7.2 7.2 0 0 1-2.4-5.7 8 8 0 0 1 1.7-5 10 10 0 0 1 4.3-3.5c2-.8 4-1.2 6.4-1.2 2.3 0 4.4.4 6.2 1.2 1.8.8 3.2 2 4.3 3.4 1 1.4 1.5 3 1.5 5h-5.8z"/></svg>
-</file>
-
-<file path="my-app/public/vercel.svg">
-<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1155 1000"><path d="m577.3 0 577.4 1000H0z" fill="#fff"/></svg>
-</file>
-
-<file path="my-app/public/window.svg">
-<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
-</file>
-
 <file path="my-app/README.md">
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
@@ -4813,44 +5036,6 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-</file>
-
-<file path="my-app/tests/smoke.test.cjs">
-// Basic smoke tests for the my-app project.
-// These are intentionally minimal and framework-free. They check that the core
-// Next.js app structure exists so CI can catch obvious misconfigurations.
-
-const fs = require('fs');
-const path = require('path');
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-function expectFile(relativePath) {
-  const fullPath = path.join(__dirname, '..', relativePath);
-  assert(fs.existsSync(fullPath), `Expected file or directory to exist: ${relativePath}`);
-}
-
-function main() {
-  // Structural checks: verify key Next.js app files/folders exist.
-  expectFile('tsconfig.json');
-  expectFile('app');
-  expectFile('app/layout.tsx');
-  expectFile('app/page.tsx');
-
-  console.log('✅ my-app smoke tests passed.');
-}
-
-try {
-  main();
-} catch (err) {
-  console.error('❌ my-app smoke tests failed:');
-  console.error(err && err.stack ? err.stack : err);
-  process.exit(1);
-}
 </file>
 
 <file path="my-app/tsconfig.json">
@@ -5055,66 +5240,124 @@ const matrix = { include: projects };
 console.log(JSON.stringify(matrix));
 </file>
 
-<file path=".gitignore">
-####################################
-Dependencies
-####################################
-node_modules/
-/node_modules/
+<file path="caat-frontend/app/(main)/majors/[id]/bookmark-button.tsx">
+"use client";
 
-####################################
-Build outputs
-####################################
-.next/
-out/
-dist/
-build/
-/.next/
-/dist/
-/build/
+import { useState, useEffect } from "react";
+import { Bookmark } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/src/lib/supabaseClient";
 
-####################################
-Environment variables
-####################################
-.env
-.env.*
-.env.local
-.env.development
-.env.production
-.env.test
+interface Props {
+  majorId: string;
+}
 
-####################################
-Logs
-####################################
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
-logs/
-*.log
+export default function BookmarkButton({ majorId }: Props) {
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
-####################################
-OS / Editor files
-####################################
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-*.swp
+  useEffect(() => {
+    async function load() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
 
-####################################
-Vercel / deployment
-####################################
-.vercel/
+      setUserId(session.user.id);
 
-####################################
-Supabase local (if used later)
-####################################
-.supabase/
+      const { data } = await supabase
+        .from("user_bookmarked_majors")
+        .select("major_id")
+        .eq("user_id", session.user.id)
+        .eq("major_id", majorId)
+        .maybeSingle();
 
-####################################
-Claude files
-####################################
-caat-frontend/MAJORS_FEATURE_PLAN.md
+      setIsBookmarked(!!data);
+    }
+
+    load();
+  }, [majorId]);
+
+  async function handleToggle() {
+    if (!userId) return;
+
+    const next = !isBookmarked;
+    setIsBookmarked(next); // optimistic
+
+    if (isBookmarked) {
+      await supabase
+        .from("user_bookmarked_majors")
+        .delete()
+        .eq("user_id", userId)
+        .eq("major_id", majorId);
+    } else {
+      await supabase
+        .from("user_bookmarked_majors")
+        .upsert({ user_id: userId, major_id: majorId });
+    }
+  }
+
+  return (
+    <Button
+      size="icon"
+      variant={isBookmarked ? "default" : "outline"}
+      onClick={handleToggle}
+      aria-label={isBookmarked ? "Remove bookmark" : "Bookmark major"}
+    >
+      <Bookmark className={isBookmarked ? "fill-current" : ""} />
+    </Button>
+  );
+}
+</file>
+
+<file path="caat-frontend/app/(main)/majors/page.tsx">
+import { supabase } from "@/src/lib/supabaseClient";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+} from "@/components/ui/breadcrumb";
+import { Separator } from "@/components/ui/separator";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import MajorsClient from "./client";
+
+export default async function MajorsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>;
+}) {
+  const { filter } = await searchParams;
+  const initialFilter = filter === "bookmarked" ? "Bookmarked" : "All";
+
+  const { data: majors, error } = await supabase
+    .from("majors")
+    .select("*")
+    .order("name");
+
+  if (error) {
+    return <div className="p-10 text-red-500">Error: {error.message}</div>;
+  }
+
+  return (
+    <>
+      <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+        <SidebarTrigger className="-ml-1" />
+        <Separator
+          orientation="vertical"
+          className="mr-2 data-[orientation=vertical]:h-4"
+        />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem className="hidden md:block">
+              <BreadcrumbLink>Majors</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </header>
+
+      <MajorsClient majors={majors ?? []} initialFilter={initialFilter} />
+    </>
+  );
+}
 </file>
 
 <file path="caat-frontend/app/(main)/resume-builder/page.tsx">
@@ -5147,176 +5390,6 @@ export default function ResumeBuilderPage() {
       
     <ResumeBuilderClient />;
   </>
-}
-</file>
-
-<file path="caat-frontend/app/globals.css">
-@import "tailwindcss";
-@import "tw-animate-css";
-
-@custom-variant dark (&:is(.dark *));
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
-}
-
-:root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-
-  /* Shared typography for resume preview content.
-     Used in both the hidden measurement container and the visible preview
-     so pagination calculations match what the user sees. */
-  .resume-preview-content {
-    font-size: 11px;
-    line-height: 1.4;
-    /* Respect inline TipTap styles for font-size / font-family etc. */
-    font-family: inherit;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .resume-preview-content p {
-    margin: 0 0 0.4rem 0;
-  }
-
-  .resume-preview-content ul,
-  .resume-preview-content ol {
-    margin: 0 0 0.4rem 1.25rem;
-    padding: 0;
-  }
-
-  .resume-preview-content li {
-    margin-bottom: 0.15rem;
-  }
-
-  .resume-preview-content a {
-    color: rgb(37 99 235); /* blue-600 */
-    text-decoration: underline;
-  }
-
-  .resume-preview-content h1,
-  .resume-preview-content h2,
-  .resume-preview-content h3,
-  .resume-preview-content h4,
-  .resume-preview-content h5,
-  .resume-preview-content h6 {
-    margin: 0 0 0.4rem 0;
-    font-weight: 600;
-  }
 }
 </file>
 
@@ -5392,120 +5465,88 @@ export default function SignupPage() {
 }
 </file>
 
-<file path="caat-frontend/components/nav-user.tsx">
-"use client"
+<file path="caat-frontend/components/majors/major-filters.tsx">
+import { Search, Bookmark } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { MajorCategory } from "@/types/majors";
+import { FilterView } from "@/app/(main)/majors/client";
 
-import {
-  IconCreditCard,
-  IconDotsVertical,
-  IconLogout,
-  IconNotification,
-  IconUserCircle,
-} from "@tabler/icons-react"
+const CATEGORIES: (MajorCategory | "All")[] = [
+  "All",
+  "Engineering",
+  "Business",
+  "Health Sciences",
+  "Arts & Humanities",
+  "Social Sciences",
+  "Natural Sciences",
+  "Education",
+];
 
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
+interface Props {
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
+  selectedFilter: FilterView;
+  onFilterChange: (filter: FilterView) => void;
+  bookmarkedCount: number;
+}
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-
-import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
-} from "@/components/ui/sidebar"
-
-export function NavUser({
-  user,
-}: {
-  user: {
-    name: string
-    email: string
-    avatar: string
-  }
-}) {
-  const { isMobile } = useSidebar()
-
+export default function MajorFilters({
+  searchQuery,
+  onSearchChange,
+  selectedFilter,
+  onFilterChange,
+  bookmarkedCount,
+}: Props) {
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuButton
-              size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-            >
-              <Avatar className="h-8 w-8 rounded-lg grayscale">
-                {/* <AvatarImage src={user.avatar} alt={user.name} /> */}
-                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
-              </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{user.name}</span>
-                <span className="text-muted-foreground truncate text-xs">
-                  {user.email}
-                </span>
-              </div>
-              <IconDotsVertical className="ml-auto size-4" />
-            </SidebarMenuButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-            side={isMobile ? "bottom" : "right"}
-            align="end"
-            sideOffset={4}
-          >
-            {/* <DropdownMenuLabel className="p-0 font-normal">
-              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className="rounded-lg">CN</AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{user.name}</span>
-                  <span className="text-muted-foreground truncate text-xs">
-                    {user.email}
-                  </span>
-                </div>
-              </div>
-            </DropdownMenuLabel> */}
-            {/* <DropdownMenuSeparator /> */}
-            <DropdownMenuGroup>
-                
-              {/* <DropdownMenuItem>
-                <IconUserCircle />
-                Account
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <IconCreditCard />
-                Billing
-              </DropdownMenuItem> */}
+    <div className="mb-8 space-y-4">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Input
+          className="pl-9"
+          placeholder="Search majors..."
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+        />
+      </div>
 
-              <DropdownMenuItem>
-                <IconNotification />
-                Notifications
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <IconLogout />
-              Log out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </SidebarMenuItem>
-    </SidebarMenu>
-  )
+      <div className="flex flex-wrap gap-2">
+        {CATEGORIES.map((cat) => (
+          <Button
+            key={cat}
+            size="sm"
+            variant={selectedFilter === cat ? "default" : "outline"}
+            onClick={() => onFilterChange(cat)}
+          >
+            {cat}
+          </Button>
+        ))}
+
+        <Button
+          size="sm"
+          variant={selectedFilter === "Bookmarked" ? "default" : "outline"}
+          onClick={() => onFilterChange("Bookmarked")}
+          className="gap-1.5"
+        >
+          <Bookmark
+            className={`h-3.5 w-3.5 ${selectedFilter === "Bookmarked" ? "fill-current" : ""}`}
+          />
+          Bookmarked
+          {bookmarkedCount > 0 && (
+            <span
+              className={`text-xs rounded-full px-1.5 py-0.5 font-medium ${
+                selectedFilter === "Bookmarked"
+                  ? "bg-primary-foreground/20 text-primary-foreground"
+                  : "bg-secondary text-secondary-foreground"
+              }`}
+            >
+              {bookmarkedCount}
+            </span>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
 }
 </file>
 
@@ -5632,6 +5673,183 @@ export type SaveResumePayload = {
 };
 </file>
 
+<file path="caat-frontend/components/nav-user.tsx">
+"use client"
+
+import {
+  IconCreditCard,
+  IconDotsVertical,
+  IconLogout,
+  IconNotification,
+  IconUserCircle,
+} from "@tabler/icons-react"
+
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar"
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@/components/ui/sidebar"
+
+export function NavUser({
+  user,
+}: {
+  user: {
+    name: string
+    email: string
+    avatar: string
+  }
+}) {
+  const { isMobile } = useSidebar()
+
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              size="lg"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            >
+              <Avatar className="h-8 w-8 rounded-lg grayscale">
+                {/* <AvatarImage src={user.avatar} alt={user.name} /> */}
+                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+              </Avatar>
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-medium">{user.name}</span>
+                <span className="text-muted-foreground truncate text-xs">
+                  {user.email}
+                </span>
+              </div>
+              <IconDotsVertical className="ml-auto size-4" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+            side={isMobile ? "bottom" : "right"}
+            align="end"
+            sideOffset={4}
+          >
+            {/* <DropdownMenuLabel className="p-0 font-normal">
+              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                <Avatar className="h-8 w-8 rounded-lg">
+                  <AvatarImage src={user.avatar} alt={user.name} />
+                  <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                </Avatar>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-medium">{user.name}</span>
+                  <span className="text-muted-foreground truncate text-xs">
+                    {user.email}
+                  </span>
+                </div>
+              </div>
+            </DropdownMenuLabel> */}
+            {/* <DropdownMenuSeparator /> */}
+            <DropdownMenuGroup>
+                
+              {/* <DropdownMenuItem>
+                <IconUserCircle />
+                Account
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <IconCreditCard />
+                Billing
+              </DropdownMenuItem> */}
+
+              <DropdownMenuItem>
+                <IconNotification />
+                Notifications
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <IconLogout />
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  )
+}
+</file>
+
+<file path="caat-frontend/src/lib/supabaseClient.ts">
+import { createClient } from "@supabase/supabase-js";
+
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+</file>
+
+<file path="caat-frontend/types/majors.ts">
+export type MajorCategory =
+  | 'Engineering'
+  | 'Business'
+  | 'Health Sciences'
+  | 'Arts & Humanities'
+  | 'Social Sciences'
+  | 'Natural Sciences'
+  | 'Education';
+
+export interface Major {
+  id: string;
+  name: string;
+  category: MajorCategory;
+  description: string | null;
+  career_paths: string[];
+  typical_coursework: string[];
+  qs_ranking_url: string | null;
+  created_at: string;
+}
+
+// Row from the school_majors junction table, with school data joined in
+export interface SchoolMajor {
+  school_id: number;
+  major_id: string;
+  schools: {
+    id: number;
+    name: string;
+    country: string | null;
+    website: string | null;
+  };
+}
+
+// Row from user_bookmarked_majors
+export interface BookmarkedMajor {
+  user_id: string;
+  major_id: string;
+  created_at: string;
+}
+
+// Major with the list of schools that offer it — used on the detail page
+export interface MajorWithSchools extends Major {
+  school_majors: SchoolMajor[];
+}
+
+// Major card data — used on the browse page (school list not needed)
+export interface MajorCard extends Major {
+  isBookmarked: boolean;
+}
+</file>
+
 <file path="caat-frontend/README.md">
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
@@ -5671,13 +5889,66 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 </file>
 
-<file path="caat-frontend/src/lib/supabaseClient.ts">
-import { createClient } from "@supabase/supabase-js";
+<file path=".gitignore">
+####################################
+Dependencies
+####################################
+node_modules/
+/node_modules/
 
-export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+####################################
+Build outputs
+####################################
+.next/
+out/
+dist/
+build/
+/.next/
+/dist/
+/build/
+
+####################################
+Environment variables
+####################################
+.env
+.env.*
+.env.local
+.env.development
+.env.production
+.env.test
+
+####################################
+Logs
+####################################
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+logs/
+*.log
+
+####################################
+OS / Editor files
+####################################
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+####################################
+Vercel / deployment
+####################################
+.vercel/
+
+####################################
+Supabase local (if used later)
+####################################
+.supabase/
+
+####################################
+Claude files
+####################################
+caat-frontend/MAJORS_FEATURE_PLAN.md
 </file>
 
 <file path=".github/workflows/ci.yml">
@@ -5848,51 +6119,196 @@ jobs:
         run: npm run build
 </file>
 
-<file path="caat-frontend/.gitignore">
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+<file path="caat-frontend/app/(main)/majors/client.tsx">
+"use client";
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+import { useState, useMemo, useEffect } from "react";
+import { ArrowLeftRight } from "lucide-react";
+import { Major, MajorCategory } from "@/types/majors";
+import MajorCard from "@/components/majors/major-card";
+import MajorFilters from "@/components/majors/major-filters";
+import CompareTable from "@/components/majors/compare-table";
+import { Button } from "@/components/ui/button";
+import * as Dialog from "@radix-ui/react-dialog";
+import { supabase } from "@/src/lib/supabaseClient";
 
-# testing
-/coverage
+export type FilterView = MajorCategory | "All" | "Bookmarked";
 
-# next.js
-/.next/
-/out/
+const MAX_COMPARE = 3;
 
-# production
-/build
+interface Props {
+  majors: Major[];
+  initialFilter?: FilterView;
+}
 
-# misc
-.DS_Store
-*.pem
+export default function MajorsClient({
+  majors,
+  initialFilter = "All",
+}: Props) {
+  const [selectedFilter, setSelectedFilter] = useState<FilterView>(initialFilter);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+  const [userId, setUserId] = useState<string | null>(null);
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+  // Load current user and their bookmarks on mount
+  useEffect(() => {
+    async function loadBookmarks() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
 
-# env files (can opt-in for committing if needed)
-.env*
+      setUserId(session.user.id);
 
-# vercel
-.vercel
+      const { data } = await supabase
+        .from("user_bookmarked_majors")
+        .select("major_id")
+        .eq("user_id", session.user.id);
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+      if (data) {
+        setBookmarkedIds(new Set(data.map((row) => row.major_id)));
+      }
+    }
 
-# repomix
-repomix-output.xml
+    loadBookmarks();
+  }, []);
+
+  const filtered = useMemo(() => {
+    return majors.filter((m) => {
+      if (selectedFilter === "Bookmarked") {
+        if (!bookmarkedIds.has(m.id)) return false;
+        if (!searchQuery) return true;
+        const q = searchQuery.toLowerCase();
+        return m.name.toLowerCase().includes(q) || m.description?.toLowerCase().includes(q);
+      }
+      const matchesCategory = selectedFilter === "All" || m.category === selectedFilter;
+      const q = searchQuery.toLowerCase();
+      const matchesSearch =
+        m.name.toLowerCase().includes(q) ||
+        m.description?.toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [majors, searchQuery, selectedFilter, bookmarkedIds]);
+
+  const selectedMajors = useMemo(
+    () => compareIds.map((id) => majors.find((m) => m.id === id)).filter(Boolean) as Major[],
+    [compareIds, majors]
+  );
+
+  function handleToggleSelect(id: string) {
+    setCompareIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= MAX_COMPARE) return prev;
+      return [...prev, id];
+    });
+  }
+
+  async function handleToggleBookmark(id: string) {
+    if (!userId) return;
+
+    const isCurrentlyBookmarked = bookmarkedIds.has(id);
+
+    // Optimistic update
+    setBookmarkedIds((prev) => {
+      const next = new Set(prev);
+      isCurrentlyBookmarked ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+    if (isCurrentlyBookmarked) {
+      await supabase
+        .from("user_bookmarked_majors")
+        .delete()
+        .eq("user_id", userId)
+        .eq("major_id", id);
+    } else {
+      await supabase
+        .from("user_bookmarked_majors")
+        .upsert({ user_id: userId, major_id: id });
+    }
+  }
+
+  return (
+    <div className="min-h-screen p-8">
+      <div className="max-w-5xl mx-auto">
+        <MajorFilters
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          selectedFilter={selectedFilter}
+          onFilterChange={setSelectedFilter}
+          bookmarkedCount={bookmarkedIds.size}
+        />
+
+        <p className="text-sm text-muted-foreground mb-6">
+          {filtered.length} major{filtered.length !== 1 ? "s" : ""}
+          {selectedFilter === "Bookmarked" ? " bookmarked" : ""}
+          {selectedFilter !== "All" && selectedFilter !== "Bookmarked"
+            ? ` in ${selectedFilter}`
+            : ""}
+          {searchQuery ? ` matching "${searchQuery}"` : ""}
+        </p>
+
+        {filtered.length === 0 ? (
+          <div className="text-center py-20 text-muted-foreground">
+            {selectedFilter === "Bookmarked"
+              ? "No bookmarked majors yet. Bookmark a major to see it here."
+              : "No majors found. Try adjusting your search or filters."}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-24">
+            {filtered.map((major) => (
+              <MajorCard
+                key={major.id}
+                major={major}
+                isBookmarked={bookmarkedIds.has(major.id)}
+                isSelected={compareIds.includes(major.id)}
+                canSelect={
+                  compareIds.length < MAX_COMPARE ||
+                  compareIds.includes(major.id)
+                }
+                onToggleSelect={handleToggleSelect}
+                onToggleBookmark={handleToggleBookmark}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Compare bar — appears when 2+ majors are selected */}
+      {compareIds.length >= 2 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <div className="flex items-center gap-3 bg-background border rounded-full px-5 py-2.5 shadow-xl pointer-events-auto">
+            <span className="text-sm font-medium">
+              {compareIds.length} majors selected
+            </span>
+            <Button size="sm" onClick={() => setIsCompareOpen(true)}>
+              <ArrowLeftRight />
+              Compare
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setCompareIds([])}
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Compare modal */}
+      <Dialog.Root open={isCompareOpen} onOpenChange={setIsCompareOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] max-w-5xl max-h-[85vh] overflow-auto rounded-xl shadow-2xl bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+            <Dialog.Title className="sr-only">Compare Majors</Dialog.Title>
+            <CompareTable majors={selectedMajors} />
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </div>
+  );
+}
 </file>
 
 <file path="caat-frontend/app/(main)/profile/page.tsx">
@@ -6448,199 +6864,6 @@ export default async function SchoolsPage({
 }
 </file>
 
-<file path="caat-frontend/app/layout.tsx">
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-// Remove Sidebar imports from here
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "CAAT",
-  description: "Generated by create next app",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {/* Render children directly without the sidebar wrapper */}
-        {children}
-      </body>
-    </html>
-  );
-}
-</file>
-
-<file path="caat-frontend/components/resume-builder/api.ts">
-// components/resume-builder/api.ts
-import { supabase } from "@/src/lib/supabaseClient";
-import type {
-        ResumeRow,
-        ResumeSectionRow,
-        ResumeSectionState,
-        ResumeState,
-        SaveResumePayload,
-        SectionType,
-        SectionMode,
-} from "./types";
-
-/* ---------------------------
-   Small helpers: map DB to UI
----------------------------- */
-
-function rowToState(row: ResumeSectionRow): ResumeSectionState {
-        return {
-                id: row.id,
-                type: row.section_key as SectionType,
-                label: row.label,
-                mode: row.mode as SectionMode,
-                contentHtml: row.content_html,
-                structuredData: row.structured_data ?? undefined,
-                sortOrder: row.sort_order,
-        };
-}
-
-function payloadSectionToRow(
-        resumeId: string,
-        s: SaveResumePayload["sections"][number]
-): Partial<ResumeSectionRow> {
-        return {
-                id: s.id,
-                resume_id: resumeId,
-                section_key: s.type,
-                label: s.label,
-                mode: s.mode,
-                content_html: s.contentHtml,
-                structured_data: s.structuredData ?? null,
-                sort_order: s.sortOrder,
-        };
-}
-
-/* ---------------------------
-   Auth
----------------------------- */
-
-export async function requireUserId(): Promise<string> {
-        const { data, error } = await supabase.auth.getUser();
-        if (error) throw new Error(error.message);
-
-        const userId = data.user?.id;
-        if (!userId) throw new Error("Not authenticated");
-
-        return userId;
-}
-
-/* ---------------------------
-   Load: get-or-create resume + sections
----------------------------- */
-
-export async function loadOrCreateResumeState(): Promise<ResumeState> {
-        const userId = await requireUserId();
-
-        // 1) Try to get the user's first resume
-        const { data: foundResume, error: findErr } = await supabase
-                .from("resumes")
-                .select("*")
-                .eq("user_id", userId)
-                .order("created_at", { ascending: true })
-                .limit(1)
-                .maybeSingle();
-
-        if (findErr) throw new Error(findErr.message);
-
-        // 2) Create if missing
-        const resume: ResumeRow =
-                foundResume ??
-                (await (async () => {
-                        const { data: created, error: createErr } = await supabase
-                                .from("resumes")
-                                .insert({
-                                        user_id: userId,
-                                        title: "Main Resume",
-                                        template: null,
-                                })
-                                .select("*")
-                                .single();
-
-                        if (createErr) throw new Error(createErr.message);
-                        return created as ResumeRow;
-                })());
-
-        // 3) Load sections ordered by sort_order
-        const { data: sectionRows, error: secErr } = await supabase
-                .from("resume_sections")
-                .select("*")
-                .eq("resume_id", resume.id)
-                .order("sort_order", { ascending: true });
-
-        if (secErr) throw new Error(secErr.message);
-
-        return {
-                resumeId: resume.id,
-                title: resume.title ?? "Main Resume",
-                
-                template: resume.template ?? null,
-                sections: (sectionRows ?? []).map(rowToState),
-        };
-}
-
-/* ---------------------------
-   Save: update resume + upsert sections
----------------------------- */
-
-export async function saveResumeState(payload: SaveResumePayload): Promise<void> {
-        const userId = await requireUserId();
-
-        // 1) Update resume metadata (scoped to this user)
-        const { error: resumeErr } = await supabase
-                .from("resumes")
-                .update({
-                        title: payload.title,
-                        template: payload.template ?? null,
-                })
-                .eq("id", payload.resumeId)
-                .eq("user_id", userId);
-
-        if (resumeErr) throw new Error(resumeErr.message);
-
-        // 2) Upsert all sections (content + structured_data + sort_order)
-        const rows = payload.sections.map((s) => payloadSectionToRow(payload.resumeId, s));
-
-        const { error: secErr } = await supabase
-                .from("resume_sections")
-                .upsert(rows, { onConflict: "id" });
-
-        if (secErr) throw new Error(secErr.message);
-}
-
-/* ---------------------------
-   Delete
----------------------------- */
-
-export async function deleteSection(sectionId: string): Promise<void> {
-        const { error } = await supabase
-                .from("resume_sections")
-                .delete()
-                .eq("id", sectionId);
-
-        if (error) throw new Error(error.message);
-}
-</file>
-
 <file path="caat-frontend/components/resume-builder/DocumentStructurePanel.tsx">
 "use client";
 
@@ -6742,279 +6965,6 @@ export default function DocumentStructurePanel({
       >
         + Add Section
       </button>
-    </div>
-  );
-}
-</file>
-
-<file path="caat-frontend/components/resume-builder/ResumeBuilderShell.tsx">
-"use client";
-
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  arrayMove,
-} from "@dnd-kit/sortable";
-
-import { getDefaultSections } from "./defaultSections";
-import { ResumeSection } from "./types";
-
-// Supabase API helpers
-import { loadOrCreateResumeState, saveResumeState } from "./api";
-
-import DocumentStructurePanel from "./DocumentStructurePanel";
-import SectionEditorPanel from "./SectionEditorPanel";
-import ResumePreviewPanel from "./ResumePreviewPanel";
-
-export default function ResumeBuilderShell() {
-  const [sections, setSections] = useState<ResumeSection[]>([]);
-  const [activeSectionId, setActiveSectionId] = useState<string>("");
-
-  // Resume metadata (needed for save/load)
-  const [resumeId, setResumeId] = useState<string>("");
-  const [resumeTitle, setResumeTitle] = useState<string>("My Professional Resume");
-
-  // Basic UX state
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Which section should be immediately renamed (newly added)
-  const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
-
-  const activeSection = useMemo(() => {
-    if (sections.length === 0) return undefined;
-    return sections.find((s) => s.id === activeSectionId) ?? sections[0];
-  }, [sections, activeSectionId]);
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  // --------------------------------------------------
-  // Initial load from Supabase
-  // --------------------------------------------------
-  useEffect(() => {
-    let cancelled = false;
-
-    async function init() {
-      try {
-        setIsLoading(true);
-
-        const state = await loadOrCreateResumeState();
-        if (cancelled) return;
-
-        setResumeId(state.resumeId);
-        setResumeTitle(state.title || "My Professional Resume");
-
-        // If user has no sections yet, seed defaults once and save them
-        if (!state.sections || state.sections.length === 0) {
-          const defaults = getDefaultSections();
-
-          setSections(defaults);
-          setActiveSectionId(defaults[0]?.id ?? "");
-
-          // Save seeded defaults so next refresh loads from db
-          await saveResumeState({
-            resumeId: state.resumeId,
-            title: state.title || "My Professional Resume",
-            template: state.template ?? null,
-            sections: defaults.map((s, idx) => ({
-              id: s.id,
-              type: s.type,
-              label: s.label,
-              mode: s.mode,
-              contentHtml: s.contentHtml,
-              structuredData: s.structuredData,
-              sortOrder: idx,
-            })),
-          });
-
-          return;
-        }
-
-        // Otherwise load from DB
-        const loadedSections: ResumeSection[] = state.sections
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((s) => ({
-            id: s.id,
-            type: s.type,
-            label: s.label,
-            mode: s.mode,
-            contentHtml: s.contentHtml,
-            structuredData: s.structuredData,
-          }));
-
-        setSections(loadedSections);
-        setActiveSectionId(loadedSections[0]?.id ?? "");
-      } catch (err) {
-        console.error(err);
-
-        // If anything fails, fall back to local defaults so UI still works
-        const defaults = getDefaultSections();
-        if (cancelled) return;
-
-        setSections(defaults);
-        setActiveSectionId(defaults[0]?.id ?? "");
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
-
-    init();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // --------------------------------------------------
-  // Drag & drop ordering
-  // --------------------------------------------------
-  function onDragEnd(event: any) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = sections.findIndex((s) => s.id === active.id);
-    const newIndex = sections.findIndex((s) => s.id === over.id);
-
-    setSections((prev) => arrayMove(prev, oldIndex, newIndex));
-  }
-
-  // --------------------------------------------------
-  // Update a section (editor changes)
-  // --------------------------------------------------
-  function updateSection(id: string, patch: Partial<ResumeSection>) {
-    setSections((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
-    );
-  }
-
-  // --------------------------------------------------
-  // Add section
-  // --------------------------------------------------
-  function addSection() {
-    const newId = crypto.randomUUID(); // real UUID for Supabase
-    const newSection: ResumeSection = {
-      id: newId,
-      type: "custom",
-      label: "Custom Section",
-      mode: "free",
-      contentHtml: "",
-    };
-
-    setSections((prev) => [...prev, newSection]);
-    setActiveSectionId(newId);
-
-    // Immediately enter rename mode for the newly added section
-    setRenamingSectionId(newId);
-  }
-
-  // --------------------------------------------------
-  // Delete section
-  // --------------------------------------------------
-  function deleteSection(id: string) {
-    setSections((prev) => {
-      const next = prev.filter((s) => s.id !== id);
-
-      if (next.length === 0) {
-        setActiveSectionId("");
-        return next;
-      }
-
-      if (activeSectionId === id) {
-        setActiveSectionId(next[0].id);
-      }
-
-      return next;
-    });
-  }
-
-  // --------------------------------------------------
-  // Save (universal save button)
-  // --------------------------------------------------
-  async function onSave() {
-    if (!resumeId) return;
-
-    try {
-      setIsSaving(true);
-
-      await saveResumeState({
-        resumeId,
-        title: resumeTitle,
-        template: null,
-        sections: sections.map((s, idx) => ({
-          id: s.id,
-          type: s.type,
-          label: s.label,
-          mode: s.mode,
-          contentHtml: s.contentHtml,
-          structuredData: s.structuredData,
-          sortOrder: idx,
-        })),
-      });
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  return (
-    <div className="h-[calc(100vh-64px)] w-full">
-      {/* Top bar */}
-      <div className="flex items-center justify-between border-b bg-background px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div className="h-6 w-6 rounded bg-blue-600 text-white grid place-items-center text-xs font-bold">
-            CA
-          </div>
-          <div className="font-semibold">{resumeTitle}</div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button className="rounded-md border px-3 py-1.5 text-sm">Print / PDF</button>
-
-          <button
-            onClick={onSave}
-            disabled={isLoading || isSaving}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-60"
-          >
-            {isSaving ? "Saving..." : "Save"}
-          </button>
-        </div>
-      </div>
-
-      {/* 3-panel body */}
-      <div className="grid h-full grid-cols-[360px_1fr_520px]">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-            <DocumentStructurePanel
-              sections={sections}
-              activeSectionId={activeSectionId}
-              onSelect={setActiveSectionId}
-              onAdd={addSection}
-              onRename={(id, label) => updateSection(id, { label })}
-              onDelete={deleteSection}
-              renamingSectionId={renamingSectionId}
-              onFinishRenaming={() => setRenamingSectionId(null)}
-            />
-          </SortableContext>
-        </DndContext>
-
-        <SectionEditorPanel
-          section={activeSection}
-          onChange={(patch) => {
-            if (!activeSection) return;
-            updateSection(activeSection.id, patch);
-          }}
-        />
-
-        <ResumePreviewPanel sections={sections} />
-      </div>
     </div>
   );
 }
@@ -7348,6 +7298,225 @@ try {
     "**/*.mts"
   ],
   "exclude": ["node_modules"]
+}
+</file>
+
+<file path="caat-frontend/app/globals.css">
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Shared typography for resume preview content.
+     Used in both the hidden measurement container and the visible preview
+     so pagination calculations match what the user sees. */
+  .resume-preview-content {
+    font-size: 11px;
+    line-height: 1.4;
+    /* Respect inline TipTap styles for font-size / font-family etc. */
+    font-family: inherit;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Force wrapping on all children — TipTap inline styles can set white-space / overflow
+     values that prevent text from wrapping inside the fixed-width preview page. */
+  .resume-preview-content * {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    max-width: 100%;
+  }
+
+  .resume-preview-content p {
+    margin: 0 0 0.4rem 0;
+  }
+
+  .resume-preview-content ul,
+  .resume-preview-content ol {
+    margin: 0 0 0.4rem 1.25rem;
+    padding: 0;
+  }
+
+  .resume-preview-content li {
+    margin-bottom: 0.15rem;
+  }
+
+  .resume-preview-content a {
+    color: rgb(37 99 235); /* blue-600 */
+    text-decoration: underline;
+  }
+
+  .resume-preview-content h1,
+  .resume-preview-content h2,
+  .resume-preview-content h3,
+  .resume-preview-content h4,
+  .resume-preview-content h5,
+  .resume-preview-content h6 {
+    margin: 0 0 0.4rem 0;
+    font-weight: 600;
+  }
+}
+</file>
+
+<file path="caat-frontend/app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+// Remove Sidebar imports from here
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "CAAT",
+  description: "Generated by create next app",
+  icons: {
+    icon: "/logo.png",
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        {/* Render children directly without the sidebar wrapper */}
+        {children}
+      </body>
+    </html>
+  );
 }
 </file>
 
@@ -7859,6 +8028,1372 @@ export default function EssaysShell() {
 }
 </file>
 
+<file path="caat-frontend/components/resume-builder/api.ts">
+// components/resume-builder/api.ts
+import { supabase } from "@/src/lib/supabaseClient";
+import type {
+        ResumeRow,
+        ResumeSectionRow,
+        ResumeSectionState,
+        ResumeState,
+        SaveResumePayload,
+        SectionType,
+        SectionMode,
+} from "./types";
+
+/* ---------------------------
+   Small helpers: map DB to UI
+---------------------------- */
+
+function rowToState(row: ResumeSectionRow): ResumeSectionState {
+        return {
+                id: row.id,
+                type: row.section_key as SectionType,
+                label: row.label,
+                mode: row.mode as SectionMode,
+                contentHtml: row.content_html,
+                structuredData: row.structured_data ?? undefined,
+                sortOrder: row.sort_order,
+        };
+}
+
+function payloadSectionToRow(
+        resumeId: string,
+        s: SaveResumePayload["sections"][number]
+): Partial<ResumeSectionRow> {
+        return {
+                id: s.id,
+                resume_id: resumeId,
+                section_key: s.type,
+                label: s.label,
+                mode: s.mode,
+                content_html: s.contentHtml,
+                structured_data: s.structuredData ?? null,
+                sort_order: s.sortOrder,
+        };
+}
+
+/* ---------------------------
+   Auth
+---------------------------- */
+
+export async function requireUserId(): Promise<string> {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) throw new Error(error.message);
+
+        const userId = data.user?.id;
+        if (!userId) throw new Error("Not authenticated");
+
+        return userId;
+}
+
+/* ---------------------------
+   Load: get-or-create resume + sections
+---------------------------- */
+
+/** List all resumes for the current user (for switcher). */
+export async function listResumes(): Promise<Pick<ResumeRow, "id" | "title" | "created_at">[]> {
+	const userId = await requireUserId();
+	const { data, error } = await supabase
+		.from("resumes")
+		.select("id, title, created_at")
+		.eq("user_id", userId)
+		.order("created_at", { ascending: false });
+
+	if (error) throw new Error(error.message);
+	return (data ?? []) as Pick<ResumeRow, "id" | "title" | "created_at">[];
+}
+
+/** Load a specific resume by id (sections included). */
+export async function loadResumeById(resumeId: string): Promise<ResumeState | null> {
+	const userId = await requireUserId();
+
+	const { data: resume, error: resumeErr } = await supabase
+		.from("resumes")
+		.select("*")
+		.eq("id", resumeId)
+		.eq("user_id", userId)
+		.maybeSingle();
+
+	if (resumeErr || !resume) return null;
+
+	const { data: sectionRows, error: secErr } = await supabase
+		.from("resume_sections")
+		.select("*")
+		.eq("resume_id", resumeId)
+		.order("sort_order", { ascending: true });
+
+	if (secErr) throw new Error(secErr.message);
+
+	return {
+		resumeId: (resume as ResumeRow).id,
+		title: (resume as ResumeRow).title ?? "Untitled",
+		template: (resume as ResumeRow).template ?? null,
+		sections: (sectionRows ?? []).map(rowToState),
+	};
+}
+
+/** Create a new resume and return its state (with no sections or default sections). */
+export async function createResume(title?: string): Promise<ResumeState> {
+	const userId = await requireUserId();
+
+	const { data: created, error } = await supabase
+		.from("resumes")
+		.insert({
+			user_id: userId,
+			title: title ?? "New Resume",
+			template: null,
+		})
+		.select("*")
+		.single();
+
+	if (error) throw new Error(error.message);
+	const resume = created as ResumeRow;
+
+	return {
+		resumeId: resume.id,
+		title: resume.title ?? "New Resume",
+		template: resume.template ?? null,
+		sections: [],
+	};
+}
+
+export async function loadOrCreateResumeState(): Promise<ResumeState> {
+        const userId = await requireUserId();
+
+        // 1) Try to get the user's first resume
+        const { data: foundResume, error: findErr } = await supabase
+                .from("resumes")
+                .select("*")
+                .eq("user_id", userId)
+                .order("created_at", { ascending: true })
+                .limit(1)
+                .maybeSingle();
+
+        if (findErr) throw new Error(findErr.message);
+
+        // 2) Create if missing
+        const resume: ResumeRow =
+                foundResume ??
+                (await (async () => {
+                        const { data: created, error: createErr } = await supabase
+                                .from("resumes")
+                                .insert({
+                                        user_id: userId,
+                                        title: "Main Resume",
+                                        template: null,
+                                })
+                                .select("*")
+                                .single();
+
+                        if (createErr) throw new Error(createErr.message);
+                        return created as ResumeRow;
+                })());
+
+        // 3) Load sections ordered by sort_order
+        const { data: sectionRows, error: secErr } = await supabase
+                .from("resume_sections")
+                .select("*")
+                .eq("resume_id", resume.id)
+                .order("sort_order", { ascending: true });
+
+        if (secErr) throw new Error(secErr.message);
+
+        return {
+                resumeId: resume.id,
+                title: resume.title ?? "Main Resume",
+                
+                template: resume.template ?? null,
+                sections: (sectionRows ?? []).map(rowToState),
+        };
+}
+
+/* ---------------------------
+   Save: update resume + upsert sections
+---------------------------- */
+
+export async function saveResumeState(payload: SaveResumePayload): Promise<void> {
+        const userId = await requireUserId();
+
+        // 1) Update resume metadata (scoped to this user)
+        const { error: resumeErr } = await supabase
+                .from("resumes")
+                .update({
+                        title: payload.title,
+                        template: payload.template ?? null,
+                })
+                .eq("id", payload.resumeId)
+                .eq("user_id", userId);
+
+        if (resumeErr) throw new Error(resumeErr.message);
+
+        // 2) Upsert all sections (content + structured_data + sort_order)
+        const rows = payload.sections.map((s) => payloadSectionToRow(payload.resumeId, s));
+
+        const { error: secErr } = await supabase
+                .from("resume_sections")
+                .upsert(rows, { onConflict: "id" });
+
+        if (secErr) throw new Error(secErr.message);
+}
+
+/* ---------------------------
+   Delete
+---------------------------- */
+
+export async function deleteSection(sectionId: string): Promise<void> {
+        const { error } = await supabase
+                .from("resume_sections")
+                .delete()
+                .eq("id", sectionId);
+
+        if (error) throw new Error(error.message);
+}
+
+/** Delete a whole resume and its sections (user-scoped). */
+export async function deleteResume(resumeId: string): Promise<void> {
+	const userId = await requireUserId();
+
+	const { error: secErr } = await supabase
+		.from("resume_sections")
+		.delete()
+		.eq("resume_id", resumeId);
+	if (secErr) throw new Error(secErr.message);
+
+	const { error: resumeErr } = await supabase
+		.from("resumes")
+		.delete()
+		.eq("id", resumeId)
+		.eq("user_id", userId);
+	if (resumeErr) throw new Error(resumeErr.message);
+}
+</file>
+
+<file path="caat-frontend/components/resume-builder/ResumeBuilderShell.tsx">
+"use client";
+
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+
+import { getDefaultSections } from "./defaultSections";
+import { ResumeSection } from "./types";
+
+// Supabase API helpers
+import {
+  loadOrCreateResumeState,
+  saveResumeState,
+  listResumes,
+  loadResumeById,
+  createResume,
+  deleteResume,
+} from "./api";
+
+import { Pencil, Trash2 } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
+
+import DocumentStructurePanel from "./DocumentStructurePanel";
+import SectionEditorPanel from "./SectionEditorPanel";
+import ResumePreviewPanel from "./ResumePreviewPanel";
+
+export default function ResumeBuilderShell() {
+  const [sections, setSections] = useState<ResumeSection[]>([]);
+  const [activeSectionId, setActiveSectionId] = useState<string>("");
+
+  // Resume metadata (needed for save/load)
+  const [resumeId, setResumeId] = useState<string>("");
+  const [resumeTitle, setResumeTitle] = useState<string>("My Professional Resume");
+  const [resumeList, setResumeList] = useState<{ id: string; title: string | null }[]>([]);
+
+  // Basic UX state
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Which section should be immediately renamed (newly added)
+  const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
+
+  // Resume title edit (inline, same as section rename)
+  const [editingResumeTitle, setEditingResumeTitle] = useState(false);
+  const [draftResumeTitle, setDraftResumeTitle] = useState("");
+  const [deleteResumeDialogOpen, setDeleteResumeDialogOpen] = useState(false);
+
+  const activeSection = useMemo(() => {
+    if (sections.length === 0) return undefined;
+    return sections.find((s) => s.id === activeSectionId) ?? sections[0];
+  }, [sections, activeSectionId]);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // --------------------------------------------------
+  // Initial load from Supabase
+  // --------------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+
+    async function init() {
+      try {
+        setIsLoading(true);
+
+        const state = await loadOrCreateResumeState();
+        if (cancelled) return;
+
+        setResumeId(state.resumeId);
+        setResumeTitle(state.title || "My Professional Resume");
+
+        // Load resume list for switcher
+        const list = await listResumes();
+        if (!cancelled) setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
+
+        // If user has no sections yet, seed defaults once and save them
+        if (!state.sections || state.sections.length === 0) {
+          const defaults = getDefaultSections();
+
+          setSections(defaults);
+          setActiveSectionId(defaults[0]?.id ?? "");
+
+          // Save seeded defaults so next refresh loads from db
+          await saveResumeState({
+            resumeId: state.resumeId,
+            title: state.title || "My Professional Resume",
+            template: state.template ?? null,
+            sections: defaults.map((s, idx) => ({
+              id: s.id,
+              type: s.type,
+              label: s.label,
+              mode: s.mode,
+              contentHtml: s.contentHtml,
+              structuredData: s.structuredData,
+              sortOrder: idx,
+            })),
+          });
+
+          const list = await listResumes();
+          if (!cancelled) setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
+          return;
+        }
+
+        // Otherwise load from DB
+        const loadedSections: ResumeSection[] = state.sections
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((s) => ({
+            id: s.id,
+            type: s.type,
+            label: s.label,
+            mode: s.mode,
+            contentHtml: s.contentHtml,
+            structuredData: s.structuredData,
+          }));
+
+        setSections(loadedSections);
+        setActiveSectionId(loadedSections[0]?.id ?? "");
+      } catch (err) {
+        console.error(err);
+
+        // If anything fails, fall back to local defaults so UI still works
+        const defaults = getDefaultSections();
+        if (cancelled) return;
+
+        setSections(defaults);
+        setActiveSectionId(defaults[0]?.id ?? "");
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    init();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // --------------------------------------------------
+  // Drag & drop ordering
+  // --------------------------------------------------
+  function onDragEnd(event: any) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = sections.findIndex((s) => s.id === active.id);
+    const newIndex = sections.findIndex((s) => s.id === over.id);
+
+    setSections((prev) => arrayMove(prev, oldIndex, newIndex));
+  }
+
+  // --------------------------------------------------
+  // Update a section (editor changes)
+  // --------------------------------------------------
+  function updateSection(id: string, patch: Partial<ResumeSection>) {
+    setSections((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
+    );
+  }
+
+  // --------------------------------------------------
+  // Add section
+  // --------------------------------------------------
+  function addSection() {
+    const newId = crypto.randomUUID(); // real UUID for Supabase
+    const newSection: ResumeSection = {
+      id: newId,
+      type: "custom",
+      label: "Custom Section",
+      mode: "free",
+      contentHtml: "",
+    };
+
+    setSections((prev) => [...prev, newSection]);
+    setActiveSectionId(newId);
+
+    // Immediately enter rename mode for the newly added section
+    setRenamingSectionId(newId);
+  }
+
+  // --------------------------------------------------
+  // Delete section
+  // --------------------------------------------------
+  function deleteSection(id: string) {
+    setSections((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+
+      if (next.length === 0) {
+        setActiveSectionId("");
+        return next;
+      }
+
+      if (activeSectionId === id) {
+        setActiveSectionId(next[0].id);
+      }
+
+      return next;
+    });
+  }
+
+  // --------------------------------------------------
+  // Save (universal save button)
+  // --------------------------------------------------
+  async function onSave() {
+    if (!resumeId) return;
+
+    try {
+      setIsSaving(true);
+
+      await saveResumeState({
+        resumeId,
+        title: resumeTitle,
+        template: null,
+        sections: sections.map((s, idx) => ({
+          id: s.id,
+          type: s.type,
+          label: s.label,
+          mode: s.mode,
+          contentHtml: s.contentHtml,
+          structuredData: s.structuredData,
+          sortOrder: idx,
+        })),
+      });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  // --------------------------------------------------
+  // Switch resume (load by id)
+  // --------------------------------------------------
+  async function switchResume(id: string) {
+    if (id === resumeId) return;
+    try {
+      setIsLoading(true);
+      const state = await loadResumeById(id);
+      if (!state) return;
+
+      setResumeId(state.resumeId);
+      setResumeTitle(state.title || "Untitled");
+
+      if (!state.sections || state.sections.length === 0) {
+        const defaults = getDefaultSections();
+        setSections(defaults);
+        setActiveSectionId(defaults[0]?.id ?? "");
+        await saveResumeState({
+          resumeId: state.resumeId,
+          title: state.title || "Untitled",
+          template: state.template ?? null,
+          sections: defaults.map((s, idx) => ({
+            id: s.id,
+            type: s.type,
+            label: s.label,
+            mode: s.mode,
+            contentHtml: s.contentHtml,
+            structuredData: s.structuredData,
+            sortOrder: idx,
+          })),
+        });
+      } else {
+        const loadedSections: ResumeSection[] = state.sections
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((s) => ({
+            id: s.id,
+            type: s.type,
+            label: s.label,
+            mode: s.mode,
+            contentHtml: s.contentHtml,
+            structuredData: s.structuredData,
+          }));
+        setSections(loadedSections);
+        setActiveSectionId(loadedSections[0]?.id ?? "");
+      }
+
+      const list = await listResumes();
+      setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // --------------------------------------------------
+  // New resume
+  // --------------------------------------------------
+  async function onNewResume() {
+    try {
+      setIsLoading(true);
+      const state = await createResume();
+      const defaults = getDefaultSections();
+
+      setResumeId(state.resumeId);
+      setResumeTitle(state.title || "New Resume");
+      setSections(defaults);
+      setActiveSectionId(defaults[0]?.id ?? "");
+
+      await saveResumeState({
+        resumeId: state.resumeId,
+        title: state.title || "New Resume",
+        template: null,
+        sections: defaults.map((s, idx) => ({
+          id: s.id,
+          type: s.type,
+          label: s.label,
+          mode: s.mode,
+          contentHtml: s.contentHtml,
+          structuredData: s.structuredData,
+          sortOrder: idx,
+        })),
+      });
+
+      const list = await listResumes();
+      setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // --------------------------------------------------
+  // Resume title edit (same behavior as section rename)
+  // --------------------------------------------------
+  function startEditResumeTitle() {
+    setDraftResumeTitle(resumeTitle);
+    setEditingResumeTitle(true);
+  }
+
+  function cancelEditResumeTitle() {
+    setEditingResumeTitle(false);
+    setDraftResumeTitle("");
+  }
+
+  async function commitEditResumeTitle() {
+    const next = draftResumeTitle.trim();
+    if (next.length > 0 && next !== resumeTitle && resumeId) {
+      setResumeTitle(next);
+      await saveResumeState({
+        resumeId,
+        title: next,
+        template: null,
+        sections: sections.map((s, idx) => ({
+          id: s.id,
+          type: s.type,
+          label: s.label,
+          mode: s.mode,
+          contentHtml: s.contentHtml,
+          structuredData: s.structuredData,
+          sortOrder: idx,
+        })),
+      });
+      const list = await listResumes();
+      setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
+    }
+    setEditingResumeTitle(false);
+    setDraftResumeTitle("");
+  }
+
+  // --------------------------------------------------
+  // Delete resume (with confirmation)
+  // --------------------------------------------------
+  async function confirmDeleteResume() {
+    if (!resumeId) return;
+    const toDeleteId = resumeId;
+    const rest = resumeList.filter((r) => r.id !== toDeleteId);
+
+    try {
+      await deleteResume(toDeleteId);
+      setDeleteResumeDialogOpen(false);
+
+      if (rest.length > 0) {
+        await switchResume(rest[0].id);
+      } else {
+        await onNewResume();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  return (
+    <div className="h-[calc(100vh-64px)] w-full">
+      {/* Top bar */}
+      <div className="flex items-center justify-between border-b bg-background px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 rounded bg-blue-600 text-white grid place-items-center text-sm font-bold shrink-0">
+            CA
+          </div>
+          {editingResumeTitle ? (
+            <input
+              value={draftResumeTitle}
+              onChange={(e) => setDraftResumeTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitEditResumeTitle();
+                if (e.key === "Escape") cancelEditResumeTitle();
+              }}
+              onBlur={() => commitEditResumeTitle()}
+              autoFocus
+              className="rounded border px-2 py-1 text-sm font-semibold w-40"
+            />
+          ) : (
+            <>
+              <select
+                value={resumeId}
+                onChange={(e) => switchResume(e.target.value)}
+                disabled={isLoading}
+                className="font-semibold bg-transparent border-none cursor-pointer focus:ring-0 focus:outline-none text-sm py-0 pr-6 min-w-[140px]"
+              >
+                {resumeList.length === 0 && resumeId ? (
+                  <option value={resumeId}>{resumeTitle}</option>
+                ) : (
+                  resumeList.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.title}
+                    </option>
+                  ))
+                )}
+              </select>
+              <button
+                type="button"
+                onClick={startEditResumeTitle}
+                disabled={isLoading}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                aria-label="Rename resume"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteResumeDialogOpen(true)}
+                disabled={isLoading}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                aria-label="Delete resume"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={onNewResume}
+            disabled={isLoading}
+            className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+          >
+            + New resume
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button className="rounded-md border px-3 py-1.5 text-sm">Print / PDF</button>
+
+          <button
+            onClick={onSave}
+            disabled={isLoading || isSaving}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-60"
+          >
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </div>
+
+      {/* 3-panel body */}
+      <div className="grid h-full grid-cols-[360px_1fr_520px]">
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+            <DocumentStructurePanel
+              sections={sections}
+              activeSectionId={activeSectionId}
+              onSelect={setActiveSectionId}
+              onAdd={addSection}
+              onRename={(id, label) => updateSection(id, { label })}
+              onDelete={deleteSection}
+              renamingSectionId={renamingSectionId}
+              onFinishRenaming={() => setRenamingSectionId(null)}
+            />
+          </SortableContext>
+        </DndContext>
+
+        <SectionEditorPanel
+          section={activeSection}
+          onChange={(patch) => {
+            if (!activeSection) return;
+            updateSection(activeSection.id, patch);
+          }}
+        />
+
+        <ResumePreviewPanel sections={sections} />
+      </div>
+
+      <Dialog.Root open={deleteResumeDialogOpen} onOpenChange={setDeleteResumeDialogOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-background p-4 shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+            <Dialog.Title className="text-sm font-semibold">Delete resume</Dialog.Title>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Are you sure you wish to delete this resume? This cannot be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteResumeDialogOpen(false)}
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteResume}
+                className="rounded-md bg-destructive px-3 py-1.5 text-sm text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </div>
+  );
+}
+</file>
+
+<file path="caat-frontend/components/resume-builder/ResumePreviewPanel.tsx">
+"use client";
+
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { ResumeSection } from "./types";
+
+function safeText(x: any) {
+  return typeof x === "string" ? x : "";
+}
+
+const PAGE_WIDTH_PX = 420;
+const PAGE_HEIGHT_PX = PAGE_WIDTH_PX * Math.SQRT2;
+const PAGE_PADDING_PX = 40; // p-10
+const FIRST_PAGE_GAP_PX = 32; // mt-8
+const SECTION_GROUP_GAP_PX = 24; // mt-6 between sections
+const SECTION_HEADER_MARGIN_PX = 12; // mb-3 on section header (not captured by offsetHeight)
+const PAGE_BOTTOM_RESERVE_PX = 32; // whitespace reserved at bottom of each page (Word-like gap)
+
+type RenderBlock = {
+  id: string;
+  sectionId: string;
+  sectionLabel: string;
+  tagName: string;
+  html: string;
+  plainText: string;
+  splittable: boolean;
+};
+
+type PageSectionChunk = {
+  sectionId: string;
+  sectionLabel: string;
+  includeSectionHeader: boolean;
+  htmlBlocks: string[];
+};
+
+type PageModel = {
+  pageIndex: number;
+  sections: PageSectionChunk[];
+};
+
+function getTopLevelBlocks(
+  sectionId: string,
+  sectionLabel: string,
+  html: string
+): RenderBlock[] {
+  if (typeof document === "undefined") return [];
+
+  const container = document.createElement("div");
+  container.innerHTML = html || "";
+
+  const nodes = Array.from(container.childNodes);
+  const blocks: RenderBlock[] = [];
+
+  nodes.forEach((node, index) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent?.trim() ?? "";
+      if (!text) return;
+
+      blocks.push({
+        id: `${sectionId}-text-${index}`,
+        sectionId,
+        sectionLabel,
+        tagName: "p",
+        html: `<p>${escapeHtml(text)}</p>`,
+        plainText: text,
+        splittable: true,
+      });
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+    const el = node as HTMLElement;
+    const tagName = el.tagName.toLowerCase();
+
+    if (tagName === "ul" || tagName === "ol") {
+      const items = Array.from(el.children).filter(
+        (child) => child.tagName.toLowerCase() === "li"
+      ) as HTMLElement[];
+
+      if (items.length === 0) {
+        blocks.push({
+          id: `${sectionId}-list-${index}`,
+          sectionId,
+          sectionLabel,
+          tagName,
+          html: el.outerHTML,
+          plainText: el.textContent?.trim() ?? "",
+          splittable: false,
+        });
+        return;
+      }
+
+      items.forEach((li, liIndex) => {
+        const wrapper = document.createElement(tagName);
+        wrapper.appendChild(li.cloneNode(true));
+        blocks.push({
+          id: `${sectionId}-li-${index}-${liIndex}`,
+          sectionId,
+          sectionLabel,
+          tagName: "li",
+          html: wrapper.outerHTML,
+          plainText: li.textContent?.trim() ?? "",
+          splittable: true,
+        });
+      });
+
+      return;
+    }
+
+    blocks.push({
+      id: `${sectionId}-block-${index}`,
+      sectionId,
+      sectionLabel,
+      tagName,
+      html: el.outerHTML,
+      plainText: el.textContent?.trim() ?? "",
+      splittable: tagName === "p" || tagName === "div" || tagName === "li",
+    });
+  });
+
+  if (blocks.length === 0) {
+    blocks.push({
+      id: `${sectionId}-placeholder`,
+      sectionId,
+      sectionLabel,
+      tagName: "p",
+      html: "<p class='text-muted-foreground'>...</p>",
+      plainText: "...",
+      splittable: false,
+    });
+  }
+
+  return blocks;
+}
+
+function escapeHtml(text: string) {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function makeSplitHtml(tagName: string, text: string, originalHtml: string) {
+  const safe = escapeHtml(text);
+
+  if (tagName === "li") {
+    return `<ul><li>${safe}</li></ul>`;
+  }
+
+  if (tagName === "div") {
+    return `<div>${safe}</div>`;
+  }
+
+  if (tagName === "p") {
+    return `<p>${safe}</p>`;
+  }
+
+  return originalHtml;
+}
+
+function words(text: string) {
+  return text.trim().split(/\s+/).filter(Boolean);
+}
+
+export default function ResumePreviewPanel({
+  sections,
+}: {
+  sections: ResumeSection[];
+}) {
+  const personal =
+    sections.find((s) => s.type === "personal")?.structuredData ?? {};
+
+  const contentSections = useMemo(
+    () => sections.filter((s) => s.type !== "personal"),
+    [sections]
+  );
+
+  const blocks = useMemo(() => {
+    if (typeof document === "undefined") return [] as RenderBlock[];
+
+    const result: RenderBlock[] = [];
+    contentSections.forEach((section) => {
+      result.push(
+        ...getTopLevelBlocks(section.id, section.label, section.contentHtml)
+      );
+    });
+    return result;
+  }, [contentSections]);
+
+  const measurementRef = useRef<HTMLDivElement | null>(null);
+  const [pages, setPages] = useState<PageModel[]>([]);
+  const [fontsReady, setFontsReady] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      setFontsReady(true);
+      return;
+    }
+
+    const anyDoc = document as any;
+    if (anyDoc.fonts?.ready) {
+      anyDoc.fonts.ready
+        .then(() => setFontsReady(true))
+        .catch(() => setFontsReady(true));
+    } else {
+      setFontsReady(true);
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!fontsReady || !measurementRef.current) {
+      setPages([]);
+      return;
+    }
+
+    if (blocks.length === 0) {
+      setPages([
+        {
+          pageIndex: 0,
+          sections: [],
+        },
+      ]);
+      return;
+    }
+
+    const root = measurementRef.current;
+    const pageBody = root.querySelector<HTMLElement>("[data-measure-page-body]");
+    const firstPageHeader = root.querySelector<HTMLElement>(
+      "[data-measure-personal-header]"
+    );
+    const sectionHeaderMap: Record<string, number> = {};
+
+    root
+      .querySelectorAll<HTMLElement>("[data-measure-section-header]")
+      .forEach((el) => {
+        const sectionId = el.dataset.sectionId;
+        if (!sectionId) return;
+        sectionHeaderMap[sectionId] = el.offsetHeight;
+      });
+
+    if (!pageBody) return;
+
+    const pageBodyHeight =
+      PAGE_HEIGHT_PX - PAGE_PADDING_PX * 2 - PAGE_BOTTOM_RESERVE_PX;
+
+    const firstHeaderHeight = firstPageHeader?.offsetHeight ?? 0;
+    const firstPageAvailable =
+      pageBodyHeight - firstHeaderHeight - FIRST_PAGE_GAP_PX;
+
+    function createMeasureNode(html: string) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "resume-preview-content";
+      wrapper.style.width = "100%";
+      wrapper.innerHTML = html;
+      return wrapper;
+    }
+
+    function measureHtml(html: string) {
+      if (!pageBody) return 0;
+      const node = createMeasureNode(html);
+      pageBody.appendChild(node);
+      const height = node.offsetHeight;
+      pageBody.removeChild(node);
+      return height;
+    }
+
+    function splitBlockToFit(
+      block: RenderBlock,
+      availableHeight: number
+    ): { headHtml: string | null; tailBlock: RenderBlock | null } {
+      if (!block.splittable) {
+        return { headHtml: null, tailBlock: block };
+      }
+
+      const allWords = words(block.plainText);
+      if (allWords.length <= 1) {
+        return { headHtml: null, tailBlock: block };
+      }
+
+      let low = 1;
+      let high = allWords.length;
+      let best = 0;
+
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        const candidateText = allWords.slice(0, mid).join(" ");
+        const candidateHtml = makeSplitHtml(
+          block.tagName,
+          candidateText,
+          block.html
+        );
+        const candidateHeight = measureHtml(candidateHtml);
+
+        if (candidateHeight <= availableHeight) {
+          best = mid;
+          low = mid + 1;
+        } else {
+          high = mid - 1;
+        }
+      }
+
+      if (best === 0) {
+        return { headHtml: null, tailBlock: block };
+      }
+
+      const headText = allWords.slice(0, best).join(" ");
+      const tailWords = allWords.slice(best);
+
+      const headHtml = makeSplitHtml(block.tagName, headText, block.html);
+
+      if (tailWords.length === 0) {
+        return { headHtml, tailBlock: null };
+      }
+
+      const tailText = tailWords.join(" ");
+      const tailHtml = makeSplitHtml(block.tagName, tailText, block.html);
+
+      return {
+        headHtml,
+        tailBlock: {
+          ...block,
+          id: `${block.id}-cont-${best}`,
+          html: tailHtml,
+          plainText: tailText,
+          splittable: tailWords.length > 1,
+        },
+      };
+    }
+
+    const resultPages: PageModel[] = [];
+    let currentPageIndex = 0;
+    let remainingHeight = firstPageAvailable;
+    let currentPage: PageModel = { pageIndex: 0, sections: [] };
+    // Tracks which sections have had their header placed on any page already.
+    // Continuation chunks on subsequent pages must NOT repeat the header.
+    const sectionsWithHeader = new Set<string>();
+
+    function pushCurrentPage() {
+      resultPages.push(currentPage);
+    }
+
+    function startNewPage() {
+      pushCurrentPage();
+      currentPageIndex += 1;
+      currentPage = { pageIndex: currentPageIndex, sections: [] };
+      remainingHeight = pageBodyHeight;
+    }
+
+    function getOrCreatePageSectionChunk(
+      sectionId: string,
+      sectionLabel: string,
+      includeSectionHeader: boolean
+    ) {
+      const last = currentPage.sections[currentPage.sections.length - 1];
+
+      if (last && last.sectionId === sectionId) {
+        return last;
+      }
+
+      const next: PageSectionChunk = {
+        sectionId,
+        sectionLabel,
+        includeSectionHeader,
+        htmlBlocks: [],
+      };
+
+      currentPage.sections.push(next);
+      return next;
+    }
+
+    const queue = [...blocks];
+
+    while (queue.length > 0) {
+      const block = queue.shift()!;
+      const sectionHeaderHeight = sectionHeaderMap[block.sectionId] ?? 0;
+
+      const lastSectionOnPage =
+        currentPage.sections[currentPage.sections.length - 1];
+
+      // Show the section header only when this section is starting on this page AND
+      // it hasn't had its header placed on any previous page (i.e. not a continuation).
+      const isSectionContinuation = sectionsWithHeader.has(block.sectionId);
+      const needsSectionHeader =
+        !isSectionContinuation &&
+        (!lastSectionOnPage || lastSectionOnPage.sectionId !== block.sectionId);
+
+      // headerCost = header element height + mb-3 margin + mt-6 gap before non-first sections
+      const isFirstSectionOnPage = currentPage.sections.length === 0;
+      const headerCost = needsSectionHeader
+        ? sectionHeaderHeight +
+          SECTION_HEADER_MARGIN_PX +
+          (!isFirstSectionOnPage ? SECTION_GROUP_GAP_PX : 0)
+        : 0;
+      const fullBlockHeight = measureHtml(block.html);
+      const totalNeeded = headerCost + fullBlockHeight;
+
+      if (totalNeeded <= remainingHeight) {
+        // Block fits entirely on this page.
+        const chunk = getOrCreatePageSectionChunk(
+          block.sectionId,
+          block.sectionLabel,
+          needsSectionHeader
+        );
+        chunk.htmlBlocks.push(block.html);
+        remainingHeight -= totalNeeded;
+        if (needsSectionHeader) sectionsWithHeader.add(block.sectionId);
+        continue;
+      }
+
+      // Block doesn't fit entirely. Try to split it across this page and the next.
+      // availableForBlock is the space left after the header (if any).
+      const availableForBlock = remainingHeight - headerCost;
+
+      if (availableForBlock > 0 && block.splittable) {
+        const split = splitBlockToFit(block, availableForBlock);
+
+        if (split.headHtml) {
+          // Part of the block fits — place the head on this page.
+          const chunk = getOrCreatePageSectionChunk(
+            block.sectionId,
+            block.sectionLabel,
+            needsSectionHeader
+          );
+          chunk.htmlBlocks.push(split.headHtml);
+          if (needsSectionHeader) sectionsWithHeader.add(block.sectionId);
+
+          const placedHeight = headerCost + measureHtml(split.headHtml);
+          remainingHeight = Math.max(0, remainingHeight - placedHeight);
+
+          startNewPage();
+          if (split.tailBlock) queue.unshift(split.tailBlock);
+          continue;
+        }
+      }
+
+      // Can't split (non-splittable block, or no words fit in remaining space).
+      // If the page already has content, move to a fresh page and retry.
+      // If the page is empty (block is just too tall), force-place it to avoid an infinite loop.
+      if (currentPage.sections.length > 0) {
+        startNewPage();
+        queue.unshift(block);
+        continue;
+      }
+
+      // Force-place on empty page.
+      const chunk = getOrCreatePageSectionChunk(
+        block.sectionId,
+        block.sectionLabel,
+        needsSectionHeader
+      );
+      chunk.htmlBlocks.push(block.html);
+      if (needsSectionHeader) sectionsWithHeader.add(block.sectionId);
+      remainingHeight = 0;
+
+      if (queue.length > 0) {
+        startNewPage();
+      }
+    }
+
+    pushCurrentPage();
+    setPages(resultPages);
+  }, [blocks, fontsReady]);
+
+  return (
+    <div className="border-l bg-muted/30 p-4 overflow-auto">
+      <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+        <div>A4</div>
+        <div>Professional Resume Style</div>
+        <div>100%</div>
+      </div>
+
+      {/* hidden measurer */}
+      <div
+        ref={measurementRef}
+        className="pointer-events-none fixed -left-[9999px] -top-[9999px]"
+      >
+        <div
+          className="bg-white border p-10"
+          style={{ width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX }}
+        >
+          <div data-measure-page-body className="h-full overflow-hidden">
+            <div data-measure-personal-header className="text-center">
+              <div className="text-2xl font-bold tracking-wide">
+                {safeText(personal.fullName) || "JOHN DOE"}
+              </div>
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                {safeText(personal.email) || "john@example.com"}
+                {"  •  "}
+                {safeText(personal.phone) || "+1 234 567 890"}
+                {"  •  "}
+                {safeText(personal.location) || "Sydney, Australia"}
+                {"  •  "}
+                <span className="text-blue-600 underline">
+                  {safeText(personal.linkedin) || "linkedin.com/in/johndoe"}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              {contentSections.map((section) => (
+                <div key={section.id}>
+                  <div
+                    data-measure-section-header
+                    data-section-id={section.id}
+                    className="mb-3"
+                  >
+                    <div className="text-[11px] font-bold tracking-wider">
+                      {section.label.toUpperCase()}
+                    </div>
+                    <div className="mt-1 h-px w-full bg-black/40" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col items-center gap-6">
+        {pages.map((page) => (
+          <div
+            key={page.pageIndex}
+            className="mx-auto bg-white shadow-sm border p-10 overflow-hidden flex flex-col"
+            style={{ width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX }}
+          >
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            {page.pageIndex === 0 && (
+              <div className="text-center">
+                <div className="text-2xl font-bold tracking-wide">
+                  {safeText(personal.fullName) || "JOHN DOE"}
+                </div>
+                <div className="mt-1 text-[11px] text-muted-foreground">
+                  {safeText(personal.email) || "john@example.com"}
+                  {"  •  "}
+                  {safeText(personal.phone) || "+1 234 567 890"}
+                  {"  •  "}
+                  {safeText(personal.location) || "Sydney, Australia"}
+                  {"  •  "}
+                  <span className="text-blue-600 underline">
+                    {safeText(personal.linkedin) || "linkedin.com/in/johndoe"}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className={page.pageIndex === 0 ? "mt-8" : ""}>
+              {page.sections.map((section, sectionIndex) => (
+                <div
+                  key={`${page.pageIndex}-${section.sectionId}-${sectionIndex}`}
+                  className={sectionIndex > 0 ? "mt-6" : ""}
+                >
+                  {section.includeSectionHeader && (
+                    <div className="mb-3">
+                      <div className="text-[11px] font-bold tracking-wider">
+                        {section.sectionLabel.toUpperCase()}
+                      </div>
+                      <div className="mt-1 h-px w-full bg-black/40" />
+                    </div>
+                  )}
+
+                  {section.htmlBlocks.map((html, i) => (
+                    <div
+                      key={i}
+                      className="resume-preview-content"
+                      dangerouslySetInnerHTML={{ __html: html }}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+            </div>
+
+            <footer className="flex-shrink-0 pt-2 text-center text-[10px] text-muted-foreground">
+              {page.pageIndex + 1} of {pages.length}
+            </footer>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+</file>
+
 <file path="caat-frontend/components/login-form.tsx">
 "use client"
 
@@ -7979,6 +9514,56 @@ export function LoginForm({
 }
 </file>
 
+<file path="caat-frontend/.gitignore">
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# repomix
+repomix-output.xml
+
+# claude
+.claude
+</file>
+
 <file path="my-app/package.json">
 {
   "name": "my-app",
@@ -8034,6 +9619,7 @@ import {
   LayoutDashboard,
   FileText,
   BookOpen,
+  GraduationCap,
 } from "lucide-react"
 
 import {
@@ -8067,6 +9653,7 @@ const data = {
     { title: "Majors", icon: BookOpen, url: "/majors", },
     { title: "Resume Builder", icon: FileUser, url: "/resume-builder", },
     { title: "Essays", icon: FileText, url: "/essays", },
+    { title: "Scholarships", icon: GraduationCap, url: "/scholarships", },
   ]
 }
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {

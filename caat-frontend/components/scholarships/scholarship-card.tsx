@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -104,8 +105,11 @@ export default function ScholarshipCard({
       </CardContent>
 
       <CardFooter className="pt-0">
-        <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-600 dark:hover:bg-blue-700">
-          View Details
+        <Button
+          asChild
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-600 dark:hover:bg-blue-700"
+        >
+          <Link href={`/scholarships/${scholarship.id}`}>View Details</Link>
         </Button>
       </CardFooter>
     </Card>
