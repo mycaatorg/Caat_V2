@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   FileText,
   BookOpen,
+  GraduationCap,
 } from "lucide-react"
 
 import {
@@ -44,6 +45,7 @@ const data = {
     { title: "Majors", icon: BookOpen, url: "/majors", },
     { title: "Resume Builder", icon: FileUser, url: "/resume-builder", },
     { title: "Essays", icon: FileText, url: "/essays", },
+    { title: "Scholarships", icon: GraduationCap, url: "/scholarships", },
   ]
 }
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
