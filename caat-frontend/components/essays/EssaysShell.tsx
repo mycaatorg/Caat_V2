@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Card,
   CardContent,
@@ -234,6 +234,29 @@ export default function EssaysShell() {
     activeDraft?.updated_at
       ? format(new Date(activeDraft.updated_at), "MMM d, yyyy 'at' h:mm a")
       : "Never";
+
+  // -------------------------------------------------------------------------
+  // Autosave — fires 2 s after the user stops typing, only when content has
+  // actually changed from what is already persisted in activeDraft
+  // -------------------------------------------------------------------------
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Skip when content matches what is already saved (e.g. initial load or
+    // switching drafts) so we never trigger a spurious write
+    if (essayContent === activeDraft?.content) return;
+    if (!activeDraft || !isAuthenticated) return;
+
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      handleSave();
+    }, 2000);
+
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [essayContent]);
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
@@ -473,19 +496,43 @@ export default function EssaysShell() {
                   </div>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col pt-4">
-                  <p className="mb-2 text-xs text-muted-foreground">
-                    Last saved: {draftsLoading ? "…" : lastSavedLabel}
-                  </p>
-                  {saveError && (
-                    <p className="mb-2 text-xs text-destructive">{saveError}</p>
+                  {!draftsLoading && !activeDraft ? (
+                    <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed py-16 text-center">
+                      <FileText className="h-8 w-8 text-muted-foreground/50" />
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">No draft selected</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground/70">
+                          Create a draft first to start writing.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={creatingDraft || !isAuthenticated}
+                        onClick={handleNewDraft}
+                        className="gap-1.5"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        New draft
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="mb-2 text-xs text-muted-foreground">
+                        {saving ? "Saving…" : `Last saved on: ${draftsLoading ? "…" : lastSavedLabel}`}
+                      </p>
+                      {saveError && (
+                        <p className="mb-2 text-xs text-destructive">{saveError}</p>
+                      )}
+                      <Textarea
+                        placeholder="Start writing your essay here."
+                        value={essayContent}
+                        onChange={(e) => setEssayContent(e.target.value)}
+                        disabled={draftsLoading}
+                        className="min-h-70 flex-1 resize-y font-mono text-sm"
+                      />
+                    </>
                   )}
-                  <Textarea
-                    placeholder="Start writing your essay here."
-                    value={essayContent}
-                    onChange={(e) => setEssayContent(e.target.value)}
-                    disabled={draftsLoading}
-                    className="min-h-70 flex-1 resize-y font-mono text-sm"
-                  />
                 </CardContent>
               </Card>
             </>

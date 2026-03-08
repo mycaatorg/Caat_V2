@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { format } from "date-fns";
 import {
   DndContext,
   PointerSensor,
@@ -46,6 +47,7 @@ export default function ResumeBuilderShell() {
   // Basic UX state
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
   // Which section should be immediately renamed (newly added)
   const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
@@ -229,12 +231,36 @@ export default function ResumeBuilderShell() {
           sortOrder: idx,
         })),
       });
+
+      setLastSavedAt(new Date());
     } catch (err) {
       console.error(err);
     } finally {
       setIsSaving(false);
     }
   }
+
+  // -------------------------------------------------------------------------
+  // Autosave — fires 2 s after any sections change, guarded by isLoading so
+  // programmatic section sets (initial load, resume switch, new resume) never
+  // trigger a spurious write
+  // -------------------------------------------------------------------------
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // isLoading is true during all programmatic section changes
+    if (isLoading || !resumeId) return;
+
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      onSave();
+    }, 2000);
+
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections]);
 
   // --------------------------------------------------
   // Switch resume (load by id)
@@ -457,7 +483,15 @@ export default function ResumeBuilderShell() {
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {isSaving ? (
+            <span className="text-xs text-muted-foreground">Saving…</span>
+          ) : lastSavedAt ? (
+            <span className="text-xs text-muted-foreground">
+              Last saved on: {format(lastSavedAt, "MMM d, yyyy 'at' h:mm a")}
+            </span>
+          ) : null}
+
           <button className="rounded-md border px-3 py-1.5 text-sm">Print / PDF</button>
 
           <button
