@@ -60,6 +60,73 @@ export async function requireUserId(): Promise<string> {
    Load: get-or-create resume + sections
 ---------------------------- */
 
+/** List all resumes for the current user (for switcher). */
+export async function listResumes(): Promise<Pick<ResumeRow, "id" | "title" | "created_at">[]> {
+	const userId = await requireUserId();
+	const { data, error } = await supabase
+		.from("resumes")
+		.select("id, title, created_at")
+		.eq("user_id", userId)
+		.order("created_at", { ascending: false });
+
+	if (error) throw new Error(error.message);
+	return (data ?? []) as Pick<ResumeRow, "id" | "title" | "created_at">[];
+}
+
+/** Load a specific resume by id (sections included). */
+export async function loadResumeById(resumeId: string): Promise<ResumeState | null> {
+	const userId = await requireUserId();
+
+	const { data: resume, error: resumeErr } = await supabase
+		.from("resumes")
+		.select("*")
+		.eq("id", resumeId)
+		.eq("user_id", userId)
+		.maybeSingle();
+
+	if (resumeErr || !resume) return null;
+
+	const { data: sectionRows, error: secErr } = await supabase
+		.from("resume_sections")
+		.select("*")
+		.eq("resume_id", resumeId)
+		.order("sort_order", { ascending: true });
+
+	if (secErr) throw new Error(secErr.message);
+
+	return {
+		resumeId: (resume as ResumeRow).id,
+		title: (resume as ResumeRow).title ?? "Untitled",
+		template: (resume as ResumeRow).template ?? null,
+		sections: (sectionRows ?? []).map(rowToState),
+	};
+}
+
+/** Create a new resume and return its state (with no sections or default sections). */
+export async function createResume(title?: string): Promise<ResumeState> {
+	const userId = await requireUserId();
+
+	const { data: created, error } = await supabase
+		.from("resumes")
+		.insert({
+			user_id: userId,
+			title: title ?? "New Resume",
+			template: null,
+		})
+		.select("*")
+		.single();
+
+	if (error) throw new Error(error.message);
+	const resume = created as ResumeRow;
+
+	return {
+		resumeId: resume.id,
+		title: resume.title ?? "New Resume",
+		template: resume.template ?? null,
+		sections: [],
+	};
+}
+
 export async function loadOrCreateResumeState(): Promise<ResumeState> {
         const userId = await requireUserId();
 
@@ -150,4 +217,22 @@ export async function deleteSection(sectionId: string): Promise<void> {
                 .eq("id", sectionId);
 
         if (error) throw new Error(error.message);
+}
+
+/** Delete a whole resume and its sections (user-scoped). */
+export async function deleteResume(resumeId: string): Promise<void> {
+	const userId = await requireUserId();
+
+	const { error: secErr } = await supabase
+		.from("resume_sections")
+		.delete()
+		.eq("resume_id", resumeId);
+	if (secErr) throw new Error(secErr.message);
+
+	const { error: resumeErr } = await supabase
+		.from("resumes")
+		.delete()
+		.eq("id", resumeId)
+		.eq("user_id", userId);
+	if (resumeErr) throw new Error(resumeErr.message);
 }

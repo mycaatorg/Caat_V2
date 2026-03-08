@@ -264,6 +264,7 @@ export default function ResumePreviewPanel({
     }
 
     function measureHtml(html: string) {
+      if (!pageBody) return 0;
       const node = createMeasureNode(html);
       pageBody.appendChild(node);
       const height = node.offsetHeight;
@@ -527,9 +528,10 @@ export default function ResumePreviewPanel({
         {pages.map((page) => (
           <div
             key={page.pageIndex}
-            className="mx-auto bg-white shadow-sm border p-10 overflow-hidden"
+            className="mx-auto bg-white shadow-sm border p-10 overflow-hidden flex flex-col"
             style={{ width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX }}
           >
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
             {page.pageIndex === 0 && (
               <div className="text-center">
                 <div className="text-2xl font-bold tracking-wide">
@@ -574,6 +576,11 @@ export default function ResumePreviewPanel({
                 </div>
               ))}
             </div>
+            </div>
+
+            <footer className="flex-shrink-0 pt-2 text-center text-[10px] text-muted-foreground">
+              {page.pageIndex + 1} of {pages.length}
+            </footer>
           </div>
         ))}
       </div>
