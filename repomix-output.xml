@@ -50,6 +50,10 @@ caat-frontend/
     (main)/
       dashboard/
         page.tsx
+      documents/
+        api.ts
+        client.tsx
+        page.tsx
       essays/
         client.tsx
         page.tsx
@@ -65,6 +69,10 @@ caat-frontend/
         client.tsx
         page.tsx
       scholarships/
+        [id]/
+          bookmark-button.tsx
+          page.tsx
+        client.tsx
         page.tsx
       schools/
         page.tsx
@@ -151,6 +159,7 @@ caat-frontend/
     images.d.ts
     majors.ts
     resume.ts
+    scholarships.ts
   .gitignore
   components.json
   eslint.config.mjs
@@ -181,18 +190,173 @@ my-app/
   README.md
   tsconfig.json
 .gitignore
-package.json
 README.md
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
 
-<file path="package.json">
-{
-  "dependencies": {
-    "@supabase/supabase-js": "^2.89.0"
+<file path="caat-frontend/app/(main)/documents/api.ts">
+import { supabase } from "@/src/lib/supabaseClient";
+
+const BUCKET = "user-documents";
+
+function sanitizeFileName(name: string): string {
+  return name.replace(/\s+/g, "_").replace(/[^\w.\-]/g, "_");
+}
+
+export type DocCategory = "transcripts" | "identity" | "language" | "letters";
+
+export interface DocumentRow {
+  id: string;
+  user_id: string;
+  file_name: string;
+  storage_path: string;
+  category: string;
+  status: string;
+  mime_type: string | null;
+  file_size: number | null;
+  uploaded_at: string;
+  review_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchDocuments(): Promise<DocumentRow[]> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
+    .from("documents")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("uploaded_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as DocumentRow[];
+}
+
+export async function uploadDocument(
+  file: File,
+  category: DocCategory
+): Promise<DocumentRow> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
+  const storagePath = `${user.id}/${category}/${Date.now()}_${sanitizeFileName(file.name)}`;
+
+  const { error: storageError } = await supabase.storage
+    .from(BUCKET)
+    .upload(storagePath, file, { contentType: file.type });
+
+  if (storageError) throw new Error(storageError.message);
+
+  const { data, error } = await supabase
+    .from("documents")
+    .insert({
+      user_id: user.id,
+      file_name: file.name,
+      storage_path: storagePath,
+      category,
+      mime_type: file.type,
+      file_size: file.size,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    await supabase.storage.from(BUCKET).remove([storagePath]);
+    throw new Error(error.message);
   }
+
+  return data as DocumentRow;
+}
+
+export async function updateDocumentStatus(
+  id: string,
+  status: string
+): Promise<DocumentRow> {
+  const { data, error } = await supabase
+    .from("documents")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as DocumentRow;
+}
+
+export async function deleteDocument(doc: DocumentRow): Promise<void> {
+  await supabase.storage.from(BUCKET).remove([doc.storage_path]);
+
+  const { error } = await supabase
+    .from("documents")
+    .delete()
+    .eq("id", doc.id);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function reuploadDocument(
+  doc: DocumentRow,
+  newFile: File
+): Promise<DocumentRow> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
+  const newStoragePath = `${user.id}/${doc.category}/${Date.now()}_${sanitizeFileName(newFile.name)}`;
+
+  const { error: storageError } = await supabase.storage
+    .from(BUCKET)
+    .upload(newStoragePath, newFile, { contentType: newFile.type });
+
+  if (storageError) throw new Error(storageError.message);
+
+  const { data, error } = await supabase
+    .from("documents")
+    .update({
+      file_name: newFile.name,
+      storage_path: newStoragePath,
+      mime_type: newFile.type,
+      file_size: newFile.size,
+      status: "pending_review",
+      updated_at: new Date().toISOString(),
+      uploaded_at: new Date().toISOString(),
+    })
+    .eq("id", doc.id)
+    .select()
+    .single();
+
+  if (error) {
+    await supabase.storage.from(BUCKET).remove([newStoragePath]);
+    throw new Error(error.message);
+  }
+
+  // Remove old file after successful DB update
+  await supabase.storage.from(BUCKET).remove([doc.storage_path]);
+
+  return data as DocumentRow;
+}
+
+export async function getDocumentSignedUrl(
+  storagePath: string
+): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(storagePath, 3600);
+
+  if (error || !data) throw new Error("Could not generate URL");
+  return data.signedUrl;
 }
 </file>
 
@@ -235,6 +399,1022 @@ export default function DashboardPage() {
       </div>
     </>
   )
+}
+</file>
+
+<file path="caat-frontend/app/(main)/documents/client.tsx">
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import {
+  Upload,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  FileText,
+  Image as ImageIcon,
+  MoreVertical,
+  ChevronLeft,
+  ChevronRight,
+  Info,
+  HelpCircle,
+  ArrowRight,
+  Trash2,
+  RefreshCw,
+  Eye,
+  CloudUpload,
+  Loader2,
+  FileArchive,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetFooter,
+  SheetTitle,
+  SheetDescription,
+  SheetClose,
+} from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  fetchDocuments,
+  uploadDocument,
+  deleteDocument,
+  reuploadDocument,
+  updateDocumentStatus,
+  getDocumentSignedUrl,
+  DocumentRow,
+  DocCategory,
+} from "./api";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+const TABS = [
+  "All Files",
+  "Academic Transcripts",
+  "Passport & ID",
+  "Language Proficiency",
+  "Recommendation Letters",
+] as const;
+
+type Tab = (typeof TABS)[number];
+
+const TAB_CATEGORY_MAP: Partial<Record<Tab, string>> = {
+  "Academic Transcripts": "transcripts",
+  "Passport & ID": "identity",
+  "Language Proficiency": "language",
+  "Recommendation Letters": "letters",
+};
+
+const CATEGORY_OPTIONS: { value: DocCategory; label: string }[] = [
+  { value: "transcripts", label: "Academic Transcripts" },
+  { value: "identity", label: "Passport & ID" },
+  { value: "language", label: "Language Proficiency" },
+  { value: "letters", label: "Recommendation Letters" },
+];
+
+const CATEGORY_LABELS: Record<string, string> = {
+  transcripts: "Transcripts",
+  identity: "Identity",
+  language: "Language",
+  letters: "Letters",
+};
+
+const ACCEPTED_TYPES = ".pdf,.jpg,.jpeg,.png";
+const MAX_FILE_SIZE_MB = 10;
+const PAGE_SIZE = 8;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatFileSize(bytes: number | null): string {
+  if (!bytes) return "";
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function mapStatus(status: string): "Verified" | "In Review" | "Resubmit" {
+  if (status === "verified") return "Verified";
+  if (status === "resubmit") return "Resubmit";
+  return "In Review";
+}
+
+function getFileExt(fileName: string): string {
+  return fileName.split(".").pop()?.toLowerCase() ?? "";
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+function StatCard({
+  label,
+  count,
+  icon,
+  barColor,
+  total,
+}: {
+  label: string;
+  count: number;
+  icon: React.ReactNode;
+  barColor: string;
+  total: number;
+}) {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  return (
+    <div className="rounded-xl border bg-card p-5 shadow-sm">
+      <div className="flex items-start justify-between mb-1">
+        <span className="text-sm text-muted-foreground">{label}</span>
+        {icon}
+      </div>
+      <p className="text-4xl font-bold tracking-tight mb-4">
+        {String(count).padStart(2, "0")}
+      </p>
+      <div className="h-1.5 w-full rounded-full bg-muted">
+        <div
+          className={cn("h-full rounded-full transition-all", barColor)}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function FileIcon({ fileName, status }: { fileName: string; status: string }) {
+  const ext = getFileExt(fileName);
+  const isError = status === "resubmit";
+  if (ext === "jpg" || ext === "jpeg" || ext === "png") {
+    return (
+      <ImageIcon
+        className={cn(
+          "h-5 w-5 shrink-0",
+          isError ? "text-red-500" : "text-blue-500"
+        )}
+      />
+    );
+  }
+  if (ext === "pdf") {
+    return (
+      <FileText
+        className={cn(
+          "h-5 w-5 shrink-0",
+          isError ? "text-red-500" : "text-blue-500"
+        )}
+      />
+    );
+  }
+  return (
+    <FileArchive
+      className={cn(
+        "h-5 w-5 shrink-0",
+        isError ? "text-red-500" : "text-muted-foreground"
+      )}
+    />
+  );
+}
+
+const STATUS_OPTIONS = [
+  {
+    value: "verified",
+    label: "Verified",
+    icon: <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />,
+  },
+  {
+    value: "pending_review",
+    label: "In Review",
+    icon: <Clock className="h-3.5 w-3.5 text-amber-400" />,
+  },
+  {
+    value: "resubmit",
+    label: "Resubmit",
+    icon: <AlertTriangle className="h-3.5 w-3.5 text-red-500" />,
+  },
+] as const;
+
+function StatusBadge({
+  status,
+  onStatusChange,
+}: {
+  status: string;
+  onStatusChange: (newStatus: string) => void;
+}) {
+  const mapped = mapStatus(status);
+
+  let badge: React.ReactNode;
+  if (mapped === "Verified") {
+    badge = (
+      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-green-600">
+        <CheckCircle2 className="h-4 w-4" />
+        Verified
+      </span>
+    );
+  } else if (mapped === "In Review") {
+    badge = (
+      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-500">
+        <Clock className="h-4 w-4" />
+        In Review
+      </span>
+    );
+  } else {
+    badge = (
+      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-red-500">
+        <AlertTriangle className="h-4 w-4" />
+        Resubmit
+      </span>
+    );
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="rounded px-1 -mx-1 hover:bg-muted transition-colors focus:outline-none">
+          {badge}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-40">
+        <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Set status
+        </p>
+        <DropdownMenuSeparator />
+        {STATUS_OPTIONS.map((opt) => (
+          <DropdownMenuItem
+            key={opt.value}
+            className="gap-2"
+            disabled={status === opt.value}
+            onClick={() => onStatusChange(opt.value)}
+          >
+            {opt.icon}
+            {opt.label}
+            {status === opt.value && (
+              <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-muted-foreground" />
+            )}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function CategoryPill({ label }: { label: string }) {
+  return (
+    <span className="inline-block max-w-full truncate rounded-md border bg-muted/50 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+      {label}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Delete confirmation modal
+// ---------------------------------------------------------------------------
+function DeleteModal({
+  doc,
+  onConfirm,
+  onCancel,
+  isDeleting,
+}: {
+  doc: DocumentRow;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isDeleting: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-card rounded-xl border p-6 shadow-xl w-[90%] max-w-md">
+        <h3 className="font-semibold text-lg mb-1">Delete Document</h3>
+        <p className="text-sm text-muted-foreground mb-5">
+          Are you sure you want to delete{" "}
+          <span className="font-medium text-foreground">{doc.file_name}</span>?
+          This action cannot be undone.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onCancel} disabled={isDeleting}>
+            Cancel
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="bg-red-600 hover:bg-red-700 text-white"
+          >
+            {isDeleting && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+            Delete
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// File drop zone
+// ---------------------------------------------------------------------------
+function FileDropZone({
+  file,
+  onFileChange,
+  inputRef,
+}: {
+  file: File | null;
+  onFileChange: (f: File | null) => void;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+}) {
+  const [dragOver, setDragOver] = useState(false);
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const dropped = e.dataTransfer.files[0];
+    if (dropped) validateAndSet(dropped);
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = e.target.files?.[0];
+    if (selected) validateAndSet(selected);
+  }
+
+  function validateAndSet(f: File) {
+    if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      toast.error(`File must be under ${MAX_FILE_SIZE_MB}MB`);
+      return;
+    }
+    const ext = getFileExt(f.name);
+    if (!["pdf", "jpg", "jpeg", "png"].includes(ext)) {
+      toast.error("Only PDF, JPG, and PNG files are accepted");
+      return;
+    }
+    onFileChange(f);
+  }
+
+  return (
+    <div
+      onClick={() => inputRef.current?.click()}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+      className={cn(
+        "relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 cursor-pointer transition-colors",
+        dragOver
+          ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20"
+          : "border-muted-foreground/25 hover:border-blue-400 hover:bg-muted/30"
+      )}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept={ACCEPTED_TYPES}
+        className="sr-only"
+        onChange={handleChange}
+      />
+      {file ? (
+        <>
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/40">
+            <FileText className="h-6 w-6 text-blue-600" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-medium text-foreground truncate max-w-[240px]">
+              {file.name}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {formatFileSize(file.size)} · Click to change
+            </p>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <CloudUpload className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-medium">Drop file here or click to browse</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              PDF, JPG, or PNG · Max {MAX_FILE_SIZE_MB}MB
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+export default function DocumentVaultClient() {
+  const [docs, setDocs] = useState<DocumentRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<Tab>("All Files");
+  const [page, setPage] = useState(1);
+
+  // Sheet (upload / re-upload)
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [reuploadTarget, setReuploadTarget] = useState<DocumentRow | null>(null);
+  const [uploadCategory, setUploadCategory] = useState<DocCategory>("transcripts");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [reuploadFile, setReuploadFile] = useState<File | null>(null);
+  const [isReuploading, setIsReuploading] = useState(false);
+
+  // Delete modal
+  const [deleteTarget, setDeleteTarget] = useState<DocumentRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const reuploadInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    loadDocs();
+  }, []);
+
+  async function loadDocs() {
+    try {
+      setLoading(true);
+      const data = await fetchDocuments();
+      setDocs(data);
+    } catch {
+      toast.error("Failed to load documents");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openUploadSheet() {
+    setReuploadTarget(null);
+    setUploadFile(null);
+    setUploadCategory("transcripts");
+    setSheetOpen(true);
+  }
+
+  function openReuploadSheet(doc: DocumentRow) {
+    setReuploadTarget(doc);
+    setReuploadFile(null);
+    setSheetOpen(true);
+  }
+
+  function handleSheetOpenChange(open: boolean) {
+    if (!open && (isUploading || isReuploading)) return;
+    setSheetOpen(open);
+    if (!open) {
+      setUploadFile(null);
+      setReuploadFile(null);
+      setReuploadTarget(null);
+    }
+  }
+
+  async function handleUpload() {
+    if (!uploadFile) {
+      toast.error("Please select a file");
+      return;
+    }
+    try {
+      setIsUploading(true);
+      const newDoc = await uploadDocument(uploadFile, uploadCategory);
+      setDocs((prev) => [newDoc, ...prev]);
+      setSheetOpen(false);
+      setUploadFile(null);
+      toast.success("Document uploaded successfully");
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Upload failed"
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  async function handleReupload() {
+    if (!reuploadFile || !reuploadTarget) {
+      toast.error("Please select a file");
+      return;
+    }
+    try {
+      setIsReuploading(true);
+      const updated = await reuploadDocument(reuploadTarget, reuploadFile);
+      setDocs((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+      setSheetOpen(false);
+      setReuploadFile(null);
+      setReuploadTarget(null);
+      toast.success("Document replaced successfully");
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Re-upload failed"
+      );
+    } finally {
+      setIsReuploading(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    try {
+      setIsDeleting(true);
+      await deleteDocument(deleteTarget);
+      setDocs((prev) => prev.filter((d) => d.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      toast.success("Document deleted");
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Delete failed"
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  async function handleView(doc: DocumentRow) {
+    try {
+      const url = await getDocumentSignedUrl(doc.storage_path);
+      window.open(url, "_blank");
+    } catch {
+      toast.error("Could not open document");
+    }
+  }
+
+  async function handleStatusChange(doc: DocumentRow, newStatus: string) {
+    try {
+      const updated = await updateDocumentStatus(doc.id, newStatus);
+      setDocs((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+      toast.success("Status updated");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to update status");
+    }
+  }
+
+  // Filtering & pagination
+  const filteredDocs =
+    activeTab === "All Files"
+      ? docs
+      : docs.filter((d) => d.category === TAB_CATEGORY_MAP[activeTab]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredDocs.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedDocs = filteredDocs.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE
+  );
+
+  // Stats
+  const total = docs.length;
+  const verified = docs.filter((d) => d.status === "verified").length;
+  const pending = docs.filter((d) => d.status === "pending_review").length;
+  const actionReq = docs.filter((d) => d.status === "resubmit").length;
+
+  const isReupload = reuploadTarget !== null;
+
+  return (
+    <div className="p-8 max-w-5xl mx-auto">
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Page header                                                         */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="flex items-start justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Document Vault</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage and track your international application materials.
+          </p>
+        </div>
+        <Button
+          onClick={openUploadSheet}
+          className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+        >
+          <Upload className="h-4 w-4" />
+          Upload New
+        </Button>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Stats cards                                                         */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <StatCard
+          label="Verified"
+          count={verified}
+          icon={<CheckCircle2 className="h-5 w-5 text-green-500" />}
+          barColor="bg-green-500"
+          total={total}
+        />
+        <StatCard
+          label="Pending Review"
+          count={pending}
+          icon={<Clock className="h-5 w-5 text-amber-400" />}
+          barColor="bg-amber-400"
+          total={total}
+        />
+        <StatCard
+          label="Action Required"
+          count={actionReq}
+          icon={<AlertTriangle className="h-5 w-5 text-red-500" />}
+          barColor="bg-red-500"
+          total={total}
+        />
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Filter tabs + document table                                        */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="rounded-xl border bg-card shadow-sm mb-6">
+
+        {/* Tabs */}
+        <div className="flex overflow-x-auto border-b">
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => {
+                setActiveTab(tab);
+                setPage(1);
+              }}
+              className={cn(
+                "shrink-0 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap",
+                activeTab === tab
+                  ? "border-b-2 border-primary text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {/* Table header */}
+        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.6fr)] px-5 py-3 border-b">
+          {["DOCUMENT NAME", "CATEGORY", "STATUS", "DATE UPLOADED", "ACTION"].map(
+            (col) => (
+              <span
+                key={col}
+                className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+              >
+                {col}
+              </span>
+            )
+          )}
+        </div>
+
+        {/* Loading skeleton */}
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className={cn(
+                "grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.6fr)] items-center px-5 py-4",
+                i < 3 && "border-b"
+              )}
+            >
+              {Array.from({ length: 5 }).map((__, j) => (
+                <div
+                  key={j}
+                  className="h-4 rounded bg-muted animate-pulse"
+                  style={{ width: j === 0 ? "70%" : j === 4 ? "40%" : "60%" }}
+                />
+              ))}
+            </div>
+          ))
+        ) : pagedDocs.length > 0 ? (
+          pagedDocs.map((doc, idx) => (
+            <div
+              key={doc.id}
+              className={cn(
+                "grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.6fr)] items-center px-5 py-3.5",
+                idx < pagedDocs.length - 1 && "border-b"
+              )}
+            >
+              {/* Name */}
+              <div className="flex items-center gap-2.5 overflow-hidden pr-3">
+                <FileIcon fileName={doc.file_name} status={doc.status} />
+                <div className="overflow-hidden">
+                  <span className="text-sm font-medium truncate block">
+                    {doc.file_name}
+                  </span>
+                  {doc.file_size && (
+                    <span className="text-xs text-muted-foreground">
+                      {formatFileSize(doc.file_size)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Category */}
+              <div className="overflow-hidden pr-2">
+                <CategoryPill
+                  label={CATEGORY_LABELS[doc.category] ?? doc.category}
+                />
+              </div>
+
+              {/* Status */}
+              <StatusBadge
+                status={doc.status}
+                onStatusChange={(newStatus) => handleStatusChange(doc, newStatus)}
+              />
+
+              {/* Date */}
+              <span className="text-sm text-muted-foreground">
+                {formatDate(doc.uploaded_at)}
+              </span>
+
+              {/* Action */}
+              <div className="flex justify-end">
+                {doc.status === "resubmit" ? (
+                  <Button
+                    size="sm"
+                    onClick={() => openReuploadSheet(doc)}
+                    className="bg-rose-100 text-rose-600 hover:bg-rose-200 border-rose-200 shadow-none text-xs font-semibold h-7"
+                    variant="outline"
+                  >
+                    Fix Now
+                  </Button>
+                ) : (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-muted text-muted-foreground"
+                        aria-label="More options"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      <DropdownMenuItem
+                        className="gap-2"
+                        onClick={() => handleView(doc)}
+                      >
+                        <Eye className="h-4 w-4" />
+                        View
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="gap-2"
+                        onClick={() => openReuploadSheet(doc)}
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        Re-upload
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="gap-2 text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950/20"
+                        onClick={() => setDeleteTarget(doc)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="py-16 text-center">
+            <p className="text-sm text-muted-foreground">
+              {activeTab === "All Files"
+                ? "No documents uploaded yet."
+                : "No documents in this category."}
+            </p>
+            {activeTab === "All Files" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-3 gap-1.5"
+                onClick={openUploadSheet}
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Upload your first document
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Table footer */}
+        <div className="flex items-center justify-between border-t px-5 py-3">
+          <span className="text-sm text-muted-foreground">
+            {loading
+              ? "Loading…"
+              : `Showing ${pagedDocs.length} of ${filteredDocs.length} document${filteredDocs.length !== 1 ? "s" : ""}`}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              className="inline-flex h-7 w-7 items-center justify-center rounded border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="text-xs text-muted-foreground px-1">
+              {safePage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+              className="inline-flex h-7 w-7 items-center justify-center rounded border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Bottom info cards                                                   */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="rounded-xl border bg-blue-50 dark:bg-blue-950/20 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Info className="h-5 w-5 text-blue-600 shrink-0" />
+            <h3 className="font-semibold text-blue-700 dark:text-blue-400">
+              Upload Guidelines
+            </h3>
+          </div>
+          <ul className="space-y-2">
+            {[
+              "Files must be in PDF, JPG, or PNG format.",
+              "Maximum file size is 10MB per document.",
+              "Ensure all scanned documents are clear and legible.",
+            ].map((item) => (
+              <li
+                key={item}
+                className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-300"
+              >
+                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-blue-600 shrink-0" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="rounded-xl border bg-card p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <HelpCircle className="h-5 w-5 text-muted-foreground shrink-0" />
+            <h3 className="font-semibold">Need Assistance?</h3>
+          </div>
+          <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+            If you are having trouble uploading your documents or have questions
+            about specific requirements, our admissions team is here to help.
+          </p>
+          <button className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline underline-offset-4">
+            Contact Support Team
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Upload / Re-upload Sheet                                            */}
+      {/* ------------------------------------------------------------------ */}
+      <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
+        <SheetContent side="right" className="sm:max-w-md w-full">
+          <SheetHeader className="pb-2">
+            <SheetTitle>
+              {isReupload ? "Replace Document" : "Upload Document"}
+            </SheetTitle>
+            <SheetDescription>
+              {isReupload
+                ? `Replacing: ${reuploadTarget?.file_name}`
+                : "Add a new document to your vault."}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex flex-col gap-5 px-4 flex-1 overflow-y-auto">
+            {/* Category selector (only for new upload) */}
+            {!isReupload && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">Category</label>
+                <select
+                  value={uploadCategory}
+                  onChange={(e) =>
+                    setUploadCategory(e.target.value as DocCategory)
+                  }
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  {CATEGORY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Category display (re-upload, locked) */}
+            {isReupload && reuploadTarget && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">Category</label>
+                <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
+                  {CATEGORY_LABELS[reuploadTarget.category] ??
+                    reuploadTarget.category}
+                </div>
+              </div>
+            )}
+
+            {/* File drop zone */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium">File</label>
+              {isReupload ? (
+                <FileDropZone
+                  file={reuploadFile}
+                  onFileChange={setReuploadFile}
+                  inputRef={reuploadInputRef}
+                />
+              ) : (
+                <FileDropZone
+                  file={uploadFile}
+                  onFileChange={setUploadFile}
+                  inputRef={fileInputRef}
+                />
+              )}
+            </div>
+          </div>
+
+          <SheetFooter className="pt-4">
+            <SheetClose asChild>
+              <Button
+                variant="outline"
+                disabled={isUploading || isReuploading}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </SheetClose>
+            <Button
+              onClick={isReupload ? handleReupload : handleUpload}
+              disabled={
+                isReupload
+                  ? isReuploading || !reuploadFile
+                  : isUploading || !uploadFile
+              }
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {(isUploading || isReuploading) && (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              )}
+              {isReupload ? "Replace" : "Upload"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Delete confirmation modal                                           */}
+      {/* ------------------------------------------------------------------ */}
+      {deleteTarget && (
+        <DeleteModal
+          doc={deleteTarget}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+          isDeleting={isDeleting}
+        />
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="caat-frontend/app/(main)/documents/page.tsx">
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+} from "@/components/ui/breadcrumb";
+import { Separator } from "@/components/ui/separator";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import DocumentVaultClient from "./client";
+
+export default function DocumentsPage() {
+  return (
+    <>
+      <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+        <SidebarTrigger className="-ml-1" />
+        <Separator
+          orientation="vertical"
+          className="mr-2 data-[orientation=vertical]:h-4"
+        />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink>Documents</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </header>
+
+      <DocumentVaultClient />
+    </>
+  );
 }
 </file>
 
@@ -455,14 +1635,79 @@ export default function ResumeBuilderClient() {
 }
 </file>
 
-<file path="caat-frontend/app/(main)/scholarships/page.tsx">
+<file path="caat-frontend/app/(main)/scholarships/[id]/bookmark-button.tsx">
 "use client";
 
-import { useState, useMemo } from "react";
-import { Search, ChevronDown, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
+import { useState, useEffect } from "react";
+import { Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { supabase } from "@/src/lib/supabaseClient";
+
+interface Props {
+  scholarshipId: string;
+}
+
+export default function ScholarshipBookmarkButton({ scholarshipId }: Props) {
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      setUserId(session.user.id);
+
+      const { data } = await supabase
+        .from("user_bookmarked_scholarships")
+        .select("scholarship_id")
+        .eq("user_id", session.user.id)
+        .eq("scholarship_id", scholarshipId)
+        .maybeSingle();
+
+      setIsBookmarked(!!data);
+    }
+
+    load();
+  }, [scholarshipId]);
+
+  async function handleToggle() {
+    if (!userId) return;
+
+    setIsBookmarked((prev) => !prev); // optimistic
+
+    if (isBookmarked) {
+      await supabase
+        .from("user_bookmarked_scholarships")
+        .delete()
+        .eq("user_id", userId)
+        .eq("scholarship_id", scholarshipId);
+    } else {
+      await supabase
+        .from("user_bookmarked_scholarships")
+        .upsert({ user_id: userId, scholarship_id: scholarshipId });
+    }
+  }
+
+  return (
+    <Button
+      size="icon"
+      variant={isBookmarked ? "default" : "outline"}
+      onClick={handleToggle}
+      aria-label={isBookmarked ? "Remove bookmark" : "Bookmark scholarship"}
+    >
+      <Bookmark className={isBookmarked ? "fill-current" : ""} />
+    </Button>
+  );
+}
+</file>
+
+<file path="caat-frontend/app/(main)/scholarships/[id]/page.tsx">
+import { supabase } from "@/src/lib/supabaseClient";
+import { notFound } from "next/navigation";
+import Link from "next/link";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -470,131 +1715,570 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { Separator } from "@/components/ui/separator";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  ChevronLeft,
+  ExternalLink,
+  CheckCircle2,
+  Calendar,
+  Globe,
+  GraduationCap,
+  BadgeCheck,
+  Users,
+  RefreshCw,
+  FileText,
+} from "lucide-react";
+import ScholarshipBookmarkButton from "./bookmark-button";
+import { ScholarshipRow, deriveDisplayTags, formatAmountDisplay } from "@/types/scholarships";
+
+// ---------------------------------------------------------------------------
+// Display helpers
+// ---------------------------------------------------------------------------
+const NONE = (
+  <span className="text-muted-foreground italic">No information yet</span>
+);
+
+function val(v: string | number | null | undefined) {
+  if (v == null || v === "") return NONE;
+  return <span>{String(v)}</span>;
+}
+
+function arrVal(arr: string[] | null | undefined, formatter?: (s: string) => string) {
+  if (!arr || arr.length === 0) return NONE;
+  const items = formatter ? arr.map(formatter) : arr;
+  return <span>{items.join(", ")}</span>;
+}
+
+function fmtDate(d: string | null | undefined) {
+  if (!d) return null;
+  return new Date(d).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+const FREQ_LABELS: Record<string, string> = {
+  one_time: "One-time",
+  yearly: "Yearly",
+  semester: "Per Semester",
+  monthly: "Monthly",
+  custom: "Custom",
+};
+
+const FUNDING_LABELS: Record<string, string> = {
+  merit: "Merit-Based",
+  need: "Need-Based",
+  full_ride: "Full Ride",
+  tuition: "Tuition Remission",
+};
+
+const TAG_COLORS: Record<string, string> = {
+  "FULL RIDE":   "bg-green-100 text-green-700",
+  "MERIT-BASED": "bg-purple-100 text-purple-700",
+  "NEED-BLIND":  "bg-blue-100 text-blue-700",
+  "REGIONAL":    "bg-orange-100 text-orange-700",
+  "POST-GRAD":   "bg-indigo-100 text-indigo-700",
+  "PRESTIGIOUS": "bg-amber-100 text-amber-700",
+  "STEM":        "bg-teal-100 text-teal-700",
+};
+
+// ---------------------------------------------------------------------------
+// Detail row used in the Key Details grid
+// ---------------------------------------------------------------------------
+function DetailRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3 py-3 border-b last:border-0">
+      <Icon className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+      <span className="text-sm text-muted-foreground w-36 shrink-0">{label}</span>
+      <span className="text-sm font-medium">{value}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+export default async function ScholarshipDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
+  const { data, error } = await supabase
+    .from("scholarships")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error || !data) notFound();
+
+  const scholarship = data as ScholarshipRow;
+  const displayTags = deriveDisplayTags(scholarship);
+  const amountDisplay = formatAmountDisplay(scholarship);
+
+  // Parse known fields from application_requirements JSONB
+  const appReqs = scholarship.application_requirements as {
+    application_mode?: string;
+    separate_application_required?: boolean;
+    must_meet?: string[];
+  } | null;
+
+  return (
+    <>
+      {/* Header */}
+      <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+        <SidebarTrigger className="-ml-1" />
+        <Separator
+          orientation="vertical"
+          className="mr-2 data-[orientation=vertical]:h-4"
+        />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem className="hidden md:block">
+              <BreadcrumbLink href="/scholarships">Scholarships</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator className="hidden md:block" />
+            <BreadcrumbItem>
+              <BreadcrumbLink className="max-w-xs truncate">
+                {scholarship.title}
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </header>
+
+      <div className="p-8 max-w-3xl mx-auto">
+        {/* Back button */}
+        <Button variant="ghost" size="sm" asChild className="-ml-2 mb-6">
+          <Link href="/scholarships">
+            <ChevronLeft className="h-4 w-4" />
+            Back to Scholarships
+          </Link>
+        </Button>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Hero                                                              */}
+        {/* ---------------------------------------------------------------- */}
+        <div className="flex items-start justify-between gap-4 mb-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-400">
+            {scholarship.provider_name}
+          </span>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 shrink-0">
+            <ScholarshipBookmarkButton scholarshipId={scholarship.id} />
+            {scholarship.external_url && (
+              <Button asChild variant="default" size="sm" className="gap-1.5">
+                <a
+                  href={scholarship.external_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Visit Official Site
+                </a>
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <h1 className="text-3xl font-bold leading-tight mb-3">
+          {scholarship.title}
+        </h1>
+
+        {/* Tags */}
+        {displayTags.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {displayTags.map((tag) => {
+              const color =
+                TAG_COLORS[tag] ?? "bg-zinc-100 text-zinc-700";
+              return (
+                <span
+                  key={tag}
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-full uppercase tracking-wide ${color}`}
+                >
+                  {tag}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Amount */}
+        <p className="text-4xl font-bold mb-8">{amountDisplay}</p>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* About                                                             */}
+        {/* ---------------------------------------------------------------- */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">About this Scholarship</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {scholarship.description || scholarship.eligibility_summary ? (
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {scholarship.description ?? scholarship.eligibility_summary}
+              </p>
+            ) : (
+              NONE
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Key Details                                                       */}
+        {/* ---------------------------------------------------------------- */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">Key Details</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 py-0 pb-2">
+            <DetailRow
+              icon={Globe}
+              label="Country"
+              value={val(scholarship.country)}
+            />
+            <DetailRow
+              icon={GraduationCap}
+              label="Study Level"
+              value={arrVal(scholarship.study_level, (s) =>
+                s.charAt(0).toUpperCase() + s.slice(1)
+              )}
+            />
+            <DetailRow
+              icon={BadgeCheck}
+              label="Funding Type"
+              value={arrVal(scholarship.funding_type, (f) =>
+                FUNDING_LABELS[f] ?? f
+              )}
+            />
+            <DetailRow
+              icon={Users}
+              label="Awards Available"
+              value={
+                scholarship.awards_count != null
+                  ? <span>{scholarship.awards_count.toLocaleString()}</span>
+                  : NONE
+              }
+            />
+            <DetailRow
+              icon={RefreshCw}
+              label="Frequency"
+              value={
+                scholarship.frequency
+                  ? <span>{FREQ_LABELS[scholarship.frequency] ?? scholarship.frequency}</span>
+                  : NONE
+              }
+            />
+            <DetailRow
+              icon={Calendar}
+              label="Application Opens"
+              value={val(fmtDate(scholarship.application_open_at))}
+            />
+            <DetailRow
+              icon={Calendar}
+              label="Deadline"
+              value={val(fmtDate(scholarship.deadline_at))}
+            />
+            <DetailRow
+              icon={GraduationCap}
+              label="Start Term"
+              value={val(scholarship.start_term)}
+            />
+            <DetailRow
+              icon={RefreshCw}
+              label="Recurring"
+              value={<span>{scholarship.is_recurring ? "Yes" : "No"}</span>}
+            />
+            <DetailRow
+              icon={FileText}
+              label="Requires Essay"
+              value={
+                scholarship.requires_essay == null
+                  ? NONE
+                  : <span>{scholarship.requires_essay ? "Yes" : "No"}</span>
+              }
+            />
+            <DetailRow
+              icon={BadgeCheck}
+              label="Minimum GPA"
+              value={
+                scholarship.minimum_gpa != null
+                  ? <span>{scholarship.minimum_gpa.toFixed(2)}</span>
+                  : NONE
+              }
+            />
+          </CardContent>
+        </Card>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Eligibility                                                       */}
+        {/* ---------------------------------------------------------------- */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">Eligibility</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Eligible countries */}
+            {scholarship.eligible_countries.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                  Open to citizens of
+                </p>
+                <p className="text-sm">{scholarship.eligible_countries.join(", ")}</p>
+              </div>
+            )}
+
+            {/* Excluded countries */}
+            {scholarship.excluded_countries.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                  Not available to citizens of
+                </p>
+                <p className="text-sm">{scholarship.excluded_countries.join(", ")}</p>
+              </div>
+            )}
+
+            {/* Eligibility summary */}
+            {scholarship.eligibility_summary ? (
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {scholarship.eligibility_summary}
+              </p>
+            ) : (
+              scholarship.eligible_countries.length === 0 &&
+              scholarship.excluded_countries.length === 0 &&
+              NONE
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Application Requirements                                          */}
+        {/* ---------------------------------------------------------------- */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="text-base">Application Requirements</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {appReqs ? (
+              <div className="space-y-4">
+                {/* Mode */}
+                {appReqs.application_mode && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">Application mode:</span>
+                    <span className="font-medium capitalize">
+                      {appReqs.application_mode.replace(/_/g, " ")}
+                    </span>
+                    {appReqs.separate_application_required === false && (
+                      <span className="text-xs text-muted-foreground">
+                        (no separate application needed)
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Must-meet checklist */}
+                {appReqs.must_meet && appReqs.must_meet.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                      You must meet all of the following
+                    </p>
+                    <ul className="space-y-2">
+                      {appReqs.must_meet.map((req, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm">
+                          <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                          {req}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              NONE
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Bottom CTA — visit official site                                  */}
+        {/* ---------------------------------------------------------------- */}
+        {scholarship.external_url && (
+          <div className="flex justify-center">
+            <Button asChild size="lg" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+              <a
+                href={scholarship.external_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Apply on Official Site
+              </a>
+            </Button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+</file>
+
+<file path="caat-frontend/app/(main)/scholarships/client.tsx">
+"use client";
+
+import { useState, useMemo, useEffect } from "react";
+import {
+  Search,
+  ChevronDown,
+  SlidersHorizontal,
+  ChevronLeft,
+  ChevronRight,
+  Bookmark,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import ScholarshipCard, { Scholarship } from "@/components/scholarships/scholarship-card";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import ScholarshipCard, {
+  Scholarship,
+} from "@/components/scholarships/scholarship-card";
+import {
+  ScholarshipRow,
+  deriveDisplayTags,
+  formatAmountDisplay,
+} from "@/types/scholarships";
+import { supabase } from "@/src/lib/supabaseClient";
 
 // ---------------------------------------------------------------------------
-// Placeholder data — replace with real Supabase fetch when backend is ready
+// Constants
 // ---------------------------------------------------------------------------
-const MOCK_SCHOLARSHIPS: Scholarship[] = [
-  {
-    id: "1",
-    university: "Stanford University",
-    name: "Global Leadership Fellowship",
-    tags: ["FULL RIDE", "MERIT-BASED"],
-    amount: "$65,000",
-    amountSuffix: "/ year",
-    description:
-      "Awarded to incoming international students who demonstrate exceptional leadership potential and community impact through their academic and extracurricular achievements.",
-  },
-  {
-    id: "2",
-    university: "National University of Singapore",
-    name: "ASEAN Undergraduate Award",
-    tags: ["NEED-BLIND", "REGIONAL"],
-    amount: "$25,000",
-    amountSuffix: "/ year",
-    description:
-      "Supporting talented students from ASEAN member countries to pursue their undergraduate studies at NUS.",
-  },
-  {
-    id: "3",
-    university: "University of Toronto",
-    name: "Lester B. Pearson Scholarship",
-    tags: ["FULL RIDE", "MERIT-BASED"],
-    amount: "$52,000",
-    amountSuffix: "/ total",
-    description:
-      "Canada's most prestigious scholarship for international students who demonstrate exceptional academic achievement and impact in their school and community.",
-  },
-  {
-    id: "4",
-    university: "Oxford University",
-    name: "Rhodes Scholarship",
-    tags: ["POST-GRAD", "PRESTIGIOUS"],
-    amount: "Fully Funded",
-    description:
-      "Covering all fees and providing a living stipend for postgraduate study at the University of Oxford.",
-  },
-  {
-    id: "5",
-    university: "MIT",
-    name: "Science Excellence Award",
-    tags: ["STEM", "MERIT-BASED"],
-    amount: "$15,000",
-    amountSuffix: "/ year",
-    description:
-      "Targeted at undergraduate students who have shown exceptional research promise in the physical sciences.",
-  },
-  {
-    id: "6",
-    university: "University of Melbourne",
-    name: "Chancellor's Scholarship",
-    tags: ["FULL RIDE", "NEED-BLIND"],
-    amount: "50% Fee Remission",
-    description:
-      "Awarded to high-achieving students from various backgrounds based on ATAR scores and community impact.",
-  },
-  {
-    id: "7",
-    university: "Harvard University",
-    name: "Harvard International Scholarship",
-    tags: ["NEED-BLIND", "MERIT-BASED"],
-    amount: "$70,000",
-    amountSuffix: "/ year",
-    description:
-      "Need-based scholarship covering full cost of attendance for exceptional international students admitted to Harvard College.",
-  },
-  {
-    id: "8",
-    university: "ETH Zurich",
-    name: "Excellence Scholarship & Opportunity",
-    tags: ["MERIT-BASED", "POST-GRAD"],
-    amount: "$30,000",
-    amountSuffix: "/ year",
-    description:
-      "A merit-based scholarship programme for outstanding Master's students at one of the world's leading technical universities.",
-  },
-  {
-    id: "9",
-    university: "University of Edinburgh",
-    name: "Global Research Scholarship",
-    tags: ["STEM", "PRESTIGIOUS"],
-    amount: "£20,000",
-    amountSuffix: "/ year",
-    description:
-      "Open to international students pursuing postgraduate research degrees in STEM disciplines at the University of Edinburgh.",
-  },
+const MAJOR_FIELDS = [
+  "Engineering",
+  "Business",
+  "Natural Sciences",
+  "Social Sciences",
+  "Arts & Humanities",
+  "Health Sciences",
 ];
 
-const LOCATIONS = ["United States", "United Kingdom", "Singapore", "Canada", "Australia", "Switzerland"];
-const MAJOR_FIELDS = ["Engineering", "Business", "Natural Sciences", "Social Sciences", "Arts & Humanities", "Health Sciences"];
-const ELIGIBILITY_OPTIONS = ["Merit-Based", "Need-Based", "Need-Blind", "Full Ride", "Undergraduate", "Postgraduate"];
+const ELIGIBILITY_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
+  "Merit-Based":   (s) => s.merit_based,
+  "Need-Based":    (s) => s.need_based,
+  "Full Ride":     (s) => s.funding_type.includes("full_ride"),
+  "Undergraduate": (s) => s.study_level.includes("undergraduate"),
+  "Postgraduate":  (s) => s.study_level.includes("postgraduate"),
+};
 
 const ITEMS_PER_PAGE = 6;
 
-export default function ScholarshipsPage() {
+// ---------------------------------------------------------------------------
+// Helper — map a DB row to the flat Scholarship shape the card expects
+// ---------------------------------------------------------------------------
+function rowToCard(row: ScholarshipRow): Scholarship {
+  return {
+    id: row.id,
+    university: row.provider_name,
+    name: row.title,
+    tags: deriveDisplayTags(row),
+    amount: formatAmountDisplay(row),
+    description: row.description ?? row.eligibility_summary ?? "",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+interface Props {
+  scholarships: ScholarshipRow[];
+}
+
+export default function ScholarshipsClient({ scholarships }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [locationQuery, setLocationQuery] = useState("");
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [selectedEligibility, setSelectedEligibility] = useState<string[]>([]);
-  const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+  const [showBookmarked, setShowBookmarked] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  function toggleBookmark(id: string) {
-    setBookmarked((prev) => {
+  // -------------------------------------------------------------------------
+  // Load the logged-in user's existing scholarship bookmarks on mount
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    async function loadBookmarks() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      setUserId(session.user.id);
+
+      const { data } = await supabase
+        .from("user_bookmarked_scholarships")
+        .select("scholarship_id")
+        .eq("user_id", session.user.id);
+
+      if (data) {
+        setBookmarkedIds(new Set(data.map((r) => r.scholarship_id as string)));
+      }
+    }
+
+    loadBookmarks();
+  }, []);
+
+  // -------------------------------------------------------------------------
+  // Optimistic bookmark toggle, persisted to Supabase
+  // -------------------------------------------------------------------------
+  async function handleToggleBookmark(id: string) {
+    if (!userId) return;
+
+    const isBookmarked = bookmarkedIds.has(id);
+
+    setBookmarkedIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      isBookmarked ? next.delete(id) : next.add(id);
       return next;
     });
+
+    if (isBookmarked) {
+      await supabase
+        .from("user_bookmarked_scholarships")
+        .delete()
+        .eq("user_id", userId)
+        .eq("scholarship_id", id);
+    } else {
+      await supabase
+        .from("user_bookmarked_scholarships")
+        .upsert({ user_id: userId, scholarship_id: id });
+    }
   }
 
+  // -------------------------------------------------------------------------
+  // Filter helpers
+  // -------------------------------------------------------------------------
   function toggleMultiFilter<T>(
     value: T,
     setter: React.Dispatch<React.SetStateAction<T[]>>
@@ -605,31 +2289,69 @@ export default function ScholarshipsPage() {
   }
 
   function clearAll() {
-    setSelectedLocations([]);
+    setLocationQuery("");
     setSelectedFields([]);
     setSelectedEligibility([]);
+    setShowBookmarked(false);
     setSearchQuery("");
     setCurrentPage(1);
   }
 
   const hasActiveFilters =
-    selectedLocations.length > 0 ||
+    locationQuery.trim().length > 0 ||
     selectedFields.length > 0 ||
     selectedEligibility.length > 0 ||
+    showBookmarked ||
     searchQuery.trim().length > 0;
 
-  // Client-side search filter (placeholder — swap for server-side when API is ready)
+  // -------------------------------------------------------------------------
+  // Client-side filtering against DB fields
+  // -------------------------------------------------------------------------
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return MOCK_SCHOLARSHIPS.filter((s) => {
-      if (q && !s.name.toLowerCase().includes(q) && !s.university.toLowerCase().includes(q)) {
+
+    return scholarships.filter((s) => {
+      // Bookmarked-only view
+      if (showBookmarked && !bookmarkedIds.has(s.id)) return false;
+
+      // Search: title or provider_name
+      if (
+        q &&
+        !s.title.toLowerCase().includes(q) &&
+        !s.provider_name.toLowerCase().includes(q)
+      ) {
         return false;
       }
+
+      // Location: case-insensitive partial match across country, school_name, state_region
+      if (locationQuery.trim()) {
+        const lq = locationQuery.trim().toLowerCase();
+        const matchesLocation =
+          s.country?.toLowerCase().includes(lq) ||
+          s.school_name?.toLowerCase().includes(lq) ||
+          s.state_region?.toLowerCase().includes(lq);
+        if (!matchesLocation) return false;
+      }
+
+      // Eligibility: all selected criteria must match
+      if (
+        selectedEligibility.length > 0 &&
+        !selectedEligibility.every((opt) => ELIGIBILITY_MAP[opt]?.(s))
+      ) {
+        return false;
+      }
+
+      // Major/Field: placeholder — junction table data not fetched yet
+      // selectedFields is intentionally unused until scholarship_majors join is added
+
       return true;
     });
-  }, [searchQuery]);
+  }, [scholarships, searchQuery, locationQuery, selectedEligibility, showBookmarked, bookmarkedIds]);
 
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  // -------------------------------------------------------------------------
+  // Pagination
+  // -------------------------------------------------------------------------
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
@@ -639,7 +2361,6 @@ export default function ScholarshipsPage() {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
   }
 
-  // Build visible page numbers: always show 1, totalPages, and pages near current
   const pageNumbers = useMemo(() => {
     const pages: (number | "...")[] = [];
     for (let i = 1; i <= totalPages; i++) {
@@ -652,234 +2373,241 @@ export default function ScholarshipsPage() {
     return pages;
   }, [currentPage, totalPages]);
 
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
   return (
-    <>
-      {/* ------------------------------------------------------------------ */}
-      {/* Top header bar — matches pattern used across (main) pages           */}
-      {/* ------------------------------------------------------------------ */}
-      <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-        <SidebarTrigger className="-ml-1" />
-        <Separator
-          orientation="vertical"
-          className="mr-2 data-[orientation=vertical]:h-4"
-        />
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem className="hidden md:block">
-              <BreadcrumbLink href="/schools">Schools</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator className="hidden md:block" />
-            <BreadcrumbItem>
-              <BreadcrumbLink>Scholarships</BreadcrumbLink>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+    <div className="min-h-screen p-8 pt-4">
+      <main className="max-w-5xl mx-auto">
 
-        {/* Search — right side of the header */}
-        <div className="ml-auto relative w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            className="pl-9 h-9"
-            placeholder="Search by scholarship name or university..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-          />
-        </div>
-      </header>
+        {/* Page title + filter row */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold tracking-tight mb-4">
+            Scholarships
+          </h1>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Page content                                                        */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="min-h-screen p-8 pt-4">
-        <main className="max-w-5xl mx-auto">
-
-          {/* Page title + filter row */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold tracking-tight mb-4">Scholarships</h1>
-
-            {/* Filter controls */}
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Location filter */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={`gap-1.5 ${selectedLocations.length > 0 ? "border-primary" : ""}`}
-                  >
-                    Location
-                    {selectedLocations.length > 0 && (
-                      <span className="bg-primary text-primary-foreground text-[10px] font-semibold rounded-full px-1.5 py-0.5 leading-none">
-                        {selectedLocations.length}
-                      </span>
-                    )}
-                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52">
-                  {LOCATIONS.map((loc) => (
-                    <DropdownMenuCheckboxItem
-                      key={loc}
-                      checked={selectedLocations.includes(loc)}
-                      onCheckedChange={() =>
-                        toggleMultiFilter(loc, setSelectedLocations)
-                      }
-                    >
-                      {loc}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Major/Field filter */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={`gap-1.5 ${selectedFields.length > 0 ? "border-primary" : ""}`}
-                  >
-                    Major/Field
-                    {selectedFields.length > 0 && (
-                      <span className="bg-primary text-primary-foreground text-[10px] font-semibold rounded-full px-1.5 py-0.5 leading-none">
-                        {selectedFields.length}
-                      </span>
-                    )}
-                    <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52">
-                  {MAJOR_FIELDS.map((field) => (
-                    <DropdownMenuCheckboxItem
-                      key={field}
-                      checked={selectedFields.includes(field)}
-                      onCheckedChange={() =>
-                        toggleMultiFilter(field, setSelectedFields)
-                      }
-                    >
-                      {field}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Eligibility filter */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={`gap-1.5 ${selectedEligibility.length > 0 ? "border-primary" : ""}`}
-                  >
-                    <SlidersHorizontal className="h-3.5 w-3.5 opacity-60" />
-                    Eligibility
-                    {selectedEligibility.length > 0 && (
-                      <span className="bg-primary text-primary-foreground text-[10px] font-semibold rounded-full px-1.5 py-0.5 leading-none">
-                        {selectedEligibility.length}
-                      </span>
-                    )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52">
-                  {ELIGIBILITY_OPTIONS.map((opt) => (
-                    <DropdownMenuCheckboxItem
-                      key={opt}
-                      checked={selectedEligibility.includes(opt)}
-                      onCheckedChange={() =>
-                        toggleMultiFilter(opt, setSelectedEligibility)
-                      }
-                    >
-                      {opt}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Clear all */}
-              {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Location — free-text search */}
+            <Popover>
+              <PopoverTrigger asChild>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  className="text-muted-foreground hover:text-foreground"
-                  onClick={clearAll}
+                  className={`gap-1.5 ${locationQuery.trim() ? "border-primary" : ""}`}
                 >
-                  Clear all
+                  {locationQuery.trim() ? (
+                    <span className="max-w-24 truncate">{locationQuery}</span>
+                  ) : (
+                    "Location"
+                  )}
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
                 </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-56 p-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    className="pl-8 h-8 text-sm"
+                    placeholder="e.g. aus, canada, uk…"
+                    value={locationQuery}
+                    onChange={(e) => {
+                      setLocationQuery(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    autoFocus
+                  />
+                </div>
+                {locationQuery.trim() && (
+                  <button
+                    className="mt-1.5 text-xs text-muted-foreground hover:text-foreground w-full text-right pr-1"
+                    onClick={() => setLocationQuery("")}
+                  >
+                    Clear
+                  </button>
+                )}
+              </PopoverContent>
+            </Popover>
+
+            {/* Major/Field */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`gap-1.5 ${selectedFields.length > 0 ? "border-primary" : ""}`}
+                >
+                  Major/Field
+                  {selectedFields.length > 0 && (
+                    <span className="bg-primary text-primary-foreground text-[10px] font-semibold rounded-full px-1.5 py-0.5 leading-none">
+                      {selectedFields.length}
+                    </span>
+                  )}
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                {MAJOR_FIELDS.map((field) => (
+                  <DropdownMenuCheckboxItem
+                    key={field}
+                    checked={selectedFields.includes(field)}
+                    onCheckedChange={() =>
+                      toggleMultiFilter(field, setSelectedFields)
+                    }
+                  >
+                    {field}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Eligibility */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`gap-1.5 ${selectedEligibility.length > 0 ? "border-primary" : ""}`}
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5 opacity-60" />
+                  Eligibility
+                  {selectedEligibility.length > 0 && (
+                    <span className="bg-primary text-primary-foreground text-[10px] font-semibold rounded-full px-1.5 py-0.5 leading-none">
+                      {selectedEligibility.length}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                {Object.keys(ELIGIBILITY_MAP).map((opt) => (
+                  <DropdownMenuCheckboxItem
+                    key={opt}
+                    checked={selectedEligibility.includes(opt)}
+                    onCheckedChange={() =>
+                      toggleMultiFilter(opt, setSelectedEligibility)
+                    }
+                  >
+                    {opt}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Bookmarked pill */}
+            <Button
+              size="sm"
+              variant={showBookmarked ? "default" : "outline"}
+              className="gap-1.5"
+              onClick={() => {
+                setShowBookmarked((prev) => !prev);
+                setCurrentPage(1);
+              }}
+            >
+              <Bookmark
+                className={`h-3.5 w-3.5 ${showBookmarked ? "fill-current" : ""}`}
+              />
+              Bookmarked
+              {bookmarkedIds.size > 0 && (
+                <span
+                  className={`text-xs rounded-full px-1.5 py-0.5 font-medium leading-none ${
+                    showBookmarked
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : "bg-secondary text-secondary-foreground"
+                  }`}
+                >
+                  {bookmarkedIds.size}
+                </span>
               )}
-            </div>
+            </Button>
+
+            {/* Clear all */}
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={clearAll}
+              >
+                Clear all
+              </Button>
+            )}
           </div>
+        </div>
 
-          {/* Scholarship grid */}
-          {paginated.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-              {paginated.map((scholarship) => (
-                <ScholarshipCard
-                  key={scholarship.id}
-                  scholarship={scholarship}
-                  isBookmarked={bookmarked.has(scholarship.id)}
-                  onToggleBookmark={toggleBookmark}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-              <p className="text-lg font-medium">No scholarships found</p>
-              <p className="text-sm mt-1">Try adjusting your search or filters.</p>
-            </div>
-          )}
+        {/* Results count */}
+        <p className="text-sm text-muted-foreground mb-6">
+          {filtered.length} scholarship{filtered.length !== 1 ? "s" : ""}
+          {hasActiveFilters ? " matching your filters" : ""}
+        </p>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                disabled={currentPage <= 1}
-                onClick={() => goToPage(currentPage - 1)}
-                aria-label="Previous page"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
+        {/* Scholarship grid */}
+        {paginated.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+            {paginated.map((row) => (
+              <ScholarshipCard
+                key={row.id}
+                scholarship={rowToCard(row)}
+                isBookmarked={bookmarkedIds.has(row.id)}
+                onToggleBookmark={handleToggleBookmark}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
+            <p className="text-lg font-medium">No scholarships found</p>
+            <p className="text-sm mt-1">
+              Try adjusting your search or filters.
+            </p>
+          </div>
+        )}
 
-              {pageNumbers.map((p, idx) =>
-                p === "..." ? (
-                  <span
-                    key={`ellipsis-${idx}`}
-                    className="px-2 text-sm text-muted-foreground select-none"
-                  >
-                    ...
-                  </span>
-                ) : (
-                  <Button
-                    key={p}
-                    variant={currentPage === p ? "default" : "outline"}
-                    size="icon"
-                    onClick={() => goToPage(p as number)}
-                    aria-label={`Page ${p}`}
-                    aria-current={currentPage === p ? "page" : undefined}
-                  >
-                    {p}
-                  </Button>
-                )
-              )}
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={currentPage <= 1}
+              onClick={() => goToPage(currentPage - 1)}
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
 
-              <Button
-                variant="outline"
-                size="icon"
-                disabled={currentPage >= totalPages}
-                onClick={() => goToPage(currentPage + 1)}
-                aria-label="Next page"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-        </main>
-      </div>
-    </>
+            {pageNumbers.map((p, idx) =>
+              p === "..." ? (
+                <span
+                  key={`ellipsis-${idx}`}
+                  className="px-2 text-sm text-muted-foreground select-none"
+                >
+                  ...
+                </span>
+              ) : (
+                <Button
+                  key={p}
+                  variant={currentPage === p ? "default" : "outline"}
+                  size="icon"
+                  onClick={() => goToPage(p as number)}
+                  aria-label={`Page ${p}`}
+                  aria-current={currentPage === p ? "page" : undefined}
+                >
+                  {p}
+                </Button>
+              )
+            )}
+
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={currentPage >= totalPages}
+              onClick={() => goToPage(currentPage + 1)}
+              aria-label="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </main>
+    </div>
   );
 }
 </file>
@@ -1489,122 +3217,6 @@ export default function SectionEditorPanel({
 
 <file path="caat-frontend/components/resume-builder/TopBar.tsx">
 
-</file>
-
-<file path="caat-frontend/components/scholarships/scholarship-card.tsx">
-"use client";
-
-import { Bookmark } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-} from "@/components/ui/card";
-
-const TAG_COLORS: Record<string, string> = {
-  "FULL RIDE":   "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
-  "MERIT-BASED": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
-  "NEED-BLIND":  "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-  "REGIONAL":    "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
-  "POST-GRAD":   "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
-  "PRESTIGIOUS": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  "STEM":        "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
-};
-
-export interface Scholarship {
-  id: string;
-  university: string;
-  name: string;
-  tags: string[];
-  /** Primary display amount, e.g. "$65,000" or "Fully Funded" */
-  amount: string;
-  /** Optional suffix shown in muted text, e.g. "/ year" or "/ total" */
-  amountSuffix?: string;
-  description: string;
-}
-
-interface Props {
-  scholarship: Scholarship;
-  isBookmarked: boolean;
-  onToggleBookmark: (id: string) => void;
-}
-
-export default function ScholarshipCard({
-  scholarship,
-  isBookmarked,
-  onToggleBookmark,
-}: Props) {
-  return (
-    <Card className="flex flex-col h-full hover:shadow-lg transition-shadow">
-      <CardHeader className="pb-3 gap-2">
-        {/* University name + bookmark */}
-        <div className="flex items-start justify-between gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-400 leading-tight">
-            {scholarship.university}
-          </span>
-          <Button
-            size="icon-sm"
-            variant={isBookmarked ? "default" : "outline"}
-            className="shrink-0"
-            onClick={() => onToggleBookmark(scholarship.id)}
-            aria-label={isBookmarked ? "Remove bookmark" : "Bookmark scholarship"}
-          >
-            <Bookmark className={`h-3.5 w-3.5 ${isBookmarked ? "fill-current" : ""}`} />
-          </Button>
-        </div>
-
-        {/* Scholarship title */}
-        <h3 className="font-semibold text-[15px] leading-snug">
-          {scholarship.name}
-        </h3>
-
-        {/* Tag badges */}
-        {scholarship.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {scholarship.tags.map((tag) => {
-              const color =
-                TAG_COLORS[tag] ??
-                "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
-              return (
-                <span
-                  key={tag}
-                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${color}`}
-                >
-                  {tag}
-                </span>
-              );
-            })}
-          </div>
-        )}
-      </CardHeader>
-
-      <CardContent className="flex-grow pb-3">
-        {/* Amount */}
-        <p className="text-2xl font-bold leading-tight">
-          {scholarship.amount}
-          {scholarship.amountSuffix && (
-            <span className="text-sm font-normal text-muted-foreground ml-1">
-              {scholarship.amountSuffix}
-            </span>
-          )}
-        </p>
-
-        {/* Description */}
-        <p className="text-sm text-muted-foreground line-clamp-3 mt-2">
-          {scholarship.description}
-        </p>
-      </CardContent>
-
-      <CardFooter className="pt-0">
-        <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-600 dark:hover:bg-blue-700">
-          View Details
-        </Button>
-      </CardFooter>
-    </Card>
-  );
-}
 </file>
 
 <file path="caat-frontend/components/ui/avatar.tsx">
@@ -4656,6 +6268,115 @@ export interface ResumeDoc {
 }
 </file>
 
+<file path="caat-frontend/types/scholarships.ts">
+/** Raw row returned from the public.scholarships Supabase table */
+export interface ScholarshipRow {
+  id: string;
+  slug: string | null;
+  external_id: string | null;
+  external_url: string | null;
+  title: string;
+  provider_name: string;
+  description: string | null;
+  amount_value: number | null;
+  amount_currency: string | null;
+  /** Pre-formatted display string, e.g. "$65,000 / year" or "Fully Funded" */
+  amount_display: string | null;
+  awards_count: number | null;
+  frequency: "one_time" | "yearly" | "semester" | "monthly" | "custom" | null;
+  study_level: string[];      // e.g. ["undergraduate", "postgraduate"]
+  funding_type: string[];     // e.g. ["merit", "need", "full_ride", "tuition"]
+  eligible_countries: string[];
+  excluded_countries: string[];
+  eligible_genders: string[];
+  minimum_gpa: number | null;
+  requires_essay: boolean | null;
+  need_based: boolean;
+  merit_based: boolean;
+  school_name: string | null;
+  country: string | null;
+  state_region: string | null;
+  application_open_at: string | null;
+  deadline_at: string | null;
+  start_term: string | null;
+  is_recurring: boolean;
+  is_active: boolean;
+  is_featured: boolean;
+  last_verified_at: string | null;
+  source_last_synced_at: string | null;
+  tags: string[];
+  eligibility_summary: string | null;
+  application_requirements: Record<string, unknown> | null;
+  contact_info: Record<string, unknown> | null;
+  raw_payload: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Derives human-readable display badge tags from structured DB fields.
+ * The card renders these as coloured pill labels.
+ */
+export function deriveDisplayTags(s: ScholarshipRow): string[] {
+  const badges: string[] = [];
+
+  if (s.funding_type.includes("full_ride")) badges.push("FULL RIDE");
+  if (s.merit_based) badges.push("MERIT-BASED");
+  if (s.need_based) badges.push("NEED-BLIND");
+
+  // Post-grad only (not mixed level)
+  if (
+    s.study_level.includes("postgraduate") &&
+    !s.study_level.includes("undergraduate")
+  ) {
+    badges.push("POST-GRAD");
+  }
+
+  // Regional: scholarship explicitly limits to a small set of countries
+  if (s.eligible_countries.length > 0 && s.eligible_countries.length <= 8) {
+    badges.push("REGIONAL");
+  }
+
+  // STEM: inferred from tags or description keywords
+  const stemKeywords = ["stem", "science", "engineering", "technology", "mathematics", "physics", "chemistry"];
+  const hasStem =
+    s.tags.some((t) => stemKeywords.some((k) => t.toLowerCase().includes(k))) ||
+    (s.description ?? "").toLowerCase().includes("stem");
+  if (hasStem) badges.push("STEM");
+
+  // Prestigious: flagged via tags
+  if (s.tags.some((t) => t.toLowerCase().includes("prestigious"))) {
+    badges.push("PRESTIGIOUS");
+  }
+
+  return badges;
+}
+
+/**
+ * Returns the best display string for the scholarship amount.
+ * Prefers the pre-formatted amount_display column; falls back to
+ * formatting amount_value + currency.
+ */
+export function formatAmountDisplay(s: ScholarshipRow): string {
+  if (s.amount_display) return s.amount_display;
+
+  if (s.amount_value != null) {
+    const prefix =
+      s.amount_currency === "AUD"
+        ? "A$"
+        : s.amount_currency === "GBP"
+        ? "£"
+        : s.amount_currency === "EUR"
+        ? "€"
+        : "$";
+    const formatted = s.amount_value.toLocaleString("en-US");
+    return `${prefix}${formatted}`;
+  }
+
+  return "See Details";
+}
+</file>
+
 <file path="caat-frontend/components.json">
 {
   "$schema": "https://ui.shadcn.com/schema.json",
@@ -5393,6 +7114,61 @@ export default function ResumeBuilderPage() {
 }
 </file>
 
+<file path="caat-frontend/app/(main)/scholarships/page.tsx">
+import { supabase } from "@/src/lib/supabaseClient";
+import { Separator } from "@/components/ui/separator";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+} from "@/components/ui/breadcrumb";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { ScholarshipRow } from "@/types/scholarships";
+import ScholarshipsClient from "./client";
+
+export default async function ScholarshipsPage() {
+  const { data, error } = await supabase
+    .from("scholarships")
+    .select("*")
+    .eq("is_active", true)
+    .order("is_featured", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return (
+      <div className="p-10 text-red-500">
+        Error loading scholarships: {error.message}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Header — matches pattern used across all (main) pages */}
+      <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+        <SidebarTrigger className="-ml-1" />
+        <Separator
+          orientation="vertical"
+          className="mr-2 data-[orientation=vertical]:h-4"
+        />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink>Scholarships</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+
+        {/* Search lives inside ScholarshipsClient so it can read filter state */}
+      </header>
+
+      <ScholarshipsClient scholarships={(data ?? []) as ScholarshipRow[]} />
+    </>
+  );
+}
+</file>
+
 <file path="caat-frontend/app/login/page.tsx">
 import { GalleryVerticalEnd } from "lucide-react"
 
@@ -5671,6 +7447,126 @@ export type SaveResumePayload = {
                 sortOrder: number;
         }>;
 };
+</file>
+
+<file path="caat-frontend/components/scholarships/scholarship-card.tsx">
+"use client";
+
+import Link from "next/link";
+import { Bookmark } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
+
+const TAG_COLORS: Record<string, string> = {
+  "FULL RIDE":   "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  "MERIT-BASED": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  "NEED-BLIND":  "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  "REGIONAL":    "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+  "POST-GRAD":   "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
+  "PRESTIGIOUS": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  "STEM":        "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
+};
+
+export interface Scholarship {
+  id: string;
+  university: string;
+  name: string;
+  tags: string[];
+  /** Primary display amount, e.g. "$65,000" or "Fully Funded" */
+  amount: string;
+  /** Optional suffix shown in muted text, e.g. "/ year" or "/ total" */
+  amountSuffix?: string;
+  description: string;
+}
+
+interface Props {
+  scholarship: Scholarship;
+  isBookmarked: boolean;
+  onToggleBookmark: (id: string) => void;
+}
+
+export default function ScholarshipCard({
+  scholarship,
+  isBookmarked,
+  onToggleBookmark,
+}: Props) {
+  return (
+    <Card className="flex flex-col h-full hover:shadow-lg transition-shadow">
+      <CardHeader className="pb-3 gap-2">
+        {/* University name + bookmark */}
+        <div className="flex items-start justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-400 leading-tight">
+            {scholarship.university}
+          </span>
+          <Button
+            size="icon-sm"
+            variant={isBookmarked ? "default" : "outline"}
+            className="shrink-0"
+            onClick={() => onToggleBookmark(scholarship.id)}
+            aria-label={isBookmarked ? "Remove bookmark" : "Bookmark scholarship"}
+          >
+            <Bookmark className={`h-3.5 w-3.5 ${isBookmarked ? "fill-current" : ""}`} />
+          </Button>
+        </div>
+
+        {/* Scholarship title */}
+        <h3 className="font-semibold text-[15px] leading-snug">
+          {scholarship.name}
+        </h3>
+
+        {/* Tag badges */}
+        {scholarship.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {scholarship.tags.map((tag) => {
+              const color =
+                TAG_COLORS[tag] ??
+                "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+              return (
+                <span
+                  key={tag}
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${color}`}
+                >
+                  {tag}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </CardHeader>
+
+      <CardContent className="flex-grow pb-3">
+        {/* Amount */}
+        <p className="text-2xl font-bold leading-tight">
+          {scholarship.amount}
+          {scholarship.amountSuffix && (
+            <span className="text-sm font-normal text-muted-foreground ml-1">
+              {scholarship.amountSuffix}
+            </span>
+          )}
+        </p>
+
+        {/* Description */}
+        <p className="text-sm text-muted-foreground line-clamp-3 mt-2">
+          {scholarship.description}
+        </p>
+      </CardContent>
+
+      <CardFooter className="pt-0">
+        <Button
+          asChild
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-600 dark:hover:bg-blue-700"
+        >
+          <Link href={`/scholarships/${scholarship.id}`}>View Details</Link>
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
 </file>
 
 <file path="caat-frontend/components/nav-user.tsx">
@@ -7483,8 +9379,8 @@ try {
 <file path="caat-frontend/app/layout.tsx">
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
-// Remove Sidebar imports from here
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -7512,518 +9408,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {/* Render children directly without the sidebar wrapper */}
         {children}
+        <Toaster richColors position="bottom-right" />
       </body>
     </html>
-  );
-}
-</file>
-
-<file path="caat-frontend/components/essays/EssaysShell.tsx">
-"use client";
-
-import React, { useCallback, useEffect, useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { ChevronDown, ChevronRight, FileText, Lightbulb, Pencil, Plus, Save, Trash2 } from "lucide-react";
-import { format } from "date-fns";
-import {
-  fetchEssayPrompts,
-  fetchDraftsForPrompt,
-  updateDraft,
-  createDraft,
-  deleteDraft,
-  type EssayPrompt,
-  type EssayDraft,
-} from "./api";
-import { supabase } from "@/src/lib/supabaseClient";
-import { cn } from "@/lib/utils";
-
-/* ---------------------------
-   Load prompts from DB on mount
----------------------------- */
-
-export default function EssaysShell() {
-  const [prompts, setPrompts] = useState<EssayPrompt[] | null>(null);
-  const [promptsError, setPromptsError] = useState<string | null>(null);
-  const [promptsLoading, setPromptsLoading] = useState(true);
-
-  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<EssayDraft[]>([]);
-  const [draftsLoading, setDraftsLoading] = useState(false);
-  const [activeDraft, setActiveDraft] = useState<EssayDraft | null>(null);
-  const [essayContent, setEssayContent] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState("");
-  const [creatingDraft, setCreatingDraft] = useState(false);
-  const [draftsPopoverOpen, setDraftsPopoverOpen] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const selectedPrompt = prompts?.find((p) => p.id === selectedPromptId);
-
-  // Load prompts on mount
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setPromptsLoading(true);
-      setPromptsError(null);
-      try {
-        const data = await fetchEssayPrompts();
-        if (!cancelled) {
-          setPrompts(data);
-          if (data.length > 0 && !selectedPromptId) setSelectedPromptId(data[0].id);
-        }
-      } catch (err) {
-        if (!cancelled)
-          setPromptsError(err instanceof Error ? err.message : "Failed to load prompts");
-      } finally {
-        if (!cancelled) setPromptsLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // When selected prompt changes, load drafts for that prompt
-  useEffect(() => {
-    if (!selectedPromptId || !isAuthenticated) {
-      setDrafts([]);
-      setActiveDraft(null);
-      setEssayContent("");
-      return;
-    }
-
-    let cancelled = false;
-    setDraftsLoading(true);
-
-    fetchDraftsForPrompt(selectedPromptId)
-      .then((list) => {
-        if (cancelled) return;
-        setDrafts(list);
-        const current = list.find((d) => d.is_current) ?? list[0];
-        setActiveDraft(current ?? null);
-        setEssayContent(current?.content ?? "");
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setDrafts([]);
-          setActiveDraft(null);
-          setEssayContent("");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setDraftsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedPromptId, isAuthenticated]);
-
-  // Track auth
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setIsAuthenticated(!!user));
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_e, session) =>
-      setIsAuthenticated(!!session?.user)
-    );
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const handleSave = useCallback(async () => {
-    if (!activeDraft || saving) return;
-    setSaveError(null);
-    setSaving(true);
-    try {
-      await updateDraft(activeDraft.id, { content: essayContent });
-      setDrafts((prev) =>
-        prev.map((d) =>
-          d.id === activeDraft.id
-            ? { ...d, content: essayContent, updated_at: new Date().toISOString() }
-            : d
-        )
-      );
-      setActiveDraft((prev) =>
-        prev?.id === activeDraft.id
-          ? { ...prev, content: essayContent, updated_at: new Date().toISOString() }
-          : prev
-      );
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  }, [activeDraft, essayContent, saving]);
-
-  const handleSwitchDraft = useCallback((draft: EssayDraft) => {
-    setActiveDraft(draft);
-    setEssayContent(draft.content);
-    setRenamingId(null);
-  }, []);
-
-  const startRename = useCallback((draft: EssayDraft) => {
-    setRenamingId(draft.id);
-    setRenameValue(draft.label ?? "Untitled");
-  }, []);
-
-  const submitRename = useCallback(
-    async (draftId: string) => {
-      const value = renameValue.trim() || "Untitled";
-      setRenamingId(null);
-      try {
-        await updateDraft(draftId, { label: value });
-        setDrafts((prev) =>
-          prev.map((d) => (d.id === draftId ? { ...d, label: value } : d))
-        );
-        if (activeDraft?.id === draftId) setActiveDraft((p) => (p ? { ...p, label: value } : p));
-      } catch {
-        setRenameValue("");
-      }
-    },
-    [renameValue, activeDraft?.id]
-  );
-
-  const handleNewDraft = useCallback(async () => {
-    if (!selectedPrompt || creatingDraft || !isAuthenticated) return;
-    setCreatingDraft(true);
-    setSaveError(null);
-    try {
-      const newDraft = await createDraft({
-        promptId: selectedPrompt.id,
-        promptSlug: selectedPrompt.slug,
-        label: `Draft ${drafts.length + 1}`,
-      });
-      setDrafts((prev) => [newDraft, ...prev]);
-      setActiveDraft(newDraft);
-      setEssayContent("");
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to create draft");
-    } finally {
-      setCreatingDraft(false);
-    }
-  }, [selectedPrompt, creatingDraft, isAuthenticated, drafts.length]);
-
-  const handleDeleteDraft = useCallback(
-    async (draftId: string) => {
-      if (deletingId) return;
-      setDeletingId(draftId);
-      try {
-        await deleteDraft(draftId);
-        setDrafts((prev) => prev.filter((d) => d.id !== draftId));
-        if (activeDraft?.id === draftId) {
-          const remaining = drafts.filter((d) => d.id !== draftId);
-          const next = remaining[0] ?? null;
-          setActiveDraft(next);
-          setEssayContent(next?.content ?? "");
-        }
-      } catch (err) {
-        setSaveError(err instanceof Error ? err.message : "Failed to delete draft");
-      } finally {
-        setDeletingId(null);
-      }
-    },
-    [activeDraft?.id, drafts, deletingId]
-  );
-
-  const lastSavedLabel =
-    activeDraft?.updated_at
-      ? format(new Date(activeDraft.updated_at), "MMM d, yyyy 'at' h:mm a")
-      : "Never";
-
-  return (
-    <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-      {isAuthenticated === false && (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-          Sign in to save your essays and keep them across sessions.
-        </p>
-      )}
-
-      {promptsError && (
-        <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {promptsError}
-        </p>
-      )}
-
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        {/* Left: essay prompts */}
-        <Card className="h-fit rounded-xl">
-          <CardHeader>
-            <CardTitle className="text-lg">Essay prompts</CardTitle>
-            <CardDescription>
-              Choose a prompt to view tips and write your response.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-1">
-            {promptsLoading ? (
-              <p className="text-sm text-muted-foreground">Loading prompts…</p>
-            ) : prompts?.length ? (
-              prompts.map((prompt) => (
-                <button
-                  key={prompt.id}
-                  type="button"
-                  onClick={() => setSelectedPromptId(prompt.id)}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors",
-                    selectedPromptId === prompt.id
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-transparent hover:bg-muted/50"
-                  )}
-                >
-                  <ChevronRight
-                    className={cn(
-                      "h-4 w-4 shrink-0",
-                      selectedPromptId === prompt.id && "rotate-90"
-                    )}
-                  />
-                  <span className="font-medium">{prompt.title}</span>
-                </button>
-              ))
-            ) : (
-              <p className="text-sm text-muted-foreground">No prompts available.</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Right: prompt details + drafts + editor */}
-        <div className="flex min-h-100 min-w-0 flex-col gap-4">
-          {selectedPrompt ? (
-            <>
-              <Card className="rounded-xl">
-                <CardHeader>
-                  <CardTitle className="text-lg">{selectedPrompt.title}</CardTitle>
-                  <CardDescription>
-                    {selectedPrompt.description ?? undefined}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Collapsible defaultOpen>
-                    <CollapsibleTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="flex items-center gap-2 text-muted-foreground"
-                      >
-                        <Lightbulb className="h-4 w-4" />
-                        Tips & guidance
-                        <ChevronDown className="h-4 w-4" />
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-2">
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        {selectedPrompt.tips ?? "No tips for this prompt."}
-                      </p>
-                    </CollapsibleContent>
-                  </Collapsible>
-                </CardContent>
-              </Card>
-
-              <Card className="flex flex-1 flex-col rounded-xl">
-                <CardHeader className="flex flex-col gap-3 border-b pb-4 pr-0">
-                  <div className="flex w-full flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <CardTitle className="text-base">Your response</CardTitle>
-                      <CardDescription>
-                        Write your essay here. Save to store it on your account.
-                      </CardDescription>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2 pl-3 pr-6">
-                      {isAuthenticated && (
-                        <Popover open={draftsPopoverOpen} onOpenChange={setDraftsPopoverOpen}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-2 font-normal"
-                            >
-                              <FileText className="h-4 w-4 shrink-0" />
-                              <span className="truncate max-w-35">
-                                {activeDraft?.label ?? "Drafts"}
-                              </span>
-                              <span className="text-muted-foreground">
-                                ({drafts.length})
-                              </span>
-                              <ChevronDown className="h-4 w-4 shrink-0" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            align="end"
-                            className="w-80 p-0"
-                            sideOffset={8}
-                          >
-                            <div className="border-b px-3 py-2">
-                              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                Drafts
-                              </p>
-                            </div>
-                            <div className="max-h-70 overflow-y-auto py-1">
-                              {draftsLoading ? (
-                                <p className="px-3 py-4 text-center text-sm text-muted-foreground">
-                                  Loading…
-                                </p>
-                              ) : drafts.length === 0 ? (
-                                <p className="px-3 py-4 text-center text-sm text-muted-foreground">
-                                  No drafts yet.
-                                </p>
-                              ) : (
-                                drafts.map((draft) => (
-                                  <div key={draft.id} className="group flex items-center gap-1 rounded-sm px-2 py-1">
-                                    {renamingId === draft.id ? (
-                                      <Input
-                                        autoFocus
-                                        value={renameValue}
-                                        onChange={(e) => setRenameValue(e.target.value)}
-                                        onBlur={() => submitRename(draft.id)}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") e.currentTarget.blur();
-                                          if (e.key === "Escape") {
-                                            setRenamingId(null);
-                                            setRenameValue(draft.label ?? "Untitled");
-                                          }
-                                        }}
-                                        className="h-8 flex-1 border-0 bg-muted/50 text-sm shadow-none focus-visible:ring-2"
-                                        placeholder="Draft name"
-                                        onClick={(e) => e.stopPropagation()}
-                                      />
-                                    ) : (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            handleSwitchDraft(draft);
-                                            setDraftsPopoverOpen(false);
-                                          }}
-                                          className={cn(
-                                            "flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1.5 text-left text-sm transition-colors",
-                                            activeDraft?.id === draft.id
-                                              ? "bg-primary/10 text-primary"
-                                              : "hover:bg-muted/60"
-                                          )}
-                                        >
-                                          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                          <span className="min-w-0 flex-1 truncate">
-                                            {draft.label ?? "Untitled"}
-                                          </span>
-                                          <span className="shrink-0 text-xs text-muted-foreground">
-                                            {format(new Date(draft.updated_at), "MMM d")}
-                                          </span>
-                                        </button>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                                          aria-label="Rename draft"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            startRename(draft);
-                                          }}
-                                        >
-                                          <Pencil className="h-3.5 w-3.5" />
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                                          aria-label="Delete draft"
-                                          disabled={deletingId === draft.id}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteDraft(draft.id);
-                                          }}
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                        </Button>
-                                      </>
-                                    )}
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                            <div className="border-t p-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="w-full justify-start gap-2 text-sm"
-                                disabled={draftsLoading || creatingDraft}
-                                onClick={() => {
-                                  handleNewDraft();
-                                  setDraftsPopoverOpen(false);
-                                }}
-                              >
-                                <Plus className="h-4 w-4" />
-                                New draft
-                              </Button>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                      <Button
-                        size="sm"
-                        disabled={saving || !isAuthenticated || draftsLoading || !activeDraft}
-                        onClick={handleSave}
-                      >
-                        <Save className="h-4 w-4" />
-                        {saving ? "Saving…" : "Save"}
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex flex-1 flex-col pt-4">
-                  <p className="mb-2 text-xs text-muted-foreground">
-                    Last saved: {draftsLoading ? "…" : lastSavedLabel}
-                  </p>
-                  {saveError && (
-                    <p className="mb-2 text-xs text-destructive">{saveError}</p>
-                  )}
-                  <Textarea
-                    placeholder="Start writing your essay here."
-                    value={essayContent}
-                    onChange={(e) => setEssayContent(e.target.value)}
-                    disabled={draftsLoading}
-                    className="min-h-70 flex-1 resize-y font-mono text-sm"
-                  />
-                </CardContent>
-              </Card>
-            </>
-          ) : (
-            <Card className="flex flex-1 items-center justify-center rounded-xl">
-              <CardContent className="py-12 text-center text-muted-foreground">
-                {promptsLoading
-                  ? "Loading…"
-                  : "Select an essay prompt from the list to view guidance and start writing."}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-    </div>
   );
 }
 </file>
@@ -8266,539 +9654,6 @@ export async function deleteResume(resumeId: string): Promise<void> {
 		.eq("id", resumeId)
 		.eq("user_id", userId);
 	if (resumeErr) throw new Error(resumeErr.message);
-}
-</file>
-
-<file path="caat-frontend/components/resume-builder/ResumeBuilderShell.tsx">
-"use client";
-
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  arrayMove,
-} from "@dnd-kit/sortable";
-
-import { getDefaultSections } from "./defaultSections";
-import { ResumeSection } from "./types";
-
-// Supabase API helpers
-import {
-  loadOrCreateResumeState,
-  saveResumeState,
-  listResumes,
-  loadResumeById,
-  createResume,
-  deleteResume,
-} from "./api";
-
-import { Pencil, Trash2 } from "lucide-react";
-import * as Dialog from "@radix-ui/react-dialog";
-
-import DocumentStructurePanel from "./DocumentStructurePanel";
-import SectionEditorPanel from "./SectionEditorPanel";
-import ResumePreviewPanel from "./ResumePreviewPanel";
-
-export default function ResumeBuilderShell() {
-  const [sections, setSections] = useState<ResumeSection[]>([]);
-  const [activeSectionId, setActiveSectionId] = useState<string>("");
-
-  // Resume metadata (needed for save/load)
-  const [resumeId, setResumeId] = useState<string>("");
-  const [resumeTitle, setResumeTitle] = useState<string>("My Professional Resume");
-  const [resumeList, setResumeList] = useState<{ id: string; title: string | null }[]>([]);
-
-  // Basic UX state
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Which section should be immediately renamed (newly added)
-  const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
-
-  // Resume title edit (inline, same as section rename)
-  const [editingResumeTitle, setEditingResumeTitle] = useState(false);
-  const [draftResumeTitle, setDraftResumeTitle] = useState("");
-  const [deleteResumeDialogOpen, setDeleteResumeDialogOpen] = useState(false);
-
-  const activeSection = useMemo(() => {
-    if (sections.length === 0) return undefined;
-    return sections.find((s) => s.id === activeSectionId) ?? sections[0];
-  }, [sections, activeSectionId]);
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  // --------------------------------------------------
-  // Initial load from Supabase
-  // --------------------------------------------------
-  useEffect(() => {
-    let cancelled = false;
-
-    async function init() {
-      try {
-        setIsLoading(true);
-
-        const state = await loadOrCreateResumeState();
-        if (cancelled) return;
-
-        setResumeId(state.resumeId);
-        setResumeTitle(state.title || "My Professional Resume");
-
-        // Load resume list for switcher
-        const list = await listResumes();
-        if (!cancelled) setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
-
-        // If user has no sections yet, seed defaults once and save them
-        if (!state.sections || state.sections.length === 0) {
-          const defaults = getDefaultSections();
-
-          setSections(defaults);
-          setActiveSectionId(defaults[0]?.id ?? "");
-
-          // Save seeded defaults so next refresh loads from db
-          await saveResumeState({
-            resumeId: state.resumeId,
-            title: state.title || "My Professional Resume",
-            template: state.template ?? null,
-            sections: defaults.map((s, idx) => ({
-              id: s.id,
-              type: s.type,
-              label: s.label,
-              mode: s.mode,
-              contentHtml: s.contentHtml,
-              structuredData: s.structuredData,
-              sortOrder: idx,
-            })),
-          });
-
-          const list = await listResumes();
-          if (!cancelled) setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
-          return;
-        }
-
-        // Otherwise load from DB
-        const loadedSections: ResumeSection[] = state.sections
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((s) => ({
-            id: s.id,
-            type: s.type,
-            label: s.label,
-            mode: s.mode,
-            contentHtml: s.contentHtml,
-            structuredData: s.structuredData,
-          }));
-
-        setSections(loadedSections);
-        setActiveSectionId(loadedSections[0]?.id ?? "");
-      } catch (err) {
-        console.error(err);
-
-        // If anything fails, fall back to local defaults so UI still works
-        const defaults = getDefaultSections();
-        if (cancelled) return;
-
-        setSections(defaults);
-        setActiveSectionId(defaults[0]?.id ?? "");
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
-
-    init();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // --------------------------------------------------
-  // Drag & drop ordering
-  // --------------------------------------------------
-  function onDragEnd(event: any) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = sections.findIndex((s) => s.id === active.id);
-    const newIndex = sections.findIndex((s) => s.id === over.id);
-
-    setSections((prev) => arrayMove(prev, oldIndex, newIndex));
-  }
-
-  // --------------------------------------------------
-  // Update a section (editor changes)
-  // --------------------------------------------------
-  function updateSection(id: string, patch: Partial<ResumeSection>) {
-    setSections((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
-    );
-  }
-
-  // --------------------------------------------------
-  // Add section
-  // --------------------------------------------------
-  function addSection() {
-    const newId = crypto.randomUUID(); // real UUID for Supabase
-    const newSection: ResumeSection = {
-      id: newId,
-      type: "custom",
-      label: "Custom Section",
-      mode: "free",
-      contentHtml: "",
-    };
-
-    setSections((prev) => [...prev, newSection]);
-    setActiveSectionId(newId);
-
-    // Immediately enter rename mode for the newly added section
-    setRenamingSectionId(newId);
-  }
-
-  // --------------------------------------------------
-  // Delete section
-  // --------------------------------------------------
-  function deleteSection(id: string) {
-    setSections((prev) => {
-      const next = prev.filter((s) => s.id !== id);
-
-      if (next.length === 0) {
-        setActiveSectionId("");
-        return next;
-      }
-
-      if (activeSectionId === id) {
-        setActiveSectionId(next[0].id);
-      }
-
-      return next;
-    });
-  }
-
-  // --------------------------------------------------
-  // Save (universal save button)
-  // --------------------------------------------------
-  async function onSave() {
-    if (!resumeId) return;
-
-    try {
-      setIsSaving(true);
-
-      await saveResumeState({
-        resumeId,
-        title: resumeTitle,
-        template: null,
-        sections: sections.map((s, idx) => ({
-          id: s.id,
-          type: s.type,
-          label: s.label,
-          mode: s.mode,
-          contentHtml: s.contentHtml,
-          structuredData: s.structuredData,
-          sortOrder: idx,
-        })),
-      });
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  // --------------------------------------------------
-  // Switch resume (load by id)
-  // --------------------------------------------------
-  async function switchResume(id: string) {
-    if (id === resumeId) return;
-    try {
-      setIsLoading(true);
-      const state = await loadResumeById(id);
-      if (!state) return;
-
-      setResumeId(state.resumeId);
-      setResumeTitle(state.title || "Untitled");
-
-      if (!state.sections || state.sections.length === 0) {
-        const defaults = getDefaultSections();
-        setSections(defaults);
-        setActiveSectionId(defaults[0]?.id ?? "");
-        await saveResumeState({
-          resumeId: state.resumeId,
-          title: state.title || "Untitled",
-          template: state.template ?? null,
-          sections: defaults.map((s, idx) => ({
-            id: s.id,
-            type: s.type,
-            label: s.label,
-            mode: s.mode,
-            contentHtml: s.contentHtml,
-            structuredData: s.structuredData,
-            sortOrder: idx,
-          })),
-        });
-      } else {
-        const loadedSections: ResumeSection[] = state.sections
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((s) => ({
-            id: s.id,
-            type: s.type,
-            label: s.label,
-            mode: s.mode,
-            contentHtml: s.contentHtml,
-            structuredData: s.structuredData,
-          }));
-        setSections(loadedSections);
-        setActiveSectionId(loadedSections[0]?.id ?? "");
-      }
-
-      const list = await listResumes();
-      setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  // --------------------------------------------------
-  // New resume
-  // --------------------------------------------------
-  async function onNewResume() {
-    try {
-      setIsLoading(true);
-      const state = await createResume();
-      const defaults = getDefaultSections();
-
-      setResumeId(state.resumeId);
-      setResumeTitle(state.title || "New Resume");
-      setSections(defaults);
-      setActiveSectionId(defaults[0]?.id ?? "");
-
-      await saveResumeState({
-        resumeId: state.resumeId,
-        title: state.title || "New Resume",
-        template: null,
-        sections: defaults.map((s, idx) => ({
-          id: s.id,
-          type: s.type,
-          label: s.label,
-          mode: s.mode,
-          contentHtml: s.contentHtml,
-          structuredData: s.structuredData,
-          sortOrder: idx,
-        })),
-      });
-
-      const list = await listResumes();
-      setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  // --------------------------------------------------
-  // Resume title edit (same behavior as section rename)
-  // --------------------------------------------------
-  function startEditResumeTitle() {
-    setDraftResumeTitle(resumeTitle);
-    setEditingResumeTitle(true);
-  }
-
-  function cancelEditResumeTitle() {
-    setEditingResumeTitle(false);
-    setDraftResumeTitle("");
-  }
-
-  async function commitEditResumeTitle() {
-    const next = draftResumeTitle.trim();
-    if (next.length > 0 && next !== resumeTitle && resumeId) {
-      setResumeTitle(next);
-      await saveResumeState({
-        resumeId,
-        title: next,
-        template: null,
-        sections: sections.map((s, idx) => ({
-          id: s.id,
-          type: s.type,
-          label: s.label,
-          mode: s.mode,
-          contentHtml: s.contentHtml,
-          structuredData: s.structuredData,
-          sortOrder: idx,
-        })),
-      });
-      const list = await listResumes();
-      setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
-    }
-    setEditingResumeTitle(false);
-    setDraftResumeTitle("");
-  }
-
-  // --------------------------------------------------
-  // Delete resume (with confirmation)
-  // --------------------------------------------------
-  async function confirmDeleteResume() {
-    if (!resumeId) return;
-    const toDeleteId = resumeId;
-    const rest = resumeList.filter((r) => r.id !== toDeleteId);
-
-    try {
-      await deleteResume(toDeleteId);
-      setDeleteResumeDialogOpen(false);
-
-      if (rest.length > 0) {
-        await switchResume(rest[0].id);
-      } else {
-        await onNewResume();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  return (
-    <div className="h-[calc(100vh-64px)] w-full">
-      {/* Top bar */}
-      <div className="flex items-center justify-between border-b bg-background px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div className="h-6 w-6 rounded bg-blue-600 text-white grid place-items-center text-sm font-bold shrink-0">
-            CA
-          </div>
-          {editingResumeTitle ? (
-            <input
-              value={draftResumeTitle}
-              onChange={(e) => setDraftResumeTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitEditResumeTitle();
-                if (e.key === "Escape") cancelEditResumeTitle();
-              }}
-              onBlur={() => commitEditResumeTitle()}
-              autoFocus
-              className="rounded border px-2 py-1 text-sm font-semibold w-40"
-            />
-          ) : (
-            <>
-              <select
-                value={resumeId}
-                onChange={(e) => switchResume(e.target.value)}
-                disabled={isLoading}
-                className="font-semibold bg-transparent border-none cursor-pointer focus:ring-0 focus:outline-none text-sm py-0 pr-6 min-w-[140px]"
-              >
-                {resumeList.length === 0 && resumeId ? (
-                  <option value={resumeId}>{resumeTitle}</option>
-                ) : (
-                  resumeList.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.title}
-                    </option>
-                  ))
-                )}
-              </select>
-              <button
-                type="button"
-                onClick={startEditResumeTitle}
-                disabled={isLoading}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                aria-label="Rename resume"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setDeleteResumeDialogOpen(true)}
-                disabled={isLoading}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                aria-label="Delete resume"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={onNewResume}
-            disabled={isLoading}
-            className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
-          >
-            + New resume
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button className="rounded-md border px-3 py-1.5 text-sm">Print / PDF</button>
-
-          <button
-            onClick={onSave}
-            disabled={isLoading || isSaving}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-60"
-          >
-            {isSaving ? "Saving..." : "Save"}
-          </button>
-        </div>
-      </div>
-
-      {/* 3-panel body */}
-      <div className="grid h-full grid-cols-[360px_1fr_520px]">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-            <DocumentStructurePanel
-              sections={sections}
-              activeSectionId={activeSectionId}
-              onSelect={setActiveSectionId}
-              onAdd={addSection}
-              onRename={(id, label) => updateSection(id, { label })}
-              onDelete={deleteSection}
-              renamingSectionId={renamingSectionId}
-              onFinishRenaming={() => setRenamingSectionId(null)}
-            />
-          </SortableContext>
-        </DndContext>
-
-        <SectionEditorPanel
-          section={activeSection}
-          onChange={(patch) => {
-            if (!activeSection) return;
-            updateSection(activeSection.id, patch);
-          }}
-        />
-
-        <ResumePreviewPanel sections={sections} />
-      </div>
-
-      <Dialog.Root open={deleteResumeDialogOpen} onOpenChange={setDeleteResumeDialogOpen}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-background p-4 shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
-            <Dialog.Title className="text-sm font-semibold">Delete resume</Dialog.Title>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Are you sure you wish to delete this resume? This cannot be undone.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setDeleteResumeDialogOpen(false)}
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmDeleteResume}
-                className="rounded-md bg-destructive px-3 py-1.5 text-sm text-destructive-foreground hover:bg-destructive/90"
-              >
-                Delete
-              </button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-    </div>
-  );
 }
 </file>
 
@@ -9597,6 +10452,1128 @@ repomix-output.xml
 }
 </file>
 
+<file path="caat-frontend/components/essays/EssaysShell.tsx">
+"use client";
+
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ChevronDown, ChevronRight, FileText, Lightbulb, Pencil, Plus, Save, Trash2 } from "lucide-react";
+import { format } from "date-fns";
+import {
+  fetchEssayPrompts,
+  fetchDraftsForPrompt,
+  updateDraft,
+  createDraft,
+  deleteDraft,
+  type EssayPrompt,
+  type EssayDraft,
+} from "./api";
+import { supabase } from "@/src/lib/supabaseClient";
+import { cn } from "@/lib/utils";
+
+/* ---------------------------
+   Load prompts from DB on mount
+---------------------------- */
+
+export default function EssaysShell() {
+  const [prompts, setPrompts] = useState<EssayPrompt[] | null>(null);
+  const [promptsError, setPromptsError] = useState<string | null>(null);
+  const [promptsLoading, setPromptsLoading] = useState(true);
+
+  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<EssayDraft[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [activeDraft, setActiveDraft] = useState<EssayDraft | null>(null);
+  const [essayContent, setEssayContent] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [creatingDraft, setCreatingDraft] = useState(false);
+  const [draftsPopoverOpen, setDraftsPopoverOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const selectedPrompt = prompts?.find((p) => p.id === selectedPromptId);
+
+  // Load prompts on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setPromptsLoading(true);
+      setPromptsError(null);
+      try {
+        const data = await fetchEssayPrompts();
+        if (!cancelled) {
+          setPrompts(data);
+          if (data.length > 0 && !selectedPromptId) setSelectedPromptId(data[0].id);
+        }
+      } catch (err) {
+        if (!cancelled)
+          setPromptsError(err instanceof Error ? err.message : "Failed to load prompts");
+      } finally {
+        if (!cancelled) setPromptsLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // When selected prompt changes, load drafts for that prompt
+  useEffect(() => {
+    if (!selectedPromptId || !isAuthenticated) {
+      setDrafts([]);
+      setActiveDraft(null);
+      setEssayContent("");
+      return;
+    }
+
+    let cancelled = false;
+    setDraftsLoading(true);
+
+    fetchDraftsForPrompt(selectedPromptId)
+      .then((list) => {
+        if (cancelled) return;
+        setDrafts(list);
+        const current = list.find((d) => d.is_current) ?? list[0];
+        setActiveDraft(current ?? null);
+        setEssayContent(current?.content ?? "");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDrafts([]);
+          setActiveDraft(null);
+          setEssayContent("");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDraftsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPromptId, isAuthenticated]);
+
+  // Track auth
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setIsAuthenticated(!!user));
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_e, session) =>
+      setIsAuthenticated(!!session?.user)
+    );
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (!activeDraft || saving) return;
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await updateDraft(activeDraft.id, { content: essayContent });
+      setDrafts((prev) =>
+        prev.map((d) =>
+          d.id === activeDraft.id
+            ? { ...d, content: essayContent, updated_at: new Date().toISOString() }
+            : d
+        )
+      );
+      setActiveDraft((prev) =>
+        prev?.id === activeDraft.id
+          ? { ...prev, content: essayContent, updated_at: new Date().toISOString() }
+          : prev
+      );
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }, [activeDraft, essayContent, saving]);
+
+  const handleSwitchDraft = useCallback((draft: EssayDraft) => {
+    setActiveDraft(draft);
+    setEssayContent(draft.content);
+    setRenamingId(null);
+  }, []);
+
+  const startRename = useCallback((draft: EssayDraft) => {
+    setRenamingId(draft.id);
+    setRenameValue(draft.label ?? "Untitled");
+  }, []);
+
+  const submitRename = useCallback(
+    async (draftId: string) => {
+      const value = renameValue.trim() || "Untitled";
+      setRenamingId(null);
+      try {
+        await updateDraft(draftId, { label: value });
+        setDrafts((prev) =>
+          prev.map((d) => (d.id === draftId ? { ...d, label: value } : d))
+        );
+        if (activeDraft?.id === draftId) setActiveDraft((p) => (p ? { ...p, label: value } : p));
+      } catch {
+        setRenameValue("");
+      }
+    },
+    [renameValue, activeDraft?.id]
+  );
+
+  const handleNewDraft = useCallback(async () => {
+    if (!selectedPrompt || creatingDraft || !isAuthenticated) return;
+    setCreatingDraft(true);
+    setSaveError(null);
+    try {
+      const newDraft = await createDraft({
+        promptId: selectedPrompt.id,
+        promptSlug: selectedPrompt.slug,
+        label: `Draft ${drafts.length + 1}`,
+      });
+      setDrafts((prev) => [newDraft, ...prev]);
+      setActiveDraft(newDraft);
+      setEssayContent("");
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to create draft");
+    } finally {
+      setCreatingDraft(false);
+    }
+  }, [selectedPrompt, creatingDraft, isAuthenticated, drafts.length]);
+
+  const handleDeleteDraft = useCallback(
+    async (draftId: string) => {
+      if (deletingId) return;
+      setDeletingId(draftId);
+      try {
+        await deleteDraft(draftId);
+        setDrafts((prev) => prev.filter((d) => d.id !== draftId));
+        if (activeDraft?.id === draftId) {
+          const remaining = drafts.filter((d) => d.id !== draftId);
+          const next = remaining[0] ?? null;
+          setActiveDraft(next);
+          setEssayContent(next?.content ?? "");
+        }
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : "Failed to delete draft");
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [activeDraft?.id, drafts, deletingId]
+  );
+
+  const lastSavedLabel =
+    activeDraft?.updated_at
+      ? format(new Date(activeDraft.updated_at), "MMM d, yyyy 'at' h:mm a")
+      : "Never";
+
+  // -------------------------------------------------------------------------
+  // Autosave — fires 2 s after the user stops typing, only when content has
+  // actually changed from what is already persisted in activeDraft
+  // -------------------------------------------------------------------------
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Skip when content matches what is already saved (e.g. initial load or
+    // switching drafts) so we never trigger a spurious write
+    if (essayContent === activeDraft?.content) return;
+    if (!activeDraft || !isAuthenticated) return;
+
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      handleSave();
+    }, 2000);
+
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [essayContent]);
+
+  return (
+    <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+      {isAuthenticated === false && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+          Sign in to save your essays and keep them across sessions.
+        </p>
+      )}
+
+      {promptsError && (
+        <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {promptsError}
+        </p>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+        {/* Left: essay prompts */}
+        <Card className="h-fit rounded-xl">
+          <CardHeader>
+            <CardTitle className="text-lg">Essay prompts</CardTitle>
+            <CardDescription>
+              Choose a prompt to view tips and write your response.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-1">
+            {promptsLoading ? (
+              <p className="text-sm text-muted-foreground">Loading prompts…</p>
+            ) : prompts?.length ? (
+              prompts.map((prompt) => (
+                <button
+                  key={prompt.id}
+                  type="button"
+                  onClick={() => setSelectedPromptId(prompt.id)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors",
+                    selectedPromptId === prompt.id
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-transparent hover:bg-muted/50"
+                  )}
+                >
+                  <ChevronRight
+                    className={cn(
+                      "h-4 w-4 shrink-0",
+                      selectedPromptId === prompt.id && "rotate-90"
+                    )}
+                  />
+                  <span className="font-medium">{prompt.title}</span>
+                </button>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No prompts available.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Right: prompt details + drafts + editor */}
+        <div className="flex min-h-100 min-w-0 flex-col gap-4">
+          {selectedPrompt ? (
+            <>
+              <Card className="rounded-xl">
+                <CardHeader>
+                  <CardTitle className="text-lg">{selectedPrompt.title}</CardTitle>
+                  <CardDescription>
+                    {selectedPrompt.description ?? undefined}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Collapsible defaultOpen>
+                    <CollapsibleTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex items-center gap-2 text-muted-foreground"
+                      >
+                        <Lightbulb className="h-4 w-4" />
+                        Tips & guidance
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pt-2">
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        {selectedPrompt.tips ?? "No tips for this prompt."}
+                      </p>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </CardContent>
+              </Card>
+
+              <Card className="flex flex-1 flex-col rounded-xl">
+                <CardHeader className="flex flex-col gap-3 border-b pb-4 pr-0">
+                  <div className="flex w-full flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <CardTitle className="text-base">Your response</CardTitle>
+                      <CardDescription>
+                        Write your essay here. Save to store it on your account.
+                      </CardDescription>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2 pl-3 pr-6">
+                      {isAuthenticated && (
+                        <Popover open={draftsPopoverOpen} onOpenChange={setDraftsPopoverOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-2 font-normal"
+                            >
+                              <FileText className="h-4 w-4 shrink-0" />
+                              <span className="truncate max-w-35">
+                                {activeDraft?.label ?? "Drafts"}
+                              </span>
+                              <span className="text-muted-foreground">
+                                ({drafts.length})
+                              </span>
+                              <ChevronDown className="h-4 w-4 shrink-0" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            align="end"
+                            className="w-80 p-0"
+                            sideOffset={8}
+                          >
+                            <div className="border-b px-3 py-2">
+                              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                Drafts
+                              </p>
+                            </div>
+                            <div className="max-h-70 overflow-y-auto py-1">
+                              {draftsLoading ? (
+                                <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+                                  Loading…
+                                </p>
+                              ) : drafts.length === 0 ? (
+                                <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+                                  No drafts yet.
+                                </p>
+                              ) : (
+                                drafts.map((draft) => (
+                                  <div key={draft.id} className="group flex items-center gap-1 rounded-sm px-2 py-1">
+                                    {renamingId === draft.id ? (
+                                      <Input
+                                        autoFocus
+                                        value={renameValue}
+                                        onChange={(e) => setRenameValue(e.target.value)}
+                                        onBlur={() => submitRename(draft.id)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") e.currentTarget.blur();
+                                          if (e.key === "Escape") {
+                                            setRenamingId(null);
+                                            setRenameValue(draft.label ?? "Untitled");
+                                          }
+                                        }}
+                                        className="h-8 flex-1 border-0 bg-muted/50 text-sm shadow-none focus-visible:ring-2"
+                                        placeholder="Draft name"
+                                        onClick={(e) => e.stopPropagation()}
+                                      />
+                                    ) : (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            handleSwitchDraft(draft);
+                                            setDraftsPopoverOpen(false);
+                                          }}
+                                          className={cn(
+                                            "flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1.5 text-left text-sm transition-colors",
+                                            activeDraft?.id === draft.id
+                                              ? "bg-primary/10 text-primary"
+                                              : "hover:bg-muted/60"
+                                          )}
+                                        >
+                                          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                          <span className="min-w-0 flex-1 truncate">
+                                            {draft.label ?? "Untitled"}
+                                          </span>
+                                          <span className="shrink-0 text-xs text-muted-foreground">
+                                            {format(new Date(draft.updated_at), "MMM d")}
+                                          </span>
+                                        </button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                                          aria-label="Rename draft"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            startRename(draft);
+                                          }}
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                                          aria-label="Delete draft"
+                                          disabled={deletingId === draft.id}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteDraft(draft.id);
+                                          }}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </>
+                                    )}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                            <div className="border-t p-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="w-full justify-start gap-2 text-sm"
+                                disabled={draftsLoading || creatingDraft}
+                                onClick={() => {
+                                  handleNewDraft();
+                                  setDraftsPopoverOpen(false);
+                                }}
+                              >
+                                <Plus className="h-4 w-4" />
+                                New draft
+                              </Button>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                      <Button
+                        size="sm"
+                        disabled={saving || !isAuthenticated || draftsLoading || !activeDraft}
+                        onClick={handleSave}
+                      >
+                        <Save className="h-4 w-4" />
+                        {saving ? "Saving…" : "Save"}
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col pt-4">
+                  {!draftsLoading && !activeDraft ? (
+                    <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed py-16 text-center">
+                      <FileText className="h-8 w-8 text-muted-foreground/50" />
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">No draft selected</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground/70">
+                          Create a draft first to start writing.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={creatingDraft || !isAuthenticated}
+                        onClick={handleNewDraft}
+                        className="gap-1.5"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        New draft
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="mb-2 text-xs text-muted-foreground">
+                        {saving ? "Saving…" : `Last saved on: ${draftsLoading ? "…" : lastSavedLabel}`}
+                      </p>
+                      {saveError && (
+                        <p className="mb-2 text-xs text-destructive">{saveError}</p>
+                      )}
+                      <Textarea
+                        placeholder="Start writing your essay here."
+                        value={essayContent}
+                        onChange={(e) => setEssayContent(e.target.value)}
+                        disabled={draftsLoading}
+                        className="min-h-70 flex-1 resize-y font-mono text-sm"
+                      />
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card className="flex flex-1 items-center justify-center rounded-xl">
+              <CardContent className="py-12 text-center text-muted-foreground">
+                {promptsLoading
+                  ? "Loading…"
+                  : "Select an essay prompt from the list to view guidance and start writing."}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="caat-frontend/components/resume-builder/ResumeBuilderShell.tsx">
+"use client";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { format } from "date-fns";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+
+import { getDefaultSections } from "./defaultSections";
+import { ResumeSection } from "./types";
+
+// Supabase API helpers
+import {
+  loadOrCreateResumeState,
+  saveResumeState,
+  listResumes,
+  loadResumeById,
+  createResume,
+  deleteResume,
+} from "./api";
+
+import { Pencil, Trash2 } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
+
+import DocumentStructurePanel from "./DocumentStructurePanel";
+import SectionEditorPanel from "./SectionEditorPanel";
+import ResumePreviewPanel from "./ResumePreviewPanel";
+
+export default function ResumeBuilderShell() {
+  const [sections, setSections] = useState<ResumeSection[]>([]);
+  const [activeSectionId, setActiveSectionId] = useState<string>("");
+
+  // Resume metadata (needed for save/load)
+  const [resumeId, setResumeId] = useState<string>("");
+  const [resumeTitle, setResumeTitle] = useState<string>("My Professional Resume");
+  const [resumeList, setResumeList] = useState<{ id: string; title: string | null }[]>([]);
+
+  // Basic UX state
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+  // Which section should be immediately renamed (newly added)
+  const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
+
+  // Resume title edit (inline, same as section rename)
+  const [editingResumeTitle, setEditingResumeTitle] = useState(false);
+  const [draftResumeTitle, setDraftResumeTitle] = useState("");
+  const [deleteResumeDialogOpen, setDeleteResumeDialogOpen] = useState(false);
+
+  const activeSection = useMemo(() => {
+    if (sections.length === 0) return undefined;
+    return sections.find((s) => s.id === activeSectionId) ?? sections[0];
+  }, [sections, activeSectionId]);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // --------------------------------------------------
+  // Initial load from Supabase
+  // --------------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+
+    async function init() {
+      try {
+        setIsLoading(true);
+
+        const state = await loadOrCreateResumeState();
+        if (cancelled) return;
+
+        setResumeId(state.resumeId);
+        setResumeTitle(state.title || "My Professional Resume");
+
+        // Load resume list for switcher
+        const list = await listResumes();
+        if (!cancelled) setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
+
+        // If user has no sections yet, seed defaults once and save them
+        if (!state.sections || state.sections.length === 0) {
+          const defaults = getDefaultSections();
+
+          setSections(defaults);
+          setActiveSectionId(defaults[0]?.id ?? "");
+
+          // Save seeded defaults so next refresh loads from db
+          await saveResumeState({
+            resumeId: state.resumeId,
+            title: state.title || "My Professional Resume",
+            template: state.template ?? null,
+            sections: defaults.map((s, idx) => ({
+              id: s.id,
+              type: s.type,
+              label: s.label,
+              mode: s.mode,
+              contentHtml: s.contentHtml,
+              structuredData: s.structuredData,
+              sortOrder: idx,
+            })),
+          });
+
+          const list = await listResumes();
+          if (!cancelled) setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
+          return;
+        }
+
+        // Otherwise load from DB
+        const loadedSections: ResumeSection[] = state.sections
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((s) => ({
+            id: s.id,
+            type: s.type,
+            label: s.label,
+            mode: s.mode,
+            contentHtml: s.contentHtml,
+            structuredData: s.structuredData,
+          }));
+
+        setSections(loadedSections);
+        setActiveSectionId(loadedSections[0]?.id ?? "");
+      } catch (err) {
+        console.error(err);
+
+        // If anything fails, fall back to local defaults so UI still works
+        const defaults = getDefaultSections();
+        if (cancelled) return;
+
+        setSections(defaults);
+        setActiveSectionId(defaults[0]?.id ?? "");
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    init();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // --------------------------------------------------
+  // Drag & drop ordering
+  // --------------------------------------------------
+  function onDragEnd(event: any) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = sections.findIndex((s) => s.id === active.id);
+    const newIndex = sections.findIndex((s) => s.id === over.id);
+
+    setSections((prev) => arrayMove(prev, oldIndex, newIndex));
+  }
+
+  // --------------------------------------------------
+  // Update a section (editor changes)
+  // --------------------------------------------------
+  function updateSection(id: string, patch: Partial<ResumeSection>) {
+    setSections((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
+    );
+  }
+
+  // --------------------------------------------------
+  // Add section
+  // --------------------------------------------------
+  function addSection() {
+    const newId = crypto.randomUUID(); // real UUID for Supabase
+    const newSection: ResumeSection = {
+      id: newId,
+      type: "custom",
+      label: "Custom Section",
+      mode: "free",
+      contentHtml: "",
+    };
+
+    setSections((prev) => [...prev, newSection]);
+    setActiveSectionId(newId);
+
+    // Immediately enter rename mode for the newly added section
+    setRenamingSectionId(newId);
+  }
+
+  // --------------------------------------------------
+  // Delete section
+  // --------------------------------------------------
+  function deleteSection(id: string) {
+    setSections((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+
+      if (next.length === 0) {
+        setActiveSectionId("");
+        return next;
+      }
+
+      if (activeSectionId === id) {
+        setActiveSectionId(next[0].id);
+      }
+
+      return next;
+    });
+  }
+
+  // --------------------------------------------------
+  // Save (universal save button)
+  // --------------------------------------------------
+  async function onSave() {
+    if (!resumeId) return;
+
+    try {
+      setIsSaving(true);
+
+      await saveResumeState({
+        resumeId,
+        title: resumeTitle,
+        template: null,
+        sections: sections.map((s, idx) => ({
+          id: s.id,
+          type: s.type,
+          label: s.label,
+          mode: s.mode,
+          contentHtml: s.contentHtml,
+          structuredData: s.structuredData,
+          sortOrder: idx,
+        })),
+      });
+
+      setLastSavedAt(new Date());
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Autosave — fires 2 s after any sections change, guarded by isLoading so
+  // programmatic section sets (initial load, resume switch, new resume) never
+  // trigger a spurious write
+  // -------------------------------------------------------------------------
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // isLoading is true during all programmatic section changes
+    if (isLoading || !resumeId) return;
+
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      onSave();
+    }, 2000);
+
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections]);
+
+  // --------------------------------------------------
+  // Switch resume (load by id)
+  // --------------------------------------------------
+  async function switchResume(id: string) {
+    if (id === resumeId) return;
+    try {
+      setIsLoading(true);
+      const state = await loadResumeById(id);
+      if (!state) return;
+
+      setResumeId(state.resumeId);
+      setResumeTitle(state.title || "Untitled");
+
+      if (!state.sections || state.sections.length === 0) {
+        const defaults = getDefaultSections();
+        setSections(defaults);
+        setActiveSectionId(defaults[0]?.id ?? "");
+        await saveResumeState({
+          resumeId: state.resumeId,
+          title: state.title || "Untitled",
+          template: state.template ?? null,
+          sections: defaults.map((s, idx) => ({
+            id: s.id,
+            type: s.type,
+            label: s.label,
+            mode: s.mode,
+            contentHtml: s.contentHtml,
+            structuredData: s.structuredData,
+            sortOrder: idx,
+          })),
+        });
+      } else {
+        const loadedSections: ResumeSection[] = state.sections
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((s) => ({
+            id: s.id,
+            type: s.type,
+            label: s.label,
+            mode: s.mode,
+            contentHtml: s.contentHtml,
+            structuredData: s.structuredData,
+          }));
+        setSections(loadedSections);
+        setActiveSectionId(loadedSections[0]?.id ?? "");
+      }
+
+      const list = await listResumes();
+      setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // --------------------------------------------------
+  // New resume
+  // --------------------------------------------------
+  async function onNewResume() {
+    try {
+      setIsLoading(true);
+      const state = await createResume();
+      const defaults = getDefaultSections();
+
+      setResumeId(state.resumeId);
+      setResumeTitle(state.title || "New Resume");
+      setSections(defaults);
+      setActiveSectionId(defaults[0]?.id ?? "");
+
+      await saveResumeState({
+        resumeId: state.resumeId,
+        title: state.title || "New Resume",
+        template: null,
+        sections: defaults.map((s, idx) => ({
+          id: s.id,
+          type: s.type,
+          label: s.label,
+          mode: s.mode,
+          contentHtml: s.contentHtml,
+          structuredData: s.structuredData,
+          sortOrder: idx,
+        })),
+      });
+
+      const list = await listResumes();
+      setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // --------------------------------------------------
+  // Resume title edit (same behavior as section rename)
+  // --------------------------------------------------
+  function startEditResumeTitle() {
+    setDraftResumeTitle(resumeTitle);
+    setEditingResumeTitle(true);
+  }
+
+  function cancelEditResumeTitle() {
+    setEditingResumeTitle(false);
+    setDraftResumeTitle("");
+  }
+
+  async function commitEditResumeTitle() {
+    const next = draftResumeTitle.trim();
+    if (next.length > 0 && next !== resumeTitle && resumeId) {
+      setResumeTitle(next);
+      await saveResumeState({
+        resumeId,
+        title: next,
+        template: null,
+        sections: sections.map((s, idx) => ({
+          id: s.id,
+          type: s.type,
+          label: s.label,
+          mode: s.mode,
+          contentHtml: s.contentHtml,
+          structuredData: s.structuredData,
+          sortOrder: idx,
+        })),
+      });
+      const list = await listResumes();
+      setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
+    }
+    setEditingResumeTitle(false);
+    setDraftResumeTitle("");
+  }
+
+  // --------------------------------------------------
+  // Delete resume (with confirmation)
+  // --------------------------------------------------
+  async function confirmDeleteResume() {
+    if (!resumeId) return;
+    const toDeleteId = resumeId;
+    const rest = resumeList.filter((r) => r.id !== toDeleteId);
+
+    try {
+      await deleteResume(toDeleteId);
+      setDeleteResumeDialogOpen(false);
+
+      if (rest.length > 0) {
+        await switchResume(rest[0].id);
+      } else {
+        await onNewResume();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  return (
+    <div className="h-[calc(100vh-64px)] w-full">
+      {/* Top bar */}
+      <div className="flex items-center justify-between border-b bg-background px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 rounded bg-blue-600 text-white grid place-items-center text-sm font-bold shrink-0">
+            CA
+          </div>
+          {editingResumeTitle ? (
+            <input
+              value={draftResumeTitle}
+              onChange={(e) => setDraftResumeTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitEditResumeTitle();
+                if (e.key === "Escape") cancelEditResumeTitle();
+              }}
+              onBlur={() => commitEditResumeTitle()}
+              autoFocus
+              className="rounded border px-2 py-1 text-sm font-semibold w-40"
+            />
+          ) : (
+            <>
+              <select
+                value={resumeId}
+                onChange={(e) => switchResume(e.target.value)}
+                disabled={isLoading}
+                className="font-semibold bg-transparent border-none cursor-pointer focus:ring-0 focus:outline-none text-sm py-0 pr-6 min-w-[140px]"
+              >
+                {resumeList.length === 0 && resumeId ? (
+                  <option value={resumeId}>{resumeTitle}</option>
+                ) : (
+                  resumeList.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.title}
+                    </option>
+                  ))
+                )}
+              </select>
+              <button
+                type="button"
+                onClick={startEditResumeTitle}
+                disabled={isLoading}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                aria-label="Rename resume"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteResumeDialogOpen(true)}
+                disabled={isLoading}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                aria-label="Delete resume"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={onNewResume}
+            disabled={isLoading}
+            className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+          >
+            + New resume
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {isSaving ? (
+            <span className="text-xs text-muted-foreground">Saving…</span>
+          ) : lastSavedAt ? (
+            <span className="text-xs text-muted-foreground">
+              Last saved on: {format(lastSavedAt, "MMM d, yyyy 'at' h:mm a")}
+            </span>
+          ) : null}
+
+          <button className="rounded-md border px-3 py-1.5 text-sm">Print / PDF</button>
+
+          <button
+            onClick={onSave}
+            disabled={isLoading || isSaving}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-60"
+          >
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </div>
+
+      {/* 3-panel body */}
+      <div className="grid h-full grid-cols-[360px_1fr_520px]">
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+            <DocumentStructurePanel
+              sections={sections}
+              activeSectionId={activeSectionId}
+              onSelect={setActiveSectionId}
+              onAdd={addSection}
+              onRename={(id, label) => updateSection(id, { label })}
+              onDelete={deleteSection}
+              renamingSectionId={renamingSectionId}
+              onFinishRenaming={() => setRenamingSectionId(null)}
+            />
+          </SortableContext>
+        </DndContext>
+
+        <SectionEditorPanel
+          section={activeSection}
+          onChange={(patch) => {
+            if (!activeSection) return;
+            updateSection(activeSection.id, patch);
+          }}
+        />
+
+        <ResumePreviewPanel sections={sections} />
+      </div>
+
+      <Dialog.Root open={deleteResumeDialogOpen} onOpenChange={setDeleteResumeDialogOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-background p-4 shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+            <Dialog.Title className="text-sm font-semibold">Delete resume</Dialog.Title>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Are you sure you wish to delete this resume? This cannot be undone.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteResumeDialogOpen(false)}
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteResume}
+                className="rounded-md bg-destructive px-3 py-1.5 text-sm text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </div>
+  );
+}
+</file>
+
 <file path="caat-frontend/app/page.tsx">
 import { redirect } from "next/navigation";
 
@@ -9620,6 +11597,7 @@ import {
   FileText,
   BookOpen,
   GraduationCap,
+  FolderOpen,
 } from "lucide-react"
 
 import {
@@ -9654,6 +11632,7 @@ const data = {
     { title: "Resume Builder", icon: FileUser, url: "/resume-builder", },
     { title: "Essays", icon: FileText, url: "/essays", },
     { title: "Scholarships", icon: GraduationCap, url: "/scholarships", },
+    { title: "Documents", icon: FolderOpen, url: "/documents", },
   ]
 }
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {

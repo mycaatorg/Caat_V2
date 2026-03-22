@@ -12,6 +12,7 @@ import {
   FileText,
   BookOpen,
   GraduationCap,
+  FolderOpen,
 } from "lucide-react"
 
 import {
@@ -46,6 +47,7 @@ const data = {
     { title: "Resume Builder", icon: FileUser, url: "/resume-builder", },
     { title: "Essays", icon: FileText, url: "/essays", },
     { title: "Scholarships", icon: GraduationCap, url: "/scholarships", },
+    { title: "Documents", icon: FolderOpen, url: "/documents", },
   ]
 }
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
