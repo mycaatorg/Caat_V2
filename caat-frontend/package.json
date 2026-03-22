@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "NODE_PATH=$PWD/node_modules next dev",
+    "build": "NODE_PATH=$PWD/node_modules next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
