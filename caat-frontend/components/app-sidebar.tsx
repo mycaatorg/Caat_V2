@@ -29,26 +29,62 @@ import {
   SidebarGroupLabel
 } from "@/components/ui/sidebar"
 import { NavUser } from "./nav-user"
+import { supabase } from "@/src/lib/supabaseClient"
 
-// This is sample data.
-const data = {
-  user: {
-    name: "name-placeholder",
-    email: "name@email.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
-  apps: [
-    { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard", },
-    { title: "My Profile", icon: User, url: "/profile", },
-    { title: "Schools", icon: School, url: "/schools", },
-    { title: "Majors", icon: BookOpen, url: "/majors", },
-    { title: "Resume Builder", icon: FileUser, url: "/resume-builder", },
-    { title: "Essays", icon: FileText, url: "/essays", },
-    { title: "Scholarships", icon: GraduationCap, url: "/scholarships", },
-    { title: "Documents", icon: FolderOpen, url: "/documents", },
-  ]
-}
+const apps = [
+  { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
+  { title: "My Profile", icon: User, url: "/profile" },
+  { title: "Schools", icon: School, url: "/schools" },
+  { title: "Majors", icon: BookOpen, url: "/majors" },
+  { title: "Resume Builder", icon: FileUser, url: "/resume-builder" },
+  { title: "Essays", icon: FileText, url: "/essays" },
+  { title: "Scholarships", icon: GraduationCap, url: "/scholarships" },
+  { title: "Documents", icon: FolderOpen, url: "/documents" },
+]
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const [user, setUser] = React.useState<{ name: string; email: string; avatar: string } | null>(null)
+
+  React.useEffect(() => {
+    const loadUser = async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (authUser) {
+        const name =
+          authUser.user_metadata?.full_name ||
+          authUser.user_metadata?.name ||
+          authUser.email?.split("@")[0] ||
+          "User"
+        setUser({
+          name,
+          email: authUser.email ?? "",
+          avatar: authUser.user_metadata?.avatar_url ?? "",
+        })
+      }
+    }
+
+    loadUser()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const authUser = session.user
+        const name =
+          authUser.user_metadata?.full_name ||
+          authUser.user_metadata?.name ||
+          authUser.email?.split("@")[0] ||
+          "User"
+        setUser({
+          name,
+          email: authUser.email ?? "",
+          avatar: authUser.user_metadata?.avatar_url ?? "",
+        })
+      } else {
+        setUser(null)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
   return (
     <Sidebar {...props}>
       <SidebarHeader className="py-5 px-6 border-b border-sidebar-border">
@@ -72,7 +108,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {data.apps.map((item) => (
+              {apps.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild className="gap-3 px-4 py-2.5 text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent">
                     <a href={item.url}>
@@ -87,7 +123,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border">
-        <NavUser user={data.user} />
+        {user && <NavUser user={user} />}
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

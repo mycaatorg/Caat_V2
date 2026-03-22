@@ -1,11 +1,14 @@
 "use client"
 
+import * as React from "react"
+import { useRouter } from "next/navigation"
+import { useTheme } from "next-themes"
 import {
-  IconCreditCard,
   IconDotsVertical,
   IconLogout,
+  IconMoon,
   IconNotification,
-  IconUserCircle,
+  IconSun,
 } from "@tabler/icons-react"
 
 import {
@@ -19,7 +22,6 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -31,6 +33,17 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 
+import { supabase } from "@/src/lib/supabaseClient"
+
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("")
+}
+
 export function NavUser({
   user,
 }: {
@@ -41,6 +54,19 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
+  const { resolvedTheme, setTheme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+  const router = useRouter()
+
+  React.useEffect(() => setMounted(true), [])
+
+  const isDark = mounted && resolvedTheme === "dark"
+  const initials = getInitials(user.name)
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push("/login")
+  }
 
   return (
     <SidebarMenu>
@@ -52,8 +78,8 @@ export function NavUser({
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg grayscale">
-                {/* <AvatarImage src={user.avatar} alt={user.name} /> */}
-                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                <AvatarImage src={user.avatar} alt={user.name} />
+                <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{user.name}</span>
@@ -70,39 +96,19 @@ export function NavUser({
             align="end"
             sideOffset={4}
           >
-            {/* <DropdownMenuLabel className="p-0 font-normal">
-              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className="rounded-lg">CN</AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{user.name}</span>
-                  <span className="text-muted-foreground truncate text-xs">
-                    {user.email}
-                  </span>
-                </div>
-              </div>
-            </DropdownMenuLabel> */}
-            {/* <DropdownMenuSeparator /> */}
             <DropdownMenuGroup>
-                
-              {/* <DropdownMenuItem>
-                <IconUserCircle />
-                Account
+              <DropdownMenuItem onClick={() => setTheme(isDark ? "light" : "dark")}>
+                {isDark ? <IconSun /> : <IconMoon />}
+                {isDark ? "Light Mode" : "Dark Mode"}
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <IconCreditCard />
-                Billing
-              </DropdownMenuItem> */}
-
+              <DropdownMenuSeparator />
               <DropdownMenuItem>
                 <IconNotification />
                 Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={handleSignOut}>
               <IconLogout />
               Log out
             </DropdownMenuItem>
