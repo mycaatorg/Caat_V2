@@ -51,6 +51,7 @@ function EditField({
 
 export function PersonalInfoCard({ data, onSave }: PersonalInfoCardProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [draft, setDraft] = useState(data);
 
   function handleEdit() {
@@ -59,8 +60,13 @@ export function PersonalInfoCard({ data, onSave }: PersonalInfoCardProps) {
   }
 
   async function handleSave() {
-    await onSave(draft);
-    setIsEditing(false);
+    setIsSaving(true);
+    try {
+      await onSave(draft);
+      setIsEditing(false);
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function handleCancel() {
@@ -73,6 +79,7 @@ export function PersonalInfoCard({ data, onSave }: PersonalInfoCardProps) {
       title="Personal Information"
       icon={<User className="h-4 w-4" />}
       isEditing={isEditing}
+      isSaving={isSaving}
       onEdit={handleEdit}
       onSave={handleSave}
       onCancel={handleCancel}

@@ -9,12 +9,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Check, Pencil, X } from "lucide-react";
+import { Check, Loader2, Pencil, X } from "lucide-react";
 
 interface ProfileCardProps {
   title: string;
   icon: React.ReactNode;
   isEditing: boolean;
+  isSaving?: boolean;
   onEdit: () => void;
   onSave: () => void;
   onCancel: () => void;
@@ -26,6 +27,7 @@ export function ProfileCard({
   title,
   icon,
   isEditing,
+  isSaving = false,
   onEdit,
   onSave,
   onCancel,
@@ -43,14 +45,24 @@ export function ProfileCard({
           <CardAction>
             {isEditing ? (
               <div className="flex items-center gap-1">
-                <Button size="sm" onClick={onSave} className="h-7 text-xs px-2.5">
-                  <Check className="h-3 w-3" />
-                  Save
+                <Button
+                  size="sm"
+                  onClick={onSave}
+                  disabled={isSaving}
+                  className="h-7 text-xs px-2.5"
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Check className="h-3 w-3" />
+                  )}
+                  {isSaving ? "Saving…" : "Save"}
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={onCancel}
+                  disabled={isSaving}
                   className="h-7 w-7 p-0"
                 >
                   <X className="h-3.5 w-3.5" />

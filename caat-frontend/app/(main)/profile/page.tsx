@@ -20,6 +20,12 @@ import { StandardisedTestingCard } from "@/components/profile/StandardisedTestin
 import { InterestsGoalsCard } from "@/components/profile/InterestsGoalsCard";
 import { ExtracurricularsCard } from "@/components/profile/ExtracurricularsCard";
 import type { ProfileRow, StandardisedTestScore } from "@/types/profile";
+import {
+  fetchProfile,
+  updateProfile,
+  fetchTestScores,
+  saveTestScores,
+} from "./api";
 
 // Maps academic curriculum → standardised test curriculum key
 const CURRICULUM_TO_TEST: Record<string, string> = {
@@ -27,12 +33,6 @@ const CURRICULUM_TO_TEST: Record<string, string> = {
   "IB Diploma (IBDP)": "IB",
   "ATAR": "ATAR",
 };
-import {
-  fetchProfile,
-  updateProfile,
-  fetchTestScores,
-  saveTestScores,
-} from "./api";
 
 // ── Completion scoring ─────────────────────────────────────────────────────────
 
@@ -56,6 +56,58 @@ function calcCompletion(
   ];
   const filled = fields.filter(Boolean).length;
   return Math.round((filled / fields.length) * 100);
+}
+
+function completionHint(pct: number): string {
+  if (pct < 50) return "Fill in your personal and academic info to get started.";
+  if (pct < 80) return "Add test scores to reach 80%.";
+  if (pct < 100) return "Almost there — add your interests and goals.";
+  return "Your profile is complete!";
+}
+
+// ── Loading skeleton ───────────────────────────────────────────────────────────
+
+function ProfileSkeleton() {
+  return (
+    <>
+      <header className="flex h-16 shrink-0 items-center gap-2 px-4">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem className="hidden md:block">
+              <BreadcrumbLink>My Profile</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </header>
+      <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+        {/* Hero */}
+        <Card>
+          <CardContent className="flex flex-col md:flex-row items-start md:items-center gap-5 py-2">
+            <Skeleton className="size-20 rounded-full shrink-0" />
+            <div className="flex-1 flex flex-col gap-2">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-4 w-56" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+            <div className="w-full md:w-64 flex flex-col gap-2">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-1.5 w-full rounded-full" />
+              <Skeleton className="h-3 w-48" />
+            </div>
+          </CardContent>
+        </Card>
+        {/* Cards grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[180, 160, 220, 200].map((h, i) => (
+            <Skeleton key={i} className="rounded-xl" style={{ height: h }} />
+          ))}
+        </div>
+        <Skeleton className="h-24 rounded-xl" />
+      </div>
+    </>
+  );
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────────
@@ -99,20 +151,19 @@ export default function ProfilePage() {
         current_location: data.currentLocation,
       });
       setProfile((p) =>
-        p
-          ? {
-              ...p,
-              first_name: data.firstName,
-              last_name: data.lastName,
-              birth_date: data.birthDate,
-              nationality: data.nationality,
-              current_location: data.currentLocation,
-            }
-          : p
+        p ? {
+          ...p,
+          first_name: data.firstName,
+          last_name: data.lastName,
+          birth_date: data.birthDate,
+          nationality: data.nationality,
+          current_location: data.currentLocation,
+        } : p
       );
       toast.success("Personal info saved.");
     } catch {
       toast.error("Failed to save personal info.");
+      throw new Error("save failed");
     }
   }
 
@@ -129,14 +180,12 @@ export default function ProfilePage() {
         graduation_year: data.graduationYear ? Number(data.graduationYear) : null,
       });
       setProfile((p) =>
-        p
-          ? {
-              ...p,
-              school_name: data.schoolName,
-              curriculum: data.curriculum,
-              graduation_year: data.graduationYear ? Number(data.graduationYear) : null,
-            }
-          : p
+        p ? {
+          ...p,
+          school_name: data.schoolName,
+          curriculum: data.curriculum,
+          graduation_year: data.graduationYear ? Number(data.graduationYear) : null,
+        } : p
       );
 
       // Auto-add matching test score entry if not already present
@@ -163,6 +212,7 @@ export default function ProfilePage() {
       toast.success("Academic profile saved.");
     } catch {
       toast.error("Failed to save academic profile.");
+      throw new Error("save failed");
     }
   }
 
@@ -174,6 +224,7 @@ export default function ProfilePage() {
       toast.success("Test scores saved.");
     } catch {
       toast.error("Failed to save test scores.");
+      throw new Error("save failed");
     }
   }
 
@@ -188,64 +239,25 @@ export default function ProfilePage() {
         preferred_countries: data.preferredCountries,
       });
       setProfile((p) =>
-        p
-          ? {
-              ...p,
-              target_majors: data.targetMajors,
-              preferred_countries: data.preferredCountries,
-            }
-          : p
+        p ? {
+          ...p,
+          target_majors: data.targetMajors,
+          preferred_countries: data.preferredCountries,
+        } : p
       );
       toast.success("Interests saved.");
     } catch {
       toast.error("Failed to save interests.");
+      throw new Error("save failed");
     }
   }
 
-  // ── Loading skeleton ─────────────────────────────────────────────────────────
-
-  if (loading) {
-    return (
-      <>
-        <header className="flex h-16 shrink-0 items-center gap-2 px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink>My Profile</BreadcrumbLink>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </header>
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <Skeleton className="h-28 w-full rounded-xl" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Skeleton className="h-48 rounded-xl" />
-            <Skeleton className="h-48 rounded-xl" />
-            <Skeleton className="h-48 rounded-xl" />
-            <Skeleton className="h-48 rounded-xl" />
-          </div>
-          <Skeleton className="h-24 rounded-xl" />
-        </div>
-      </>
-    );
-  }
-
+  if (loading) return <ProfileSkeleton />;
   if (!profile) return null;
 
   const firstName = profile.first_name ?? "";
   const lastName = profile.last_name ?? "";
   const completionPercent = calcCompletion(profile, scores);
-
-  const completionHint =
-    completionPercent < 50
-      ? "Fill in your personal and academic info to get started."
-      : completionPercent < 80
-      ? "Add test scores to reach 80%."
-      : completionPercent < 100
-      ? "Almost there — add your interests and goals."
-      : "Your profile is complete!";
 
   return (
     <>
@@ -280,14 +292,10 @@ export default function ProfilePage() {
 
             <div className="flex-1 min-w-0">
               <h1 className="text-lg font-semibold">
-                {firstName || lastName
-                  ? `${firstName} ${lastName}`.trim()
-                  : "Your Name"}
+                {firstName || lastName ? `${firstName} ${lastName}`.trim() : "Your Name"}
               </h1>
               <p className="text-sm text-muted-foreground mt-0.5">
-                {profile.graduation_year
-                  ? `Class of ${profile.graduation_year} · `
-                  : ""}
+                {profile.graduation_year ? `Class of ${profile.graduation_year} · ` : ""}
                 International Applicant
               </p>
               {profile.current_location && (
@@ -312,7 +320,7 @@ export default function ProfilePage() {
                 />
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">
-                {completionHint}
+                {completionHint(completionPercent)}
               </p>
             </div>
           </CardContent>

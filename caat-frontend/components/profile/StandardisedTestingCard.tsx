@@ -256,6 +256,7 @@ export function StandardisedTestingCard({
   onSave,
 }: StandardisedTestingCardProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [draft, setDraft] = useState<StandardisedTestScore[]>(scores);
 
   function handleEdit() {
@@ -264,8 +265,13 @@ export function StandardisedTestingCard({
   }
 
   async function handleSave() {
-    await onSave(draft);
-    setIsEditing(false);
+    setIsSaving(true);
+    try {
+      await onSave(draft);
+      setIsEditing(false);
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function handleCancel() {
@@ -297,6 +303,7 @@ export function StandardisedTestingCard({
       title="Standardised Testing"
       icon={<Award className="h-4 w-4" />}
       isEditing={isEditing}
+      isSaving={isSaving}
       onEdit={handleEdit}
       onSave={handleSave}
       onCancel={handleCancel}
