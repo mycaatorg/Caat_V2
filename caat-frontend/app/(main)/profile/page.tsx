@@ -320,7 +320,7 @@ export default function ProfilePage() {
             <div className="w-full md:w-64 shrink-0">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Application Progress
+                  Profile Progress
                 </span>
                 <span className="text-xs font-semibold">{completionPercent}%</span>
               </div>
