@@ -87,6 +87,9 @@ export default function EssaysShell() {
     return () => {
       cancelled = true;
     };
+    // selectedPromptId is intentionally omitted — this effect runs once on mount
+    // to set the initial prompt selection only if none is already chosen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // When selected prompt changes, load drafts for that prompt

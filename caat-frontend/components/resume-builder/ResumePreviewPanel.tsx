@@ -9,7 +9,7 @@ import React, {
 } from "react";
 import { ResumeSection } from "./types";
 
-function safeText(x: any) {
+function safeText(x: unknown) {
   return typeof x === "string" ? x : "";
 }
 
@@ -201,10 +201,12 @@ export default function ResumePreviewPanel({
 
   useEffect(() => {
     if (typeof document === "undefined") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFontsReady(true);
       return;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const anyDoc = document as any;
     if (anyDoc.fonts?.ready) {
       anyDoc.fonts.ready
@@ -217,6 +219,7 @@ export default function ResumePreviewPanel({
 
   useLayoutEffect(() => {
     if (!fontsReady || !measurementRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPages([]);
       return;
     }

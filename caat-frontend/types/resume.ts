@@ -8,7 +8,7 @@ export interface Section {
   mode: EditMode;
   content: string; // TipTap HTML (used in free mode)
   hidden: boolean;
-  structuredData: Record<string, any>; // Used in template mode
+  structuredData: Record<string, unknown>; // Used in template mode
 }
 
 export interface ResumeDoc {
