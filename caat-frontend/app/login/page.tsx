@@ -1,3 +1,4 @@
+import Image from "next/image"
 import { LoginForm } from "@/components/login-form"
 
 export default function LoginPage() {
@@ -11,10 +12,12 @@ export default function LoginPage() {
         </div>
       </div>
       <div className="bg-muted relative hidden lg:block">
-        <img
+        <Image
           src="/placeholder.svg"
           alt="Students studying for college applications"
-          className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
+          fill
+          unoptimized
+          className="object-cover dark:brightness-[0.2] dark:grayscale"
         />
       </div>
     </div>

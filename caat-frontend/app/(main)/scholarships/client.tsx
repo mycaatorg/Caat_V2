@@ -121,7 +121,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
 
     setBookmarkedIds((prev) => {
       const next = new Set(prev);
-      isBookmarked ? next.delete(id) : next.add(id);
+      if (isBookmarked) { next.delete(id); } else { next.add(id); }
       return next;
     });
 
@@ -142,7 +142,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     } catch {
       setBookmarkedIds((prev) => {
         const next = new Set(prev);
-        isBookmarked ? next.add(id) : next.delete(id);
+        if (isBookmarked) { next.add(id); } else { next.delete(id); }
         return next;
       });
       toast.error("Failed to update bookmark. Please try again.");

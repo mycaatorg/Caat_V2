@@ -14,7 +14,6 @@ import {
   verticalListSortingStrategy,
   arrayMove,
 } from "@dnd-kit/sortable";
-import { Button } from "@/components/ui/button";
 import { WidgetCard } from "./WidgetCard";
 import type { PlacedWidget } from "./api";
 

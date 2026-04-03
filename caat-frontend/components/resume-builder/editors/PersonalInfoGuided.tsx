@@ -7,8 +7,8 @@ export default function PersonalInfoGuided({
   value,
   onChange,
 }: {
-  value: Record<string, any>;
-  onChange: (next: Record<string, any>) => void;
+  value: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
 }) {
   function setField(key: string, v: string) {
     onChange({ ...value, [key]: v });
@@ -20,7 +20,7 @@ export default function PersonalInfoGuided({
         <div>
           <div className="mb-1 text-xs font-medium text-muted-foreground">FULL NAME</div>
           <Input
-            value={value.fullName ?? ""}
+            value={(value.fullName as string) ?? ""}
             onChange={(e) => setField("fullName", e.target.value)}
             placeholder="John Doe"
           />
@@ -29,7 +29,7 @@ export default function PersonalInfoGuided({
         <div>
           <div className="mb-1 text-xs font-medium text-muted-foreground">EMAIL</div>
           <Input
-            value={value.email ?? ""}
+            value={(value.email as string) ?? ""}
             onChange={(e) => setField("email", e.target.value)}
             placeholder="john@example.com"
           />
@@ -38,7 +38,7 @@ export default function PersonalInfoGuided({
         <div>
           <div className="mb-1 text-xs font-medium text-muted-foreground">PHONE</div>
           <Input
-            value={value.phone ?? ""}
+            value={(value.phone as string) ?? ""}
             onChange={(e) => setField("phone", e.target.value)}
             placeholder="+1 234 567 890"
           />
@@ -47,7 +47,7 @@ export default function PersonalInfoGuided({
         <div>
           <div className="mb-1 text-xs font-medium text-muted-foreground">WEBSITE / LINKEDIN</div>
           <Input
-            value={value.linkedin ?? ""}
+            value={(value.linkedin as string) ?? ""}
             onChange={(e) => setField("linkedin", e.target.value)}
             placeholder="linkedin.com/in/..."
           />
@@ -56,7 +56,7 @@ export default function PersonalInfoGuided({
         <div className="col-span-2">
           <div className="mb-1 text-xs font-medium text-muted-foreground">LOCATION</div>
           <Input
-            value={value.location ?? ""}
+            value={(value.location as string) ?? ""}
             onChange={(e) => setField("location", e.target.value)}
             placeholder="Sydney, Australia"
           />

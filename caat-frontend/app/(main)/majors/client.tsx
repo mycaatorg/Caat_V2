@@ -87,7 +87,7 @@ export default function MajorsClient({
 
     setBookmarkedIds((prev) => {
       const next = new Set(prev);
-      isCurrentlyBookmarked ? next.delete(id) : next.add(id);
+      if (isCurrentlyBookmarked) { next.delete(id); } else { next.add(id); }
       return next;
     });
 
@@ -108,7 +108,7 @@ export default function MajorsClient({
     } catch {
       setBookmarkedIds((prev) => {
         const next = new Set(prev);
-        isCurrentlyBookmarked ? next.add(id) : next.delete(id);
+        if (isCurrentlyBookmarked) { next.add(id); } else { next.delete(id); }
         return next;
       });
       toast.error("Failed to update bookmark. Please try again.");

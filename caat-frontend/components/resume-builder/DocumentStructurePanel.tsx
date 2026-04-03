@@ -37,6 +37,7 @@ export default function DocumentStructurePanel({
     const s = sections.find((x) => x.id === renamingSectionId);
     if (!s) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditingId(s.id);
     setDraft(s.label);
     onFinishRenaming();
