@@ -4,6 +4,7 @@ import * as React from "react"
 
 import logo from "@/components/assets/logo.webp"
 import Image from "next/image"
+import Link from "next/link"
 import {
   User,
   School,
@@ -111,10 +112,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               {apps.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild className="gap-3 px-4 py-2.5 text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent">
-                    <a href={item.url}>
+                    <Link href={item.url}>
                       <item.icon className="size-4 shrink-0"/>
                       <span className="text-sm font-medium">{item.title}</span>
-                    </a>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
