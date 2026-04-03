@@ -30,6 +30,13 @@ export async function updateProfile(
   userId: string,
   fields: Partial<Omit<ProfileRow, "id">>
 ): Promise<void> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+  if (user.id !== userId) throw new Error("Unauthorized");
+
   const { error } = await supabase
     .from("profiles")
     .update(fields)
@@ -55,6 +62,13 @@ export async function fetchMajorNames(): Promise<string[]> {
 export async function fetchTestScores(
   profileId: string
 ): Promise<StandardisedTestScore[]> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+  if (user.id !== profileId) throw new Error("Unauthorized");
+
   const { data: scores, error: scoresError } = await supabase
     .from("standardised_test_scores")
     .select("*")
@@ -86,6 +100,13 @@ export async function saveTestScores(
   profileId: string,
   scores: StandardisedTestScore[]
 ): Promise<void> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+  if (user.id !== profileId) throw new Error("Unauthorized");
+
   // Fetch existing score IDs so we can delete removed ones
   const { data: existing } = await supabase
     .from("standardised_test_scores")

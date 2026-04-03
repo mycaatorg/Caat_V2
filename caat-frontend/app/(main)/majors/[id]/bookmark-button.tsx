@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/src/lib/supabaseClient";
+import { toast } from "sonner";
 
 interface Props {
   majorId: string;
@@ -36,19 +37,26 @@ export default function BookmarkButton({ majorId }: Props) {
   async function handleToggle() {
     if (!userId) return;
 
-    const next = !isBookmarked;
-    setIsBookmarked(next); // optimistic
+    const prev = isBookmarked;
+    setIsBookmarked(!prev);
 
-    if (isBookmarked) {
-      await supabase
-        .from("user_bookmarked_majors")
-        .delete()
-        .eq("user_id", userId)
-        .eq("major_id", majorId);
-    } else {
-      await supabase
-        .from("user_bookmarked_majors")
-        .upsert({ user_id: userId, major_id: majorId });
+    try {
+      if (prev) {
+        const { error } = await supabase
+          .from("user_bookmarked_majors")
+          .delete()
+          .eq("user_id", userId)
+          .eq("major_id", majorId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("user_bookmarked_majors")
+          .upsert({ user_id: userId, major_id: majorId });
+        if (error) throw error;
+      }
+    } catch {
+      setIsBookmarked(prev);
+      toast.error("Failed to update bookmark. Please try again.");
     }
   }
 

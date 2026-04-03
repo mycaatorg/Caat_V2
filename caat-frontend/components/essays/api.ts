@@ -32,9 +32,14 @@ export async function fetchEssayPrompts() {
 }
 
 export async function fetchCurrentDraft(promptId: string) {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error("Not signed in");
+
   const { data, error } = await supabase
     .from("essay_drafts")
     .select("*")
+    .eq("user_id", user.id)
     .eq("prompt_id", promptId)
     .eq("is_current", true)
     .order("updated_at", { ascending: false })
