@@ -211,6 +211,8 @@ export async function saveResumeState(payload: SaveResumePayload): Promise<void>
 ---------------------------- */
 
 export async function deleteSection(sectionId: string): Promise<void> {
+        await requireUserId();
+
         const { error } = await supabase
                 .from("resume_sections")
                 .delete()

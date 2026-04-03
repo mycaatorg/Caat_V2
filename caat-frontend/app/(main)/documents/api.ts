@@ -83,10 +83,17 @@ export async function updateDocumentStatus(
   id: string,
   status: string
 ): Promise<DocumentRow> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
   const { data, error } = await supabase
     .from("documents")
     .update({ status, updated_at: new Date().toISOString() })
     .eq("id", id)
+    .eq("user_id", user.id)
     .select()
     .single();
 
@@ -95,12 +102,19 @@ export async function updateDocumentStatus(
 }
 
 export async function deleteDocument(doc: DocumentRow): Promise<void> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
   await supabase.storage.from(BUCKET).remove([doc.storage_path]);
 
   const { error } = await supabase
     .from("documents")
     .delete()
-    .eq("id", doc.id);
+    .eq("id", doc.id)
+    .eq("user_id", user.id);
 
   if (error) throw new Error(error.message);
 }

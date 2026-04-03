@@ -31,6 +31,7 @@ import {
   formatAmountDisplay,
 } from "@/types/scholarships";
 import { supabase } from "@/src/lib/supabaseClient";
+import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -124,16 +125,27 @@ export default function ScholarshipsClient({ scholarships }: Props) {
       return next;
     });
 
-    if (isBookmarked) {
-      await supabase
-        .from("user_bookmarked_scholarships")
-        .delete()
-        .eq("user_id", userId)
-        .eq("scholarship_id", id);
-    } else {
-      await supabase
-        .from("user_bookmarked_scholarships")
-        .upsert({ user_id: userId, scholarship_id: id });
+    try {
+      if (isBookmarked) {
+        const { error } = await supabase
+          .from("user_bookmarked_scholarships")
+          .delete()
+          .eq("user_id", userId)
+          .eq("scholarship_id", id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("user_bookmarked_scholarships")
+          .upsert({ user_id: userId, scholarship_id: id });
+        if (error) throw error;
+      }
+    } catch {
+      setBookmarkedIds((prev) => {
+        const next = new Set(prev);
+        isBookmarked ? next.add(id) : next.delete(id);
+        return next;
+      });
+      toast.error("Failed to update bookmark. Please try again.");
     }
   }
 

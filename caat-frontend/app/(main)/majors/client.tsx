@@ -9,6 +9,7 @@ import CompareTable from "@/components/majors/compare-table";
 import { Button } from "@/components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
 import { supabase } from "@/src/lib/supabaseClient";
+import { toast } from "sonner";
 
 export type FilterView = MajorCategory | "All" | "Bookmarked";
 
@@ -86,23 +87,33 @@ export default function MajorsClient({
 
     const isCurrentlyBookmarked = bookmarkedIds.has(id);
 
-    // Optimistic update
     setBookmarkedIds((prev) => {
       const next = new Set(prev);
       isCurrentlyBookmarked ? next.delete(id) : next.add(id);
       return next;
     });
 
-    if (isCurrentlyBookmarked) {
-      await supabase
-        .from("user_bookmarked_majors")
-        .delete()
-        .eq("user_id", userId)
-        .eq("major_id", id);
-    } else {
-      await supabase
-        .from("user_bookmarked_majors")
-        .upsert({ user_id: userId, major_id: id });
+    try {
+      if (isCurrentlyBookmarked) {
+        const { error } = await supabase
+          .from("user_bookmarked_majors")
+          .delete()
+          .eq("user_id", userId)
+          .eq("major_id", id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("user_bookmarked_majors")
+          .upsert({ user_id: userId, major_id: id });
+        if (error) throw error;
+      }
+    } catch {
+      setBookmarkedIds((prev) => {
+        const next = new Set(prev);
+        isCurrentlyBookmarked ? next.add(id) : next.delete(id);
+        return next;
+      });
+      toast.error("Failed to update bookmark. Please try again.");
     }
   }
 
