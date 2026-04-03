@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin } from "lucide-react";
@@ -126,10 +127,12 @@ export default function ProfilePage() {
   const [scores, setScores] = useState<StandardisedTestScore[]>([]);
   const [majorOptions, setMajorOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
+        setLoadError(false);
         const [p, majors] = await Promise.all([fetchProfile(), fetchMajorNames()]);
         const s = await fetchTestScores(p.id);
         setProfile(p);
@@ -137,6 +140,7 @@ export default function ProfilePage() {
         setMajorOptions(majors);
       } catch (err) {
         console.error(err);
+        setLoadError(true);
         toast.error("Failed to load profile.");
       } finally {
         setLoading(false);
@@ -264,7 +268,51 @@ export default function ProfilePage() {
   }
 
   if (loading) return <ProfileSkeleton />;
-  if (!profile) return null;
+  if (!profile) {
+    return (
+      <>
+        <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem className="hidden md:block">
+                <BreadcrumbLink>My Profile</BreadcrumbLink>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </header>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+          <p className="text-lg font-medium text-muted-foreground">
+            {loadError
+              ? "We couldn\u2019t load your profile. Please check your connection and try again."
+              : "No profile found."}
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setLoading(true);
+              setLoadError(false);
+              Promise.all([fetchProfile(), fetchMajorNames()])
+                .then(async ([p, majors]) => {
+                  const s = await fetchTestScores(p.id);
+                  setProfile(p);
+                  setScores(s);
+                  setMajorOptions(majors);
+                })
+                .catch(() => {
+                  setLoadError(true);
+                  toast.error("Failed to load profile.");
+                })
+                .finally(() => setLoading(false));
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      </>
+    );
+  }
 
   const firstName = profile.first_name ?? "";
   const lastName = profile.last_name ?? "";

@@ -26,6 +26,7 @@ import {
   loadResumeById,
   createResume,
   deleteResume,
+  deleteSection as deleteSectionFromDb,
 } from "./api";
 
 import { Pencil, Trash2 } from "lucide-react";
@@ -205,6 +206,10 @@ export default function ResumeBuilderShell() {
       }
 
       return next;
+    });
+
+    deleteSectionFromDb(id).catch((err) => {
+      console.error("Failed to delete section from database:", err);
     });
   }
 

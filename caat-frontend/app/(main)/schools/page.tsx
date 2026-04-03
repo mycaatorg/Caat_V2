@@ -20,19 +20,54 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList } from "@/co
 import { ChevronLeft, ChevronRight, Link as LinkIcon } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import SchoolSearch from "./school-search";
-import CountrySelect from "./country-select"; // New Client Component
+import CountrySelect from "./country-select";
+import { BookmarkedSchoolsList } from "./schools-client";
+import SchoolFilterBarClient from "./school-filter-bar-client";
 
 export default async function SchoolsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string; country?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; country?: string; filter?: string }>;
 }) {
   const params = await searchParams;
+  const activeFilter = params.filter === "bookmarked" ? "Bookmarked" : "All";
+
+  // ----- Bookmarked view — no DB query needed here, client component handles it -----
+  if (activeFilter === "Bookmarked") {
+    return (
+      <>
+        <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+          <SidebarTrigger className="-ml-1" />
+          <Separator
+            orientation="vertical"
+            className="mr-2 data-[orientation=vertical]:h-4"
+          />
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem className="hidden md:block">
+                <BreadcrumbLink>Schools</BreadcrumbLink>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </header>
+
+        <div className="min-h-screen p-8">
+          <main className="max-w-5xl mx-auto">
+            <div className="mb-6">
+              <SchoolFilterBarClient activeFilter="Bookmarked" />
+            </div>
+            <BookmarkedSchoolsList />
+          </main>
+        </div>
+      </>
+    );
+  }
+
+  // ----- Normal paginated view -----
   const currentPage = Number(params.page) || 1;
   const searchQuery = params.q || "";
-  // Default to Australia to match original behavior, or use the param
-  const selectedCountry = params.country || "Australia"; 
-  const itemsPerPage = 24; 
+  const selectedCountry = params.country || "Australia";
+  const itemsPerPage = 24;
 
   const from = (currentPage - 1) * itemsPerPage;
   const to = from + itemsPerPage - 1;
@@ -44,7 +79,7 @@ export default async function SchoolsPage({
     .range(from, to);
 
   if (searchQuery) {
-    let orQuery = `name.ilike.${searchQuery}%,name.ilike.% ${searchQuery}%,name.ilike.%(${searchQuery})%`;
+    const orQuery = `name.ilike.${searchQuery}%,name.ilike.% ${searchQuery}%,name.ilike.%(${searchQuery})%`;
     query = query.or(orQuery);
   }
 
@@ -85,7 +120,13 @@ export default async function SchoolsPage({
 
       <div className="min-h-screen p-8">
         <main className="max-w-5xl mx-auto">
-          
+
+          {/* Filter chips */}
+          <div className="mb-4">
+            <SchoolFilterBarClient activeFilter="All" />
+          </div>
+
+          {/* Search + country */}
           <div className="flex flex-col md:flex-row gap-4 mb-6 items-start">
             <div className="flex-1 w-full max-w-md">
               <SchoolSearch defaultValue={searchQuery} />
@@ -95,7 +136,8 @@ export default async function SchoolsPage({
 
           <div className="mb-10 flex flex-col gap-2">
             <p className="text-zinc-500 dark:text-zinc-400">
-              Showing {count || 0} results in <strong>{selectedCountry}</strong> {totalPages > 0 && `(Page ${currentPage} of ${totalPages})`}
+              Showing {count || 0} results in <strong>{selectedCountry}</strong>{" "}
+              {totalPages > 0 && `(Page ${currentPage} of ${totalPages})`}
             </p>
           </div>
 
@@ -118,7 +160,7 @@ export default async function SchoolsPage({
 
                   <CardFooter className="justify-end flex gap-2">
                     <Button asChild size="sm" variant="default">
-                      <Link href={`/schools/${school.id}`}>Bookmark</Link>
+                      <Link href={`/schools/${school.id}`}>View Details</Link>
                     </Button>
 
                     {school.website ? (

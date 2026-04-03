@@ -9,7 +9,6 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldSeparator,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 
@@ -22,20 +21,19 @@ export function SignupForm({
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmationSent, setConfirmationSent] = useState(false)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setLoading(true)
     setError(null)
 
-    // 3. Capture form data
     const formData = new FormData(event.currentTarget)
     const name = formData.get("name") as string
     const email = formData.get("email") as string
     const password = formData.get("password") as string
     const confirmPassword = formData.get("confirm-password") as string
 
-    // 4. Basic Validation
     if (password !== confirmPassword) {
       setError("Passwords do not match")
       setLoading(false)
@@ -43,36 +41,53 @@ export function SignupForm({
     }
 
     try {
-      // 5. Submit to Supabase
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
-            full_name: name, // Saves "Full Name" to user metadata
+            full_name: name,
           },
         },
       })
 
       if (signUpError) throw signUpError
 
-      // 6. Handle Success
-      // If email confirmation is enabled in Supabase, you might want to show a message instead.
-      // Otherwise, redirect to dashboard or login.
-      router.push("/dashboard") 
-      
-    } catch (err: any) {
-      setError(err.message || "Something went wrong")
+      if (data.session) {
+        router.push("/dashboard")
+        router.refresh()
+      } else {
+        setConfirmationSent(true)
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Something went wrong"
+      setError(message)
     } finally {
       setLoading(false)
     }
   }
 
+  if (confirmationSent) {
+    return (
+      <div className={cn("flex flex-col gap-6 items-center text-center", className)}>
+        <div className="flex flex-col items-center gap-2">
+          <h1 className="text-2xl font-bold">Check your email</h1>
+          <p className="text-muted-foreground text-sm text-balance max-w-sm">
+            We&apos;ve sent a confirmation link to your email address.
+            Please click it to activate your account, then come back and log in.
+          </p>
+        </div>
+        <Button variant="outline" asChild>
+          <a href="/login">Go to Login</a>
+        </Button>
+      </div>
+    )
+  }
 
   return (
-    <form 
-      onSubmit={handleSubmit} // <--- Attach the handler
-      className={cn("flex flex-col gap-6", className)} 
+    <form
+      onSubmit={handleSubmit}
+      className={cn("flex flex-col gap-6", className)}
       {...props}
     >
       <FieldGroup>
@@ -82,8 +97,7 @@ export function SignupForm({
             Fill in the form below to create your account
           </p>
         </div>
-        
-        {/* Error Message Display */}
+
         {error && (
           <div className="bg-red-50 text-red-600 text-sm p-3 rounded-md border border-red-200">
             {error}
