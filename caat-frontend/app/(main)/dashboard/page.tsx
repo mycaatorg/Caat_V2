@@ -19,7 +19,7 @@ export default function DashboardPage() {
         />
         <Breadcrumb>
           <BreadcrumbList>
-            <BreadcrumbItem className="hidden md:block">
+            <BreadcrumbItem>
               <BreadcrumbLink>Dashboard</BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>

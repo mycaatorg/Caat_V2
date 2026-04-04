@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/src/lib/supabaseClient";
 import type { Major } from "@/types/majors";
+import { CATEGORY_COLORS } from "@/constants/majors";
 
 interface BookmarkedMajorRow {
   major_id: string;
@@ -85,7 +86,10 @@ export function BookmarkedMajorsWidget() {
               >
                 <span className="text-sm font-medium truncate">{major.name}</span>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <Badge variant="secondary" className="text-xs hidden sm:inline-flex">
+                  <Badge
+                    variant="secondary"
+                    className={`text-xs hidden sm:inline-flex ${CATEGORY_COLORS[major.category] ?? ""}`}
+                  >
                     {major.category}
                   </Badge>
                   <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />

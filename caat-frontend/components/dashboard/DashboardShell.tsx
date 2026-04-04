@@ -13,7 +13,7 @@ import {
   saveDashboardWidgets,
   type PlacedWidget,
 } from "./api";
-import { supabase } from "@/src/lib/supabaseClient";
+import { useAuth } from "@/src/context/AuthContext";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -23,25 +23,20 @@ function getGreeting() {
 }
 
 export function DashboardShell() {
+  const { user } = useAuth();
   const [placedWidgets, setPlacedWidgets] = useState<PlacedWidget[]>([]);
   const [loading, setLoading] = useState(true);
   const [storeOpen, setStoreOpen] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string | null>(null);
 
-  // Load saved layout and user name on mount
+  const userName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email?.split("@")[0] ||
+    null;
+
+  // Load saved widget layout on mount
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        const name =
-          user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          user.email?.split("@")[0] ||
-          null;
-        setUserName(name);
-      }
-    });
-
     fetchDashboardWidgets()
       .then(setPlacedWidgets)
       .catch((err: unknown) => {

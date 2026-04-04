@@ -36,7 +36,7 @@ export default async function MajorsPage({
         />
         <Breadcrumb>
           <BreadcrumbList>
-            <BreadcrumbItem className="hidden md:block">
+            <BreadcrumbItem>
               <BreadcrumbLink>Majors</BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>

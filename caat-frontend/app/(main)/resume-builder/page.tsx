@@ -18,7 +18,7 @@ export default function ResumeBuilderPage() {
         />
         <Breadcrumb>
           <BreadcrumbList>
-            <BreadcrumbItem className="hidden md:block">
+            <BreadcrumbItem>
               <BreadcrumbLink>Resume Builder</BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>

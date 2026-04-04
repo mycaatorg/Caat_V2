@@ -7,7 +7,6 @@ import {
   IconDotsVertical,
   IconLogout,
   IconMoon,
-  IconNotification,
   IconSun,
 } from "@tabler/icons-react"
 
@@ -106,11 +105,6 @@ export function NavUser({
               <DropdownMenuItem onClick={() => setTheme(isDark ? "light" : "dark")}>
                 {isDark ? <IconSun /> : <IconMoon />}
                 {isDark ? "Light Mode" : "Dark Mode"}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <IconNotification />
-                Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

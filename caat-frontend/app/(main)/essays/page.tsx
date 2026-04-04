@@ -19,7 +19,7 @@ export default function EssaysPage() {
         />
         <Breadcrumb>
           <BreadcrumbList>
-            <BreadcrumbItem className="hidden md:block">
+            <BreadcrumbItem>
               <BreadcrumbLink>Essays</BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>
