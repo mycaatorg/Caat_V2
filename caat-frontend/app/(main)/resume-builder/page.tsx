@@ -25,6 +25,6 @@ export default function ResumeBuilderPage() {
         </Breadcrumb>
       </header>
       
-    <ResumeBuilderClient />;
+    <ResumeBuilderClient />
   </>
 }

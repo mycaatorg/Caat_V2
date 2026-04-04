@@ -124,12 +124,11 @@
   }
 
   /* Shared typography for resume preview content.
-     Used in both the hidden measurement container and the visible preview
-     so pagination calculations match what the user sees. */
+     Font sizes are tuned for true A4 rendering (794px = 210mm at 96 CSS-dpi).
+     ~21px at 794px ≈ 11pt when printed on A4. */
   .resume-preview-content {
-    font-size: 11px;
+    font-size: 21px;
     line-height: 1.4;
-    /* Respect inline TipTap styles for font-size / font-family etc. */
     font-family: inherit;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -146,17 +145,17 @@
   }
 
   .resume-preview-content p {
-    margin: 0 0 0.4rem 0;
+    margin: 0 0 0.75rem 0;
   }
 
   .resume-preview-content ul,
   .resume-preview-content ol {
-    margin: 0 0 0.4rem 1.25rem;
+    margin: 0 0 0.75rem 2.4rem;
     padding: 0;
   }
 
   .resume-preview-content li {
-    margin-bottom: 0.15rem;
+    margin-bottom: 0.3rem;
   }
 
   .resume-preview-content a {
@@ -172,5 +171,62 @@
   .resume-preview-content h6 {
     margin: 0 0 0.4rem 0;
     font-weight: 600;
+  }
+}
+
+/* -------------------------------------------------------
+   Print / PDF styles
+   The [data-print-resume] container is a portal on <body>.
+   It uses the same ResumePage component as the on-screen
+   preview (same 794px width, same inline styles) so the
+   printed output is pixel-identical to the preview.
+------------------------------------------------------- */
+
+/* On screen the print container is invisible */
+[data-print-resume] {
+  display: none;
+}
+
+@media print {
+  /* Hide every direct child of body except the print portal */
+  body > *:not([data-print-resume]) {
+    display: none !important;
+  }
+
+  [data-print-resume] {
+    display: block !important;
+  }
+
+  /* A4 with zero margins — padding is baked into ResumePage */
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  /* Each .resume-print-page wraps one ResumePage (794px = 210mm at 96dpi).
+     The browser maps CSS px to physical dimensions when printing. */
+  .resume-print-page {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .resume-print-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  /* Ensure the page background prints white with black text */
+  .resume-page {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Page number footer is preview-only */
+  .resume-page-footer,
+  [data-print-resume] .resume-page-footer {
+    display: none !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
   }
 }

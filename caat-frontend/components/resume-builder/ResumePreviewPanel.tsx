@@ -13,13 +13,22 @@ function safeText(x: unknown) {
   return typeof x === "string" ? x : "";
 }
 
-const PAGE_WIDTH_PX = 420;
-const PAGE_HEIGHT_PX = PAGE_WIDTH_PX * Math.SQRT2;
-const PAGE_PADDING_PX = 40; // p-10
-const FIRST_PAGE_GAP_PX = 32; // mt-8
-const SECTION_GROUP_GAP_PX = 24; // mt-6 between sections
-const SECTION_HEADER_MARGIN_PX = 12; // mb-3 on section header (not captured by offsetHeight)
-const PAGE_BOTTOM_RESERVE_PX = 32; // whitespace reserved at bottom of each page (Word-like gap)
+// True A4 dimensions at 96 CSS-dpi (210mm x 297mm)
+const PAGE_WIDTH_PX = 794;
+const PAGE_HEIGHT_PX = 1123;
+const PAGE_PADDING_PX = 68; // ~18mm margins
+
+// All spacing constants scaled proportionally to the A4 width
+const FIRST_PAGE_GAP_PX = 60;
+const SECTION_GROUP_GAP_PX = 45;
+const SECTION_HEADER_MARGIN_PX = 23;
+const PAGE_BOTTOM_RESERVE_PX = 60;
+
+// Font sizes tuned for A4 output (≈11pt body when printed)
+const NAME_FONT_PX = 45;
+const CONTACT_FONT_PX = 21;
+const SECTION_LABEL_FONT_PX = 21;
+const FOOTER_FONT_PX = 19;
 
 type RenderBlock = {
   id: string;
@@ -31,14 +40,14 @@ type RenderBlock = {
   splittable: boolean;
 };
 
-type PageSectionChunk = {
+export type PageSectionChunk = {
   sectionId: string;
   sectionLabel: string;
   includeSectionHeader: boolean;
   htmlBlocks: string[];
 };
 
-type PageModel = {
+export type PageModel = {
   pageIndex: number;
   sections: PageSectionChunk[];
 };
@@ -124,18 +133,6 @@ function getTopLevelBlocks(
     });
   });
 
-  if (blocks.length === 0) {
-    blocks.push({
-      id: `${sectionId}-placeholder`,
-      sectionId,
-      sectionLabel,
-      tagName: "p",
-      html: "<p class='text-muted-foreground'>...</p>",
-      plainText: "...",
-      splittable: false,
-    });
-  }
-
   return blocks;
 }
 
@@ -170,10 +167,127 @@ function words(text: string) {
   return text.trim().split(/\s+/).filter(Boolean);
 }
 
+/* Shared JSX for a single page — used by both the visible preview and the
+   print portal so the two always render identical content. */
+export function ResumePage({
+  page,
+  totalPages,
+  personal,
+  showFooter = true,
+}: {
+  page: PageModel;
+  totalPages: number;
+  personal: Record<string, unknown>;
+  showFooter?: boolean;
+}) {
+  return (
+    <div
+      className="resume-page bg-white overflow-hidden flex flex-col"
+      style={{
+        width: PAGE_WIDTH_PX,
+        height: PAGE_HEIGHT_PX,
+        padding: PAGE_PADDING_PX,
+        boxSizing: "border-box",
+      }}
+    >
+      <div style={{ flex: "1 1 0%", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        {page.pageIndex === 0 && (
+          <div style={{ textAlign: "center" }}>
+            <div
+              style={{
+                fontSize: NAME_FONT_PX,
+                fontWeight: 700,
+                letterSpacing: "0.05em",
+                lineHeight: 1.2,
+              }}
+            >
+              {safeText(personal.fullName) || "JOHN DOE"}
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: CONTACT_FONT_PX,
+                color: "#666",
+                lineHeight: 1.4,
+              }}
+            >
+              {safeText(personal.email) || "john@example.com"}
+              {"  \u2022  "}
+              {safeText(personal.phone) || "+1 234 567 890"}
+              {"  \u2022  "}
+              {safeText(personal.location) || "Sydney, Australia"}
+              {"  \u2022  "}
+              <span style={{ color: "rgb(37 99 235)", textDecoration: "underline" }}>
+                {safeText(personal.linkedin) || "linkedin.com/in/johndoe"}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div style={page.pageIndex === 0 ? { marginTop: FIRST_PAGE_GAP_PX } : undefined}>
+          {page.sections.map((section, sectionIndex) => (
+            <div
+              key={`${page.pageIndex}-${section.sectionId}-${sectionIndex}`}
+              style={sectionIndex > 0 ? { marginTop: SECTION_GROUP_GAP_PX } : undefined}
+            >
+              {section.includeSectionHeader && (
+                <div style={{ marginBottom: SECTION_HEADER_MARGIN_PX }}>
+                  <div
+                    style={{
+                      fontSize: SECTION_LABEL_FONT_PX,
+                      fontWeight: 700,
+                      letterSpacing: "0.12em",
+                    }}
+                  >
+                    {section.sectionLabel.toUpperCase()}
+                  </div>
+                  <hr
+                    style={{
+                      marginTop: 4,
+                      border: "none",
+                      borderTop: "2px solid #000",
+                      width: "100%",
+                    }}
+                  />
+                </div>
+              )}
+
+              {section.htmlBlocks.map((html, i) => (
+                <div
+                  key={i}
+                  className="resume-preview-content"
+                  dangerouslySetInnerHTML={{ __html: html }}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {showFooter && (
+        <footer
+          className="resume-page-footer"
+          style={{
+            flexShrink: 0,
+            paddingTop: 8,
+            textAlign: "center",
+            fontSize: FOOTER_FONT_PX,
+            color: "#888",
+          }}
+        >
+          {page.pageIndex + 1} of {totalPages}
+        </footer>
+      )}
+    </div>
+  );
+}
+
 export default function ResumePreviewPanel({
   sections,
+  onPagesComputed,
 }: {
   sections: ResumeSection[];
+  onPagesComputed?: (pages: PageModel[], personal: Record<string, unknown>) => void;
 }) {
   const personal =
     sections.find((s) => s.type === "personal")?.structuredData ?? {};
@@ -188,16 +302,45 @@ export default function ResumePreviewPanel({
 
     const result: RenderBlock[] = [];
     contentSections.forEach((section) => {
-      result.push(
-        ...getTopLevelBlocks(section.id, section.label, section.contentHtml)
-      );
+      const sectionBlocks = getTopLevelBlocks(section.id, section.label, section.contentHtml);
+      if (sectionBlocks.length === 0) {
+        // Empty section — push a zero-height sentinel so the section header
+        // still appears in pagination without any visible placeholder text.
+        result.push({
+          id: `${section.id}-empty`,
+          sectionId: section.id,
+          sectionLabel: section.label,
+          tagName: "div",
+          html: "<div></div>",
+          plainText: "",
+          splittable: false,
+        });
+      } else {
+        result.push(...sectionBlocks);
+      }
     });
     return result;
   }, [contentSections]);
 
   const measurementRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [pages, setPages] = useState<PageModel[]>([]);
   const [fontsReady, setFontsReady] = useState(false);
+  const [displayScale, setDisplayScale] = useState(0.53);
+
+  // Track available width in the preview panel so we can scale pages to fit
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0;
+      if (width > 0) {
+        setDisplayScale(Math.min(1, width / PAGE_WIDTH_PX));
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -225,12 +368,9 @@ export default function ResumePreviewPanel({
     }
 
     if (blocks.length === 0) {
-      setPages([
-        {
-          pageIndex: 0,
-          sections: [],
-        },
-      ]);
+      const empty: PageModel[] = [{ pageIndex: 0, sections: [] }];
+      setPages(empty);
+      onPagesComputed?.(empty, personal);
       return;
     }
 
@@ -342,8 +482,6 @@ export default function ResumePreviewPanel({
     let currentPageIndex = 0;
     let remainingHeight = firstPageAvailable;
     let currentPage: PageModel = { pageIndex: 0, sections: [] };
-    // Tracks which sections have had their header placed on any page already.
-    // Continuation chunks on subsequent pages must NOT repeat the header.
     const sectionsWithHeader = new Set<string>();
 
     function pushCurrentPage() {
@@ -388,14 +526,11 @@ export default function ResumePreviewPanel({
       const lastSectionOnPage =
         currentPage.sections[currentPage.sections.length - 1];
 
-      // Show the section header only when this section is starting on this page AND
-      // it hasn't had its header placed on any previous page (i.e. not a continuation).
       const isSectionContinuation = sectionsWithHeader.has(block.sectionId);
       const needsSectionHeader =
         !isSectionContinuation &&
         (!lastSectionOnPage || lastSectionOnPage.sectionId !== block.sectionId);
 
-      // headerCost = header element height + mb-3 margin + mt-6 gap before non-first sections
       const isFirstSectionOnPage = currentPage.sections.length === 0;
       const headerCost = needsSectionHeader
         ? sectionHeaderHeight +
@@ -406,7 +541,6 @@ export default function ResumePreviewPanel({
       const totalNeeded = headerCost + fullBlockHeight;
 
       if (totalNeeded <= remainingHeight) {
-        // Block fits entirely on this page.
         const chunk = getOrCreatePageSectionChunk(
           block.sectionId,
           block.sectionLabel,
@@ -418,15 +552,12 @@ export default function ResumePreviewPanel({
         continue;
       }
 
-      // Block doesn't fit entirely. Try to split it across this page and the next.
-      // availableForBlock is the space left after the header (if any).
       const availableForBlock = remainingHeight - headerCost;
 
       if (availableForBlock > 0 && block.splittable) {
         const split = splitBlockToFit(block, availableForBlock);
 
         if (split.headHtml) {
-          // Part of the block fits — place the head on this page.
           const chunk = getOrCreatePageSectionChunk(
             block.sectionId,
             block.sectionLabel,
@@ -444,16 +575,12 @@ export default function ResumePreviewPanel({
         }
       }
 
-      // Can't split (non-splittable block, or no words fit in remaining space).
-      // If the page already has content, move to a fresh page and retry.
-      // If the page is empty (block is just too tall), force-place it to avoid an infinite loop.
       if (currentPage.sections.length > 0) {
         startNewPage();
         queue.unshift(block);
         continue;
       }
 
-      // Force-place on empty page.
       const chunk = getOrCreatePageSectionChunk(
         block.sectionId,
         block.sectionLabel,
@@ -470,55 +597,89 @@ export default function ResumePreviewPanel({
 
     pushCurrentPage();
     setPages(resultPages);
-  }, [blocks, fontsReady]);
+    onPagesComputed?.(resultPages, personal);
+  }, [blocks, fontsReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="border-l bg-muted/30 p-4 overflow-auto">
+    <div ref={containerRef} className="border-l bg-muted/30 p-4 overflow-auto">
       <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
         <div>A4</div>
         <div>Professional Resume Style</div>
         <div>100%</div>
       </div>
 
-      {/* hidden measurer */}
+      {/* Hidden measurement container — renders at true A4 width so that
+          text wrapping matches the visible pages exactly. */}
       <div
         ref={measurementRef}
         className="pointer-events-none fixed -left-[9999px] -top-[9999px]"
       >
         <div
-          className="bg-white border p-10"
-          style={{ width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX }}
+          className="bg-white"
+          style={{
+            width: PAGE_WIDTH_PX,
+            height: PAGE_HEIGHT_PX,
+            padding: PAGE_PADDING_PX,
+            boxSizing: "border-box",
+          }}
         >
           <div data-measure-page-body className="h-full overflow-hidden">
-            <div data-measure-personal-header className="text-center">
-              <div className="text-2xl font-bold tracking-wide">
+            <div data-measure-personal-header style={{ textAlign: "center" }}>
+              <div
+                style={{
+                  fontSize: NAME_FONT_PX,
+                  fontWeight: 700,
+                  letterSpacing: "0.05em",
+                  lineHeight: 1.2,
+                }}
+              >
                 {safeText(personal.fullName) || "JOHN DOE"}
               </div>
-              <div className="mt-1 text-[11px] text-muted-foreground">
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: CONTACT_FONT_PX,
+                  color: "#666",
+                  lineHeight: 1.4,
+                }}
+              >
                 {safeText(personal.email) || "john@example.com"}
-                {"  •  "}
+                {"  \u2022  "}
                 {safeText(personal.phone) || "+1 234 567 890"}
-                {"  •  "}
+                {"  \u2022  "}
                 {safeText(personal.location) || "Sydney, Australia"}
-                {"  •  "}
-                <span className="text-blue-600 underline">
+                {"  \u2022  "}
+                <span style={{ color: "rgb(37 99 235)", textDecoration: "underline" }}>
                   {safeText(personal.linkedin) || "linkedin.com/in/johndoe"}
                 </span>
               </div>
             </div>
 
-            <div className="mt-8">
+            <div style={{ marginTop: FIRST_PAGE_GAP_PX }}>
               {contentSections.map((section) => (
                 <div key={section.id}>
                   <div
                     data-measure-section-header
                     data-section-id={section.id}
-                    className="mb-3"
+                    style={{ marginBottom: SECTION_HEADER_MARGIN_PX }}
                   >
-                    <div className="text-[11px] font-bold tracking-wider">
+                    <div
+                      style={{
+                        fontSize: SECTION_LABEL_FONT_PX,
+                        fontWeight: 700,
+                        letterSpacing: "0.12em",
+                      }}
+                    >
                       {section.label.toUpperCase()}
                     </div>
-                    <div className="mt-1 h-px w-full bg-black/40" />
+                    <hr
+                      style={{
+                        marginTop: 4,
+                        border: "none",
+                        borderTop: "2px solid #000",
+                        width: "100%",
+                      }}
+                    />
                   </div>
                 </div>
               ))}
@@ -527,63 +688,33 @@ export default function ResumePreviewPanel({
         </div>
       </div>
 
+      {/* Visible preview — each page is rendered at true A4 size and CSS-scaled
+          to fit the panel width. This guarantees text wrapping and page breaks
+          in the preview match the printed output exactly. */}
       <div className="flex flex-col items-center gap-6">
         {pages.map((page) => (
           <div
             key={page.pageIndex}
-            className="mx-auto bg-white shadow-sm border p-10 overflow-hidden flex flex-col"
-            style={{ width: PAGE_WIDTH_PX, height: PAGE_HEIGHT_PX }}
+            style={{
+              width: PAGE_WIDTH_PX * displayScale,
+              height: PAGE_HEIGHT_PX * displayScale,
+              overflow: "hidden",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+              border: "1px solid var(--border)",
+            }}
           >
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-            {page.pageIndex === 0 && (
-              <div className="text-center">
-                <div className="text-2xl font-bold tracking-wide">
-                  {safeText(personal.fullName) || "JOHN DOE"}
-                </div>
-                <div className="mt-1 text-[11px] text-muted-foreground">
-                  {safeText(personal.email) || "john@example.com"}
-                  {"  •  "}
-                  {safeText(personal.phone) || "+1 234 567 890"}
-                  {"  •  "}
-                  {safeText(personal.location) || "Sydney, Australia"}
-                  {"  •  "}
-                  <span className="text-blue-600 underline">
-                    {safeText(personal.linkedin) || "linkedin.com/in/johndoe"}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div className={page.pageIndex === 0 ? "mt-8" : ""}>
-              {page.sections.map((section, sectionIndex) => (
-                <div
-                  key={`${page.pageIndex}-${section.sectionId}-${sectionIndex}`}
-                  className={sectionIndex > 0 ? "mt-6" : ""}
-                >
-                  {section.includeSectionHeader && (
-                    <div className="mb-3">
-                      <div className="text-[11px] font-bold tracking-wider">
-                        {section.sectionLabel.toUpperCase()}
-                      </div>
-                      <div className="mt-1 h-px w-full bg-black/40" />
-                    </div>
-                  )}
-
-                  {section.htmlBlocks.map((html, i) => (
-                    <div
-                      key={i}
-                      className="resume-preview-content"
-                      dangerouslySetInnerHTML={{ __html: html }}
-                    />
-                  ))}
-                </div>
-              ))}
+            <div
+              style={{
+                transform: `scale(${displayScale})`,
+                transformOrigin: "top left",
+              }}
+            >
+              <ResumePage
+                page={page}
+                totalPages={pages.length}
+                personal={personal}
+              />
             </div>
-            </div>
-
-            <footer className="flex-shrink-0 pt-2 text-center text-[10px] text-muted-foreground">
-              {page.pageIndex + 1} of {pages.length}
-            </footer>
           </div>
         ))}
       </div>

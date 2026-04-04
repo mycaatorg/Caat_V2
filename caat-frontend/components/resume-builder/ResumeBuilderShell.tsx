@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import {
   DndContext,
@@ -30,13 +31,14 @@ import {
   deleteSection as deleteSectionFromDb,
 } from "./api";
 
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, Printer } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { toast } from "sonner";
 
 import DocumentStructurePanel from "./DocumentStructurePanel";
 import SectionEditorPanel from "./SectionEditorPanel";
-import ResumePreviewPanel from "./ResumePreviewPanel";
+import ResumePreviewPanel, { ResumePage } from "./ResumePreviewPanel";
+import type { PageModel } from "./ResumePreviewPanel";
 
 export default function ResumeBuilderShell() {
   const [sections, setSections] = useState<ResumeSection[]>([]);
@@ -54,6 +56,10 @@ export default function ResumeBuilderShell() {
 
   // Which section should be immediately renamed (newly added)
   const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
+
+  // Computed page layout from the preview panel — used by the print container
+  const [printPages, setPrintPages] = useState<PageModel[]>([]);
+  const [printPersonal, setPrintPersonal] = useState<Record<string, unknown>>({});
 
   // Resume title edit (inline, same as section rename)
   const [editingResumeTitle, setEditingResumeTitle] = useState(false);
@@ -428,6 +434,28 @@ export default function ResumeBuilderShell() {
     }
   }
 
+  // --------------------------------------------------
+  // Print / PDF
+  // --------------------------------------------------
+  async function handlePrint() {
+    // Save latest state before printing so the PDF reflects persisted content
+    await onSave();
+
+    const previousTitle = document.title;
+    document.title = resumeTitle;
+
+    window.print();
+
+    // Restore after print dialog closes (onafterprint fires when dialog is dismissed)
+    const restore = () => {
+      document.title = previousTitle;
+      window.removeEventListener("afterprint", restore);
+    };
+    window.addEventListener("afterprint", restore);
+    // Fallback timeout in case afterprint doesn't fire
+    setTimeout(restore, 5000);
+  }
+
   return (
     <div className="h-[calc(100vh-64px)] w-full">
       {/* Top bar */}
@@ -505,7 +533,14 @@ export default function ResumeBuilderShell() {
             </span>
           ) : null}
 
-          <button className="rounded-md border px-3 py-1.5 text-sm">Print / PDF</button>
+          <button
+            onClick={handlePrint}
+            disabled={isLoading || isSaving}
+            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-60"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            Print / PDF
+          </button>
 
           <button
             onClick={onSave}
@@ -542,8 +577,34 @@ export default function ResumeBuilderShell() {
           }}
         />
 
-        <ResumePreviewPanel sections={sections} />
+        <ResumePreviewPanel
+          sections={sections}
+          onPagesComputed={(pages, personal) => {
+            setPrintPages(pages);
+            setPrintPersonal(personal);
+          }}
+        />
       </div>
+
+      {/* Print container — portalled to document.body so @media print CSS
+          can hide the app root and show only this. Uses the identical
+          ResumePage component as the preview so output matches exactly. */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <div data-print-resume aria-hidden="true">
+            {printPages.map((page) => (
+              <div key={page.pageIndex} className="resume-print-page">
+                <ResumePage
+                  page={page}
+                  totalPages={printPages.length}
+                  personal={printPersonal}
+                  showFooter={false}
+                />
+              </div>
+            ))}
+          </div>,
+          document.body
+        )}
 
       <Dialog.Root open={deleteResumeDialogOpen} onOpenChange={setDeleteResumeDialogOpen}>
         <Dialog.Portal>
