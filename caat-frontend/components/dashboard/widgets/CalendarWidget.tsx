@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Trash2, MapPin, Wifi, Clock, CalendarDays } from "lucide-react";
+import { Plus, Trash2, MapPin, Wifi, Clock, CalendarDays, Pencil } from "lucide-react";
 import { supabase } from "@/src/lib/supabaseClient";
 import { toast } from "sonner";
 
@@ -40,8 +40,12 @@ const EMPTY_FORM: EventForm = {
   is_online: false,
 };
 
+// Use local date parts — avoids UTC offset shifting "today" to yesterday
 function toDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function formatTime(t: string | null): string | null {
@@ -53,10 +57,22 @@ function formatTime(t: string | null): string | null {
   return `${h12}:${m} ${ampm}`;
 }
 
+function eventToForm(ev: CalendarEvent): EventForm {
+  return {
+    title: ev.title,
+    description: ev.description ?? "",
+    time_start: ev.time_start ?? "",
+    time_end: ev.time_end ?? "",
+    location: ev.location ?? "",
+    is_online: ev.is_online,
+  };
+}
+
 export function CalendarWidget() {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<EventForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
@@ -89,6 +105,23 @@ export function CalendarWidget() {
   const eventsForDay = events.filter((e) => e.event_date === selectedKey);
   const datesWithEvents = new Set(events.map((e) => e.event_date));
 
+  function openAdd() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setFormOpen(true);
+  }
+
+  function openEdit(ev: CalendarEvent) {
+    setEditingId(ev.id);
+    setForm(eventToForm(ev));
+    setFormOpen(true);
+  }
+
+  function cancelForm() {
+    setFormOpen(false);
+    setEditingId(null);
+  }
+
   async function handleSaveEvent() {
     if (!form.title.trim() || !date) return;
     setSaving(true);
@@ -103,7 +136,6 @@ export function CalendarWidget() {
     }
 
     const payload = {
-      user_id: user.id,
       title: form.title.trim(),
       event_date: toDateKey(date),
       description: form.description.trim() || null,
@@ -113,20 +145,40 @@ export function CalendarWidget() {
       is_online: form.is_online,
     };
 
-    const { data, error } = await supabase
-      .from("calendar_events")
-      .insert(payload)
-      .select(
-        "id, title, event_date, description, time_start, time_end, location, is_online"
-      )
-      .single();
+    if (editingId) {
+      const { data, error } = await supabase
+        .from("calendar_events")
+        .update(payload)
+        .eq("id", editingId)
+        .eq("user_id", user.id)
+        .select(
+          "id, title, event_date, description, time_start, time_end, location, is_online"
+        )
+        .single();
 
-    if (error || !data) {
-      toast.error("Could not save event.");
+      if (error || !data) {
+        toast.error("Could not update event.");
+      } else {
+        setEvents((prev) =>
+          prev.map((e) => (e.id === editingId ? (data as CalendarEvent) : e))
+        );
+        cancelForm();
+      }
     } else {
-      setEvents((prev) => [...prev, data as CalendarEvent]);
-      setForm(EMPTY_FORM);
-      setFormOpen(false);
+      const { data, error } = await supabase
+        .from("calendar_events")
+        .insert({ user_id: user.id, ...payload })
+        .select(
+          "id, title, event_date, description, time_start, time_end, location, is_online"
+        )
+        .single();
+
+      if (error || !data) {
+        toast.error("Could not save event.");
+      } else {
+        setEvents((prev) => [...prev, data as CalendarEvent]);
+        cancelForm();
+      }
     }
     setSaving(false);
   }
@@ -147,12 +199,13 @@ export function CalendarWidget() {
       toast.error("Could not delete event.");
     } else {
       setEvents((prev) => prev.filter((e) => e.id !== id));
+      if (editingId === id) cancelForm();
     }
   }
 
   return (
     <div className="flex gap-4">
-      {/* Left: calendar + add-event form */}
+      {/* Left: calendar + form */}
       <div className="flex flex-col gap-3 shrink-0">
         <Calendar
           mode="single"
@@ -170,10 +223,7 @@ export function CalendarWidget() {
         {!formOpen ? (
           <button
             type="button"
-            onClick={() => {
-              setForm(EMPTY_FORM);
-              setFormOpen(true);
-            }}
+            onClick={openAdd}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-1"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -181,6 +231,10 @@ export function CalendarWidget() {
           </button>
         ) : (
           <div className="space-y-2.5 rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              {editingId ? "Edit event" : "New event"}
+            </p>
+
             <div className="space-y-1">
               <Label className="text-xs">Event name</Label>
               <Input
@@ -192,7 +246,7 @@ export function CalendarWidget() {
                 }
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleSaveEvent();
-                  if (e.key === "Escape") setFormOpen(false);
+                  if (e.key === "Escape") cancelForm();
                 }}
                 className="h-7 text-xs"
               />
@@ -244,10 +298,7 @@ export function CalendarWidget() {
                     setForm((f) => ({ ...f, is_online: v === true }))
                   }
                 />
-                <Label
-                  htmlFor="cal-is-online"
-                  className="text-xs cursor-pointer"
-                >
+                <Label htmlFor="cal-is-online" className="text-xs cursor-pointer">
                   Online
                 </Label>
               </div>
@@ -268,7 +319,7 @@ export function CalendarWidget() {
                 variant="ghost"
                 size="sm"
                 className="h-7 text-xs flex-1"
-                onClick={() => setFormOpen(false)}
+                onClick={cancelForm}
               >
                 Cancel
               </Button>
@@ -278,7 +329,7 @@ export function CalendarWidget() {
                 onClick={handleSaveEvent}
                 disabled={saving || !form.title.trim()}
               >
-                {saving ? "Saving..." : "Save"}
+                {saving ? "Saving..." : editingId ? "Update" : "Save"}
               </Button>
             </div>
           </div>
@@ -317,14 +368,24 @@ export function CalendarWidget() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-medium leading-tight">{ev.title}</span>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteEvent(ev.id)}
-                    className="text-muted-foreground hover:text-destructive shrink-0 mt-0.5 transition-colors"
-                    aria-label="Delete event"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(ev)}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label="Edit event"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteEvent(ev.id)}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                      aria-label="Delete event"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 {ev.description && (

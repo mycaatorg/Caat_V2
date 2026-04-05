@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Circle, ChevronRight, AlertCircle } from "lucide-react";
+import { CheckCircle2, Circle, ChevronRight, AlertCircle, RefreshCw } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,8 +30,8 @@ async function checkReadiness(): Promise<ReadinessStep[]> {
   // Run checks in parallel
   const [profileRes, documentsRes, essaysRes, schoolsRes, scholarshipsRes] =
     await Promise.allSettled([
-      // Profile: check if user has a display name or profile row
-      supabase.from("profiles").select("id").eq("id", user.id).maybeSingle(),
+      // Profile: check if user has actually filled in their first name
+      supabase.from("profiles").select("first_name").eq("id", user.id).maybeSingle(),
       // Documents: at least one uploaded
       supabase
         .from("documents")
@@ -58,9 +58,15 @@ async function checkReadiness(): Promise<ReadinessStep[]> {
     return res.status === "fulfilled" && !res.value.error;
   }
 
+  const profileData =
+    profileRes.status === "fulfilled"
+      ? (profileRes.value.data as { first_name: string | null } | null)
+      : null;
   const profileDone =
     isOk(profileRes) &&
-    (profileRes as PromiseFulfilledResult<{ data: unknown; error: unknown }>).value.data !== null;
+    profileData !== null &&
+    typeof profileData?.first_name === "string" &&
+    profileData.first_name.trim().length > 0;
   const profileFailed = profileRes.status === "rejected" || (profileRes.status === "fulfilled" && !!profileRes.value.error);
 
   const docsDone =
@@ -141,12 +147,31 @@ function getDefaultSteps(completed: boolean): ReadinessStep[] {
 export function ApplicationReadiness() {
   const [steps, setSteps] = useState<ReadinessStep[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setRefreshing(true);
+    try {
+      setSteps(await checkReadiness());
+    } finally {
+      if (!silent) setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     checkReadiness()
       .then(setSteps)
       .finally(() => setLoading(false));
-  }, []);
+
+    // Re-check when user returns to this tab (e.g. after completing a step)
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        refresh(true);
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [refresh]);
 
   const completedCount = steps.filter((s) => s.completed).length;
   const percentage = steps.length > 0 ? Math.round((completedCount / steps.length) * 100) : 0;
@@ -175,12 +200,23 @@ export function ApplicationReadiness() {
             {completedCount} of {steps.length} steps completed
           </p>
         </div>
-        <Badge
-          variant={percentage === 100 ? "default" : "secondary"}
-          className="text-base font-bold px-3 py-1"
-        >
-          {percentage}%
-        </Badge>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => refresh(false)}
+            disabled={refreshing}
+            className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            aria-label="Refresh readiness"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          </button>
+          <Badge
+            variant={percentage === 100 ? "default" : "secondary"}
+            className="text-base font-bold px-3 py-1"
+          >
+            {percentage}%
+          </Badge>
+        </div>
       </div>
 
       {/* Progress bar */}

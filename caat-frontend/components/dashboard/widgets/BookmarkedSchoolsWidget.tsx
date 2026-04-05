@@ -20,8 +20,11 @@ interface BookmarkRow {
   schools: BookmarkedSchool | null;
 }
 
+const DISPLAY_LIMIT = 12;
+
 export function BookmarkedSchoolsWidget() {
   const [schools, setSchools] = useState<BookmarkedSchool[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,20 +35,27 @@ export function BookmarkedSchoolsWidget() {
         } = await supabase.auth.getUser();
         if (!user) return;
 
-        const { data, error } = await supabase
-          .from("user_bookmarked_schools")
-          .select("school_id, schools(id, name, country)")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(12);
+        const [dataRes, countRes] = await Promise.all([
+          supabase
+            .from("user_bookmarked_schools")
+            .select("school_id, schools(id, name, country)")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(DISPLAY_LIMIT),
+          supabase
+            .from("user_bookmarked_schools")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", user.id),
+        ]);
 
-        if (error) throw error;
+        if (dataRes.error) throw dataRes.error;
 
-        const items = ((data ?? []) as unknown as BookmarkRow[])
+        const items = ((dataRes.data ?? []) as unknown as BookmarkRow[])
           .map((r) => r.schools)
           .filter((s): s is BookmarkedSchool => s !== null);
 
         setSchools(items);
+        setTotalCount(countRes.count ?? items.length);
       } catch {
         toast.error("Failed to load bookmarked schools");
       } finally {
@@ -94,6 +104,14 @@ export function BookmarkedSchoolsWidget() {
           </Link>
         ))}
       </div>
+      {totalCount > DISPLAY_LIMIT && (
+        <Link
+          href="/schools"
+          className="text-xs text-muted-foreground hover:text-foreground text-center block"
+        >
+          +{totalCount - DISPLAY_LIMIT} more
+        </Link>
+      )}
       <Button asChild variant="ghost" size="sm" className="w-full text-xs">
         <Link href="/schools">View all schools →</Link>
       </Button>
