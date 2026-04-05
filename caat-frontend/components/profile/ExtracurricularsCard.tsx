@@ -134,7 +134,7 @@ export function ExtracurricularsCard() {
         {/* Activities section */}
         <div className="space-y-3">
           <div>
-            <p className="text-sm font-medium">Activities & Hobbies</p>
+            <p className="text-sm font-semibold">Activities & Hobbies</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Add interests and activities outside of school.
             </p>
