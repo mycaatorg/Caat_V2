@@ -238,7 +238,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   }, [currentPage, totalPages]);
 
   return (
-    <div className="min-h-screen p-8 pt-4">
+    <div className="p-6">
       <main className="max-w-5xl mx-auto">
 
         <div className="mb-8">

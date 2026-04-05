@@ -15,10 +15,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Separator } from "@/components/ui/separator";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList } from "@/components/ui/breadcrumb";
 import { ChevronLeft, ChevronRight, Link as LinkIcon } from "lucide-react";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { PageHeader } from "@/components/PageHeader";
 import SchoolSearch from "./school-search";
 import CountrySelect from "./country-select";
 import SortSelect from "./sort-select";
@@ -38,22 +36,9 @@ export default async function SchoolsPage({
   if (activeFilter === "Bookmarked") {
     return (
       <>
-        <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-          <SidebarTrigger className="-ml-1" />
-          <Separator
-            orientation="vertical"
-            className="mr-2 data-[orientation=vertical]:h-4"
-          />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink>Schools</BreadcrumbLink>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </header>
+        <PageHeader title="Schools" />
 
-        <div className="min-h-screen p-8">
+        <div className="p-6">
           <main className="max-w-5xl mx-auto">
             <div className="mb-6">
               <SchoolFilterBarClient activeFilter="Bookmarked" />
@@ -119,22 +104,9 @@ export default async function SchoolsPage({
 
   return (
     <>
-      <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-        <SidebarTrigger className="-ml-1" />
-        <Separator
-          orientation="vertical"
-          className="mr-2 data-[orientation=vertical]:h-4"
-        />
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink>Schools</BreadcrumbLink>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-      </header>
+      <PageHeader title="Schools" />
 
-      <div className="min-h-screen p-8">
+      <div className="p-6">
         <main className="max-w-5xl mx-auto">
 
           {/* Filter chips */}

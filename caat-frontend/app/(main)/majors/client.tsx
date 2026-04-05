@@ -159,7 +159,7 @@ export default function MajorsClient({
   }
 
   return (
-    <div className="min-h-screen p-8">
+    <div className="p-6">
       <div className="max-w-5xl mx-auto">
         <MajorFilters
           searchQuery={searchQuery}

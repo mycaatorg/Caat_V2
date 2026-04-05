@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useTheme } from "next-themes"
 import {
+  IconDeviceDesktop,
   IconDotsVertical,
   IconLogout,
   IconMoon,
@@ -56,13 +57,12 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
-  const { resolvedTheme, setTheme } = useTheme()
+  const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
   const router = useRouter()
 
   React.useEffect(() => setMounted(true), [])
 
-  const isDark = mounted && resolvedTheme === "dark"
   const initials = getInitials(user.name)
 
   const handleSignOut = async () => {
@@ -113,9 +113,29 @@ export function NavUser({
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => setTheme(isDark ? "light" : "dark")}>
-                {isDark ? <IconSun /> : <IconMoon />}
-                {isDark ? "Light Mode" : "Dark Mode"}
+              <DropdownMenuItem
+                onClick={() => setTheme("light")}
+                data-active={mounted && theme === "light"}
+                className="data-[active=true]:font-medium"
+              >
+                <IconSun />
+                Light
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setTheme("dark")}
+                data-active={mounted && theme === "dark"}
+                className="data-[active=true]:font-medium"
+              >
+                <IconMoon />
+                Dark
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setTheme("system")}
+                data-active={mounted && theme === "system"}
+                className="data-[active=true]:font-medium"
+              >
+                <IconDeviceDesktop />
+                System
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
