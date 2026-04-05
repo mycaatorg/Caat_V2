@@ -221,41 +221,33 @@ export default async function SchoolsPage({
 
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-4">
-              <Button
-                variant="outline"
-                disabled={currentPage <= 1}
-                asChild={currentPage > 1}
-              >
-                {currentPage > 1 ? (
+              {currentPage > 1 ? (
+                <Button variant="outline" asChild>
                   <Link href={createPageUrl(currentPage - 1)}>
                     <ChevronLeft className="mr-2 h-4 w-4" />
                   </Link>
-                ) : (
-                  <button aria-disabled="true" disabled>
-                    <ChevronLeft className="mr-2 h-4 w-4" />
-                  </button>
-                )}
-              </Button>
+                </Button>
+              ) : (
+                <Button variant="outline" disabled>
+                  <ChevronLeft className="mr-2 h-4 w-4" />
+                </Button>
+              )}
 
               <span className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
                 Page {currentPage} of {totalPages}
               </span>
 
-              <Button
-                variant="outline"
-                disabled={currentPage >= totalPages}
-                asChild={currentPage < totalPages}
-              >
-                {currentPage < totalPages ? (
+              {currentPage < totalPages ? (
+                <Button variant="outline" asChild>
                   <Link href={createPageUrl(currentPage + 1)}>
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </Link>
-                ) : (
-                  <button aria-disabled="true" disabled>
-                    <ChevronRight className="ml-2 h-4 w-4" />
-                  </button>
-                )}
-              </Button>
+                </Button>
+              ) : (
+                <Button variant="outline" disabled>
+                  <ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
+              )}
             </div>
           )}
         </main>

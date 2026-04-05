@@ -24,7 +24,7 @@ export default function CountrySelect({ defaultValue }: { defaultValue: string }
 
   function handleValueChange(value: string) {
     const params = new URLSearchParams(searchParams.toString());
-    if (value === "") {
+    if (value === "__all__") {
       params.delete("country");
     } else {
       params.set("country", value);
@@ -35,12 +35,12 @@ export default function CountrySelect({ defaultValue }: { defaultValue: string }
 
   return (
     <div className="w-full md:w-[200px]">
-      <Select defaultValue={defaultValue || ""} onValueChange={handleValueChange}>
+      <Select defaultValue={defaultValue || "__all__"} onValueChange={handleValueChange}>
         <SelectTrigger className="w-full">
           <SelectValue placeholder="All Countries" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="">All Countries</SelectItem>
+          <SelectItem value="__all__">All Countries</SelectItem>
           {COUNTRIES.map((country) => (
             <SelectItem key={country} value={country}>
               {country}
