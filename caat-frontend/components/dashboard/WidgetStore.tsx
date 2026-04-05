@@ -52,7 +52,7 @@ function WidgetStoreItem({
         variant={isAdded ? "secondary" : "default"}
         className="shrink-0 h-7 px-2.5 text-xs"
         onClick={onAdd}
-        disabled={isLoading}
+        disabled={isAdded || isLoading}
       >
         {isAdded ? (
           <>

@@ -17,8 +17,11 @@ interface BookmarkedMajorRow {
   majors: Pick<Major, "id" | "name" | "category"> | null;
 }
 
+const DISPLAY_LIMIT = 10;
+
 export function BookmarkedMajorsWidget() {
   const [majors, setMajors] = useState<Pick<Major, "id" | "name" | "category">[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -29,20 +32,27 @@ export function BookmarkedMajorsWidget() {
         } = await supabase.auth.getUser();
         if (!user) return;
 
-        const { data, error } = await supabase
-          .from("user_bookmarked_majors")
-          .select("major_id, majors(id, name, category)")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(10);
+        const [dataRes, countRes] = await Promise.all([
+          supabase
+            .from("user_bookmarked_majors")
+            .select("major_id, majors(id, name, category)")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(DISPLAY_LIMIT),
+          supabase
+            .from("user_bookmarked_majors")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", user.id),
+        ]);
 
-        if (error) throw error;
+        if (dataRes.error) throw dataRes.error;
 
-        const items = ((data ?? []) as unknown as BookmarkedMajorRow[])
+        const items = ((dataRes.data ?? []) as unknown as BookmarkedMajorRow[])
           .map((r) => r.majors)
           .filter((m): m is Pick<Major, "id" | "name" | "category"> => m !== null);
 
         setMajors(items);
+        setTotalCount(countRes.count ?? items.length);
       } catch {
         toast.error("Failed to load bookmarked majors");
       } finally {
@@ -99,6 +109,14 @@ export function BookmarkedMajorsWidget() {
           ))}
         </ul>
       </ScrollArea>
+      {totalCount > DISPLAY_LIMIT && (
+        <Link
+          href="/majors"
+          className="text-xs text-muted-foreground hover:text-foreground text-center block"
+        >
+          +{totalCount - DISPLAY_LIMIT} more
+        </Link>
+      )}
       <Button asChild variant="ghost" size="sm" className="w-full text-xs">
         <Link href="/majors">View all majors →</Link>
       </Button>

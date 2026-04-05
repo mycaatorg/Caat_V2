@@ -3,7 +3,12 @@
 import React from "react";
 import { ResumeSection, SectionMode } from "./types";
 import PersonalInfoGuided from "./editors/PersonalInfoGuided";
+import EducationGuided from "./editors/EducationGuided";
+import ExperienceGuided from "./editors/ExperienceGuided";
+import SkillsGuided from "./editors/SkillsGuided";
 import RichTextEditor from "@/components/RichTextEditor";
+
+const GUIDED_TYPES = new Set(["personal", "education", "experience", "skills"]);
 
 export default function SectionEditorPanel({
   section,
@@ -14,8 +19,52 @@ export default function SectionEditorPanel({
 }) {
   if (!section) return null;
 
+  const supportsGuided = GUIDED_TYPES.has(section.type);
+
   function setMode(mode: SectionMode) {
     onChange({ mode });
+  }
+
+  function renderGuidedEditor() {
+    const structuredData = section!.structuredData ?? {};
+
+    if (section!.type === "personal") {
+      return (
+        <PersonalInfoGuided
+          value={structuredData}
+          onChange={(data) => onChange({ structuredData: data })}
+        />
+      );
+    }
+
+    if (section!.type === "education") {
+      return (
+        <EducationGuided
+          value={structuredData}
+          onChange={(data, html) => onChange({ structuredData: data, contentHtml: html })}
+        />
+      );
+    }
+
+    if (section!.type === "experience") {
+      return (
+        <ExperienceGuided
+          value={structuredData}
+          onChange={(data, html) => onChange({ structuredData: data, contentHtml: html })}
+        />
+      );
+    }
+
+    if (section!.type === "skills") {
+      return (
+        <SkillsGuided
+          value={structuredData}
+          onChange={(data, html) => onChange({ structuredData: data, contentHtml: html })}
+        />
+      );
+    }
+
+    return null;
   }
 
   return (
@@ -23,33 +72,31 @@ export default function SectionEditorPanel({
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">{section.label}</h2>
 
-        {/* Mode toggle */}
-        <div className="flex rounded-md border p-1 text-sm">
-          <button
-            onClick={() => setMode("guided")}
-            className={`rounded px-3 py-1 ${
-              section.mode === "guided" ? "bg-blue-600 text-white" : "hover:bg-muted"
-            }`}
-          >
-            Guided
-          </button>
-          <button
-            onClick={() => setMode("free")}
-            className={`rounded px-3 py-1 ${
-              section.mode === "free" ? "bg-blue-600 text-white" : "hover:bg-muted"
-            }`}
-          >
-            Free Text
-          </button>
-        </div>
+        {supportsGuided && (
+          <div className="flex rounded-md border p-1 text-sm">
+            <button
+              onClick={() => setMode("guided")}
+              className={`rounded px-3 py-1 ${
+                section.mode === "guided" ? "bg-blue-600 text-white" : "hover:bg-muted"
+              }`}
+            >
+              Guided
+            </button>
+            <button
+              onClick={() => setMode("free")}
+              className={`rounded px-3 py-1 ${
+                section.mode === "free" ? "bg-blue-600 text-white" : "hover:bg-muted"
+              }`}
+            >
+              Free Text
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="mt-4">
-        {section.mode === "guided" && section.type === "personal" ? (
-          <PersonalInfoGuided
-            value={section.structuredData ?? {}}
-            onChange={(data) => onChange({ structuredData: data })}
-          />
+        {section.mode === "guided" && supportsGuided ? (
+          renderGuidedEditor()
         ) : (
           <RichTextEditor
             content={section.contentHtml}

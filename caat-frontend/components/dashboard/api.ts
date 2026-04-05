@@ -128,8 +128,12 @@ export interface TodoItem {
   id: string;
   text: string;
   done: boolean;
+  due_date: string | null;  // ISO date string "YYYY-MM-DD"
+  priority: number;         // 1 = high, 2 = medium, 3 = low
   created_at: string;
 }
+
+const TODO_SELECT = "id, text, done, due_date, priority, created_at";
 
 export async function fetchTodos(): Promise<TodoItem[]> {
   const {
@@ -140,15 +144,21 @@ export async function fetchTodos(): Promise<TodoItem[]> {
 
   const { data, error } = await supabase
     .from("user_todos")
-    .select("id, text, done, created_at")
+    .select(TODO_SELECT)
     .eq("user_id", user.id)
+    .order("done", { ascending: true })
+    .order("due_date", { ascending: true, nullsFirst: false })
+    .order("priority", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
   return (data ?? []) as TodoItem[];
 }
 
-export async function addTodo(text: string): Promise<TodoItem> {
+export async function addTodo(
+  text: string,
+  opts?: { due_date?: string | null; priority?: number }
+): Promise<TodoItem> {
   const {
     data: { user },
     error: authError,
@@ -157,12 +167,36 @@ export async function addTodo(text: string): Promise<TodoItem> {
 
   const { data, error } = await supabase
     .from("user_todos")
-    .insert({ user_id: user.id, text, done: false })
-    .select("id, text, done, created_at")
+    .insert({
+      user_id: user.id,
+      text,
+      done: false,
+      due_date: opts?.due_date ?? null,
+      priority: opts?.priority ?? 2,
+    })
+    .select(TODO_SELECT)
     .single();
 
   if (error) throw new Error(error.message);
   return data as TodoItem;
+}
+
+export async function updateTodo(
+  id: string,
+  patch: Partial<Pick<TodoItem, "due_date" | "priority" | "text">>
+): Promise<void> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("user_todos")
+    .update(patch)
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) throw new Error(error.message);
 }
 
 export async function toggleTodo(id: string, done: boolean): Promise<void> {
