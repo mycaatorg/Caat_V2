@@ -13,6 +13,7 @@ import { AcademicProfileCard } from "@/components/profile/AcademicProfileCard";
 import { StandardisedTestingCard } from "@/components/profile/StandardisedTestingCard";
 import { InterestsGoalsCard } from "@/components/profile/InterestsGoalsCard";
 import { ExtracurricularsCard } from "@/components/profile/ExtracurricularsCard";
+import { RecommendersCard } from "@/components/profile/RecommendersCard";
 import type { ProfileRow, StandardisedTestScore } from "@/types/profile";
 import {
   fetchProfile,
@@ -396,6 +397,9 @@ export default function ProfilePage() {
 
         {/* ── Extracurriculars (full width) ──────────────────────────────────── */}
         <ExtracurricularsCard />
+
+        {/* ── Recommenders (full width) ──────────────────────────────────────── */}
+        <RecommendersCard />
 
       </div>
     </>
