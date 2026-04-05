@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Trash2, MapPin, Wifi, Clock, CalendarDays } from "lucide-react";
 import { supabase } from "@/src/lib/supabaseClient";
 import { toast } from "sonner";
+import { toDateKey, formatTime } from "@/lib/calendar-utils";
 
 interface CalendarEvent {
   id: string;
@@ -40,18 +41,6 @@ const EMPTY_FORM: EventForm = {
   is_online: false,
 };
 
-function toDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function formatTime(t: string | null): string | null {
-  if (!t) return null;
-  const [h, m] = t.split(":");
-  const hour = parseInt(h, 10);
-  const ampm = hour >= 12 ? "PM" : "AM";
-  const h12 = hour % 12 || 12;
-  return `${h12}:${m} ${ampm}`;
-}
 
 export function CalendarWidget() {
   const [date, setDate] = useState<Date | undefined>(new Date());

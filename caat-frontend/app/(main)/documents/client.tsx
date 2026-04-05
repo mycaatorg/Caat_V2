@@ -50,6 +50,12 @@ import {
   DocumentRow,
   DocCategory,
 } from "./api";
+import {
+  formatDate,
+  formatFileSize,
+  mapStatus,
+  getFileExt,
+} from "@/lib/document-utils";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -88,33 +94,6 @@ const CATEGORY_LABELS: Record<string, string> = {
 const ACCEPTED_TYPES = ".pdf,.jpg,.jpeg,.png";
 const MAX_FILE_SIZE_MB = 10;
 const PAGE_SIZE = 8;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatFileSize(bytes: number | null): string {
-  if (!bytes) return "";
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function mapStatus(status: string): "Verified" | "In Review" | "Resubmit" {
-  if (status === "verified") return "Verified";
-  if (status === "resubmit") return "Resubmit";
-  return "In Review";
-}
-
-function getFileExt(fileName: string): string {
-  return fileName.split(".").pop()?.toLowerCase() ?? "";
-}
 
 // ---------------------------------------------------------------------------
 // Sub-components

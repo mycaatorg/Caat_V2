@@ -16,10 +16,7 @@ import {
   SECTION_LABEL_FONT_PX,
 } from "./ResumePreviewPanel";
 import type { PageModel, PageSectionChunk } from "./ResumePreviewPanel";
-
-function safeText(x: unknown) {
-  return typeof x === "string" ? x : "";
-}
+import { safeText } from "@/lib/resume-utils";
 
 type RenderBlock = {
   id: string;

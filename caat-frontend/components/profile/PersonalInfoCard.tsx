@@ -4,14 +4,7 @@ import React, { useState } from "react";
 import { User } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ProfileCard, InfoRow } from "./ProfileCard";
-
-/** Converts YYYY-MM-DD → DD/MM/YYYY for display */
-function formatDOB(value: string): string {
-  if (!value) return "";
-  const [y, m, d] = value.split("-");
-  if (!y || !m || !d) return value;
-  return `${d}/${m}/${y}`;
-}
+import { formatDOB } from "@/lib/profile-utils";
 
 interface PersonalInfo {
   firstName: string;

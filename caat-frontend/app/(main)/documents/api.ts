@@ -1,10 +1,7 @@
 import { supabase } from "@/src/lib/supabaseClient";
+import { sanitizeFileName } from "@/lib/document-utils";
 
 const BUCKET = "user-documents";
-
-function sanitizeFileName(name: string): string {
-  return name.replace(/\s+/g, "_").replace(/[^\w.\-]/g, "_");
-}
 
 export type DocCategory = "transcripts" | "identity" | "language" | "letters";
 
