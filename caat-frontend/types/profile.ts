@@ -1,3 +1,16 @@
+export type RecommenderStatus = "requested" | "confirmed" | "submitted";
+
+export interface RecommenderRow {
+  id: string;
+  user_id: string;
+  name: string;
+  subject: string | null;
+  status: RecommenderStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Raw row returned from the public.profiles Supabase table */
 export interface ProfileRow {
   id: string;
