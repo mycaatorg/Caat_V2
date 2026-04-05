@@ -20,7 +20,9 @@ const ToolbarButton = ({
   <button
     onClick={onClick}
     className={`px-2 py-1 rounded-md transition text-sm font-medium ${
-      isActive ? "bg-blue-600 text-white" : "bg-white text-gray-800 hover:bg-gray-200"
+      isActive
+        ? "bg-blue-600 text-white"
+        : "bg-background text-foreground hover:bg-muted"
     }`}
   >
     {children}
@@ -50,17 +52,16 @@ export default function RichTextEditor({
   });
 
   useEffect(() => {
-  if (!editor) return;
+    if (!editor) return;
+    const current = editor.getHTML();
+    if (content !== current) {
+      editor.commands.setContent(content, { emitUpdate: false });
+    }
+  }, [content, editor]);
 
-  const current = editor.getHTML();
-  if (content !== current) {
-    editor.commands.setContent(content, { emitUpdate: false });
-  }
-}, [content, editor]);
-
-if (!editor) {
+  if (!editor) {
     return (
-      <div className="border border-gray-300 rounded-md p-2 min-h-[120px]">
+      <div className="border rounded-md p-2 min-h-30 text-muted-foreground">
         Loading editor...
       </div>
     );
@@ -68,7 +69,8 @@ if (!editor) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2 mb-3 bg-gray-100 p-2 rounded-md shadow-sm">
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-2 mb-3 bg-muted p-2 rounded-md">
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBold().run()}
           isActive={editor.isActive("bold")}
@@ -109,7 +111,7 @@ if (!editor) {
             editor.chain().focus().setFontFamily(e.target.value).run()
           }
           value={editor.getAttributes("textStyle").fontFamily || "default"}
-          className="border rounded px-2 py-1 text-sm"
+          className="border rounded px-2 py-1 text-sm bg-background text-foreground"
         >
           <option value="default">Font</option>
           <option value="Arial">Arial</option>
@@ -121,26 +123,26 @@ if (!editor) {
         </select>
 
         <select
-  onChange={(e) =>
-    editor.chain().focus().setMark("textStyle", { fontSize: e.target.value }).run()
-  }
-  value={editor.getAttributes("textStyle").fontSize || "default"}
-  className="border rounded px-2 py-1 text-sm"
->
-  <option value="default">Font Size</option>
-  <option value="12px">12</option>
-  <option value="14px">14</option>
-  <option value="16px">16</option>
-  <option value="18px">18</option>
-  <option value="20px">20</option>
-  <option value="24px">24</option>
-  <option value="28px">28</option>
-  <option value="32px">32</option>
-</select>
-
+          onChange={(e) =>
+            editor.chain().focus().setMark("textStyle", { fontSize: e.target.value }).run()
+          }
+          value={editor.getAttributes("textStyle").fontSize || "default"}
+          className="border rounded px-2 py-1 text-sm bg-background text-foreground"
+        >
+          <option value="default">Font Size</option>
+          <option value="12px">12</option>
+          <option value="14px">14</option>
+          <option value="16px">16</option>
+          <option value="18px">18</option>
+          <option value="20px">20</option>
+          <option value="24px">24</option>
+          <option value="28px">28</option>
+          <option value="32px">32</option>
+        </select>
       </div>
 
-      <div className="border border-gray-300 rounded-md p-2 min-h-[120px] focus:outline-none">
+      {/* Editor area */}
+      <div className="border rounded-md p-2 min-h-30 bg-background text-foreground focus-within:ring-1 focus-within:ring-ring">
         <EditorContent editor={editor} />
       </div>
     </div>

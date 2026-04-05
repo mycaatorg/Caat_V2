@@ -188,6 +188,7 @@ export function ResumePage({
         height: PAGE_HEIGHT_PX,
         padding: PAGE_PADDING_PX,
         boxSizing: "border-box",
+        color: "#000",
       }}
     >
       <div style={{ flex: "1 1 0%", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>

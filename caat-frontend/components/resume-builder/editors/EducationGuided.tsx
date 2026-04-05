@@ -90,7 +90,7 @@ export default function EducationGuided({
   return (
     <div className="space-y-4">
       {entries.map((entry, i) => (
-        <div key={entry.id} className="rounded-md border bg-white p-4 space-y-3">
+        <div key={entry.id} className="rounded-md border bg-card p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
               Education {i + 1}

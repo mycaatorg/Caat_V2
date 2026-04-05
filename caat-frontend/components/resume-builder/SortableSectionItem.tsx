@@ -51,8 +51,8 @@ export default function SortableSectionItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 rounded-md border bg-white px-2 py-2 ${
-        active ? "border-blue-500 ring-2 ring-blue-100" : "border-transparent hover:border-muted"
+      className={`flex items-center gap-2 rounded-md border bg-card px-2 py-2 ${
+        active ? "border-blue-500 ring-2 ring-blue-100/20" : "border-transparent hover:border-muted"
       }`}
     >
       {/* Drag handle stuck to left */}
@@ -79,7 +79,7 @@ export default function SortableSectionItem({
             }}
             onBlur={() => onCommit()}
             autoFocus
-            className="flex-1 rounded border px-2 py-1 text-sm"
+            className="flex-1 rounded border bg-background text-foreground px-2 py-1 text-sm"
           />
         ) : (
           <button

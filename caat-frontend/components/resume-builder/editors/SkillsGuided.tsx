@@ -60,7 +60,7 @@ export default function SkillsGuided({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-md border bg-white p-4 space-y-3">
+      <div className="rounded-md border bg-card p-4 space-y-3">
         <div className="grid grid-cols-[160px_1fr_auto] gap-2 text-xs font-medium text-muted-foreground mb-1">
           <span>CATEGORY (optional)</span>
           <span>SKILLS</span>
