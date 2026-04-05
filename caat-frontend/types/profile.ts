@@ -43,6 +43,28 @@ export interface StandardisedTestScore extends StandardisedTestScoreRow {
   subjects: StandardisedTestSubjectRow[];
 }
 
+/**
+ * Academic curricula for the Academic Profile card (what the student studies at school).
+ * Separate from CURRICULUM_OPTIONS which are standardised test types.
+ */
+export const SCHOOL_CURRICULUM_OPTIONS = [
+  "A-Levels",
+  "IB Diploma (IBDP)",
+  "ATAR",
+  "AP (Advanced Placement)",
+  "CBSE",
+  "CISCE (ICSE/ISC)",
+  "IGCSE",
+  "French Baccalauréat",
+  "German Abitur",
+  "Gaokao",
+  "US High School Diploma",
+  "Canadian High School Diploma",
+  "Other",
+] as const;
+
+export type SchoolCurriculumType = (typeof SCHOOL_CURRICULUM_OPTIONS)[number];
+
 /** Known curriculum types for the standardised testing card */
 export const CURRICULUM_OPTIONS = [
   "SAT",

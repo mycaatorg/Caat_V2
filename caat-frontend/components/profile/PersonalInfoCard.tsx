@@ -19,6 +19,9 @@ interface PersonalInfo {
   birthDate: string;
   nationality: string;
   currentLocation: string;
+  phone: string;
+  linkedin: string;
+  github: string;
 }
 
 interface PersonalInfoCardProps {
@@ -30,10 +33,14 @@ function EditField({
   label,
   value,
   onChange,
+  placeholder,
+  type = "text",
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
 }) {
   return (
     <div className="flex flex-col gap-1 py-1.5">
@@ -41,8 +48,10 @@ function EditField({
         {label}
       </label>
       <Input
+        type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
         className="h-8 text-sm"
       />
     </div>
@@ -123,6 +132,37 @@ export function PersonalInfoCard({ data, onSave }: PersonalInfoCardProps) {
               onChange={(v) => setDraft((d) => ({ ...d, currentLocation: v }))}
             />
           </div>
+
+          <div className="col-span-2 mt-2 border-t pt-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+              Contact
+            </p>
+          </div>
+          <div className="col-span-2">
+            <EditField
+              label="Phone"
+              value={draft.phone}
+              onChange={(v) => setDraft((d) => ({ ...d, phone: v }))}
+              placeholder="+1 234 567 890"
+              type="tel"
+            />
+          </div>
+          <div className="col-span-2">
+            <EditField
+              label="LinkedIn URL"
+              value={draft.linkedin}
+              onChange={(v) => setDraft((d) => ({ ...d, linkedin: v }))}
+              placeholder="linkedin.com/in/yourname"
+            />
+          </div>
+          <div className="col-span-2">
+            <EditField
+              label="GitHub URL"
+              value={draft.github}
+              onChange={(v) => setDraft((d) => ({ ...d, github: v }))}
+              placeholder="github.com/yourname"
+            />
+          </div>
         </div>
       ) : (
         <>
@@ -130,6 +170,9 @@ export function PersonalInfoCard({ data, onSave }: PersonalInfoCardProps) {
           <InfoRow label="Date of Birth" value={formatDOB(data.birthDate)} />
           <InfoRow label="Nationality" value={data.nationality} />
           <InfoRow label="Current Location" value={data.currentLocation} />
+          <InfoRow label="Phone" value={data.phone} />
+          <InfoRow label="LinkedIn" value={data.linkedin} />
+          <InfoRow label="GitHub" value={data.github} />
         </>
       )}
     </ProfileCard>

@@ -2,9 +2,8 @@
 
 import React, { useState } from "react";
 import { GraduationCap } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { ProfileCard, InfoRow } from "./ProfileCard";
-import { CURRICULUM_OPTIONS } from "@/types/profile";
+import { SCHOOL_CURRICULUM_OPTIONS } from "@/types/profile";
 
 interface AcademicInfo {
   schoolName: string;
@@ -31,10 +30,10 @@ function EditField({
       <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
         {label}
       </label>
-      <Input
+      <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-8 text-sm"
+        className="h-8 rounded-md border border-input bg-background px-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
       />
     </div>
   );
@@ -44,6 +43,10 @@ export function AcademicProfileCard({ data, onSave }: AcademicProfileCardProps) 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [draft, setDraft] = useState(data);
+
+  const currentYear = new Date().getFullYear();
+  const minYear = currentYear;
+  const maxYear = currentYear + 8;
 
   function handleEdit() {
     setDraft(data);
@@ -92,16 +95,28 @@ export function AcademicProfileCard({ data, onSave }: AcademicProfileCardProps) 
               className="h-8 rounded-md border border-input bg-background px-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="" disabled>Select curriculum…</option>
-              {CURRICULUM_OPTIONS.map((c) => (
+              {SCHOOL_CURRICULUM_OPTIONS.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
           </div>
-          <EditField
-            label="Graduation Year"
-            value={draft.graduationYear}
-            onChange={(v) => setDraft((d) => ({ ...d, graduationYear: v }))}
-          />
+          <div className="flex flex-col gap-1 py-1.5">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Graduation Year
+            </label>
+            <input
+              type="number"
+              min={minYear}
+              max={maxYear}
+              value={draft.graduationYear}
+              onChange={(e) => setDraft((d) => ({ ...d, graduationYear: e.target.value }))}
+              placeholder={String(currentYear + 1)}
+              className="h-8 rounded-md border border-input bg-background px-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <span className="text-xs text-muted-foreground">
+              Between {minYear} and {maxYear}
+            </span>
+          </div>
         </div>
       ) : (
         <>

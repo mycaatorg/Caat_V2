@@ -2,7 +2,7 @@
 
 import React, { useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Camera, Loader2 } from "lucide-react";
+import { Camera, Loader2, X } from "lucide-react";
 import { supabase } from "@/src/lib/supabaseClient";
 import { toast } from "sonner";
 
@@ -14,7 +14,7 @@ interface AvatarUploadProps {
   userId: string;
   avatarUrl: string | null;
   fallbackInitials: string;
-  onUploaded: (url: string) => void;
+  onUploaded: (url: string | null) => void;
 }
 
 export function AvatarUpload({
@@ -25,6 +25,7 @@ export function AvatarUpload({
 }: AvatarUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -82,33 +83,70 @@ export function AvatarUpload({
     }
   }
 
-  return (
-    <div
-      className="relative group shrink-0 cursor-pointer"
-      onClick={() => !uploading && inputRef.current?.click()}
-    >
-      <Avatar className="size-20 text-xl">
-        {avatarUrl && <AvatarImage src={avatarUrl} alt="Profile avatar" />}
-        <AvatarFallback className="text-lg font-semibold">
-          {fallbackInitials}
-        </AvatarFallback>
-      </Avatar>
+  async function handleRemove(e: React.MouseEvent) {
+    e.stopPropagation();
+    setRemoving(true);
+    try {
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: null })
+        .eq("id", userId);
 
-      <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-        {uploading ? (
-          <Loader2 className="h-5 w-5 text-white animate-spin" />
-        ) : (
-          <Camera className="h-5 w-5 text-white" />
-        )}
+      if (updateError) throw updateError;
+
+      onUploaded(null);
+      toast.success("Avatar removed.");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to remove avatar.");
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  const isBusy = uploading || removing;
+
+  return (
+    <div className="relative shrink-0">
+      <div
+        className="relative group cursor-pointer"
+        onClick={() => !isBusy && inputRef.current?.click()}
+      >
+        <Avatar className="size-20 text-xl">
+          {avatarUrl && <AvatarImage src={avatarUrl} alt="Profile avatar" />}
+          <AvatarFallback className="text-lg font-semibold">
+            {fallbackInitials}
+          </AvatarFallback>
+        </Avatar>
+
+        <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+          {isBusy ? (
+            <Loader2 className="h-5 w-5 text-white animate-spin" />
+          ) : (
+            <Camera className="h-5 w-5 text-white" />
+          )}
+        </div>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept={ACCEPTED_TYPES.join(",")}
+          className="hidden"
+          onChange={handleFileChange}
+        />
       </div>
 
-      <input
-        ref={inputRef}
-        type="file"
-        accept={ACCEPTED_TYPES.join(",")}
-        className="hidden"
-        onChange={handleFileChange}
-      />
+      {/* Remove button — only shown when an avatar is set */}
+      {avatarUrl && !isBusy && (
+        <button
+          type="button"
+          onClick={handleRemove}
+          aria-label="Remove avatar"
+          className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow hover:bg-destructive/90 transition-colors"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
     </div>
   );
 }
