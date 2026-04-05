@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/tooltip";
 import { supabase } from "@/src/lib/supabaseClient";
 import { toast } from "sonner";
+import { SCHOOL_BOOKMARK_EVENT } from "./schools-client";
 
 interface Props {
   schoolId: number;
@@ -61,11 +62,13 @@ export default function SchoolBookmarkButton({ schoolId, compact = false }: Prop
           .eq("user_id", userId)
           .eq("school_id", schoolId);
         if (error) throw error;
+        window.dispatchEvent(new CustomEvent(SCHOOL_BOOKMARK_EVENT, { detail: -1 }));
       } else {
         const { error } = await supabase
           .from("user_bookmarked_schools")
           .upsert({ user_id: userId, school_id: schoolId });
         if (error) throw error;
+        window.dispatchEvent(new CustomEvent(SCHOOL_BOOKMARK_EVENT, { detail: 1 }));
       }
     } catch {
       setIsBookmarked(prev);
