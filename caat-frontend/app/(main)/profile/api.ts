@@ -69,30 +69,19 @@ export async function fetchTestScores(
   if (authError || !user) throw new Error("Not authenticated");
   if (user.id !== profileId) throw new Error("Unauthorized");
 
+  // Single query using embedded relation — avoids a second round-trip
   const { data: scores, error: scoresError } = await supabase
     .from("standardised_test_scores")
-    .select("*")
+    .select("*, standardised_test_subjects(*)")
     .eq("profile_id", profileId)
     .order("created_at", { ascending: true });
 
   if (scoresError) throw new Error(scoresError.message);
   if (!scores?.length) return [];
 
-  const scoreIds = scores.map((s) => s.id);
-
-  const { data: subjects, error: subjectsError } = await supabase
-    .from("standardised_test_subjects")
-    .select("*")
-    .in("test_score_id", scoreIds)
-    .order("created_at", { ascending: true });
-
-  if (subjectsError) throw new Error(subjectsError.message);
-
   return scores.map((score) => ({
     ...score,
-    subjects: (subjects ?? []).filter(
-      (sub) => sub.test_score_id === score.id
-    ) as StandardisedTestSubjectRow[],
+    subjects: (score.standardised_test_subjects ?? []) as StandardisedTestSubjectRow[],
   })) as StandardisedTestScore[];
 }
 

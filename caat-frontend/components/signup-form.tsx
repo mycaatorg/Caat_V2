@@ -29,6 +29,24 @@ export function SignupForm({
   const passwordTooShort = password.length > 0 && password.length < 8
   const passwordValid = password.length >= 8
 
+  // Strength criteria
+  const hasMinLength = password.length >= 8
+  const hasUppercase = /[A-Z]/.test(password)
+  const hasNumber = /[0-9]/.test(password)
+  const hasSpecial = /[^A-Za-z0-9]/.test(password)
+  const strengthScore = [hasMinLength, hasUppercase, hasNumber, hasSpecial].filter(Boolean).length
+  const strengthLabel =
+    password.length === 0 ? null
+    : strengthScore <= 1 ? "Weak"
+    : strengthScore === 2 ? "Fair"
+    : strengthScore === 3 ? "Good"
+    : "Strong"
+  const strengthColor =
+    strengthScore <= 1 ? "bg-destructive"
+    : strengthScore === 2 ? "bg-amber-500"
+    : strengthScore === 3 ? "bg-blue-500"
+    : "bg-green-500"
+
   const handlePasswordChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setPassword(e.target.value)
     setPasswordTouched(true)
@@ -145,18 +163,38 @@ export function SignupForm({
             onChange={handlePasswordChange}
             className={passwordTouched && passwordTooShort ? "border-destructive focus-visible:ring-destructive" : ""}
           />
-          {passwordTouched && passwordTooShort ? (
-            <FieldDescription className="text-destructive">
-              Must be at least 8 characters long.
-            </FieldDescription>
-          ) : passwordTouched && passwordValid ? (
-            <FieldDescription className="text-green-600">
-              Password looks good.
-            </FieldDescription>
-          ) : (
-            <FieldDescription>
-              Must be at least 8 characters long.
-            </FieldDescription>
+          {passwordTouched && password.length > 0 && (
+            <div className="space-y-1.5 mt-1">
+              {/* Strength bar */}
+              <div className="flex gap-1">
+                {[1, 2, 3, 4].map((level) => (
+                  <div
+                    key={level}
+                    className={`h-1 flex-1 rounded-full transition-colors ${
+                      strengthScore >= level ? strengthColor : "bg-muted"
+                    }`}
+                  />
+                ))}
+              </div>
+              <p className={`text-xs ${
+                strengthScore <= 1 ? "text-destructive"
+                : strengthScore === 2 ? "text-amber-500"
+                : strengthScore === 3 ? "text-blue-500"
+                : "text-green-600"
+              }`}>
+                {strengthLabel}
+              </p>
+              {/* Criteria hints */}
+              <ul className="text-xs text-muted-foreground space-y-0.5">
+                {!hasMinLength && <li>• At least 8 characters</li>}
+                {!hasUppercase && <li>• One uppercase letter</li>}
+                {!hasNumber && <li>• One number</li>}
+                {!hasSpecial && <li>• One special character</li>}
+              </ul>
+            </div>
+          )}
+          {(!passwordTouched || password.length === 0) && (
+            <FieldDescription>Must be at least 8 characters long.</FieldDescription>
           )}
         </Field>
         <Field>
