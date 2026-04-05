@@ -28,7 +28,7 @@ async function checkReadiness(): Promise<ReadinessStep[]> {
   }
 
   // Run checks in parallel
-  const [profileRes, documentsRes, essaysRes, schoolsRes, scholarshipsRes] =
+  const [profileRes, documentsRes, essaysRes, schoolsRes, scholarshipsRes, applicationsRes] =
     await Promise.allSettled([
       // Profile: check if user has actually filled in their first name
       supabase.from("profiles").select("first_name").eq("id", user.id).maybeSingle(),
@@ -51,6 +51,11 @@ async function checkReadiness(): Promise<ReadinessStep[]> {
       supabase
         .from("user_bookmarked_scholarships")
         .select("scholarship_id", { count: "exact", head: true })
+        .eq("user_id", user.id),
+      // Applications: at least one tracked
+      supabase
+        .from("user_school_applications")
+        .select("id", { count: "exact", head: true })
         .eq("user_id", user.id),
     ]);
 
@@ -89,6 +94,12 @@ async function checkReadiness(): Promise<ReadinessStep[]> {
     ((scholarshipsRes as PromiseFulfilledResult<{ count: number | null; error: unknown }>).value.count ?? 0) > 0;
   const scholarshipsFailed =
     scholarshipsRes.status === "rejected" || (scholarshipsRes.status === "fulfilled" && !!scholarshipsRes.value.error);
+
+  const appsDone =
+    isOk(applicationsRes) &&
+    ((applicationsRes as PromiseFulfilledResult<{ count: number | null; error: unknown }>).value.count ?? 0) > 0;
+  const appsFailed =
+    applicationsRes.status === "rejected" || (applicationsRes.status === "fulfilled" && !!applicationsRes.value.error);
 
   return [
     {
@@ -131,6 +142,14 @@ async function checkReadiness(): Promise<ReadinessStep[]> {
       completed: scholarshipsDone,
       failed: scholarshipsFailed && !scholarshipsDone,
     },
+    {
+      id: "applications",
+      label: "Track your first application",
+      description: "Start tracking a school application to stay organised.",
+      href: "/applications",
+      completed: appsDone,
+      failed: appsFailed && !appsDone,
+    },
   ];
 }
 
@@ -141,6 +160,7 @@ function getDefaultSteps(completed: boolean): ReadinessStep[] {
     { id: "documents", label: "Upload a document", description: "", href: "/documents", completed },
     { id: "essays", label: "Start an essay draft", description: "", href: "/essays", completed },
     { id: "scholarships", label: "Explore scholarships", description: "", href: "/scholarships", completed },
+    { id: "applications", label: "Track your first application", description: "", href: "/applications", completed },
   ];
 }
 

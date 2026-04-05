@@ -15,6 +15,7 @@ import {
   BookOpen,
   GraduationCap,
   FolderOpen,
+  ClipboardList,
 } from "lucide-react"
 
 import {
@@ -37,6 +38,7 @@ const apps = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
   { title: "My Profile", icon: User, url: "/profile" },
   { title: "Schools", icon: School, url: "/schools" },
+  { title: "Applications", icon: ClipboardList, url: "/applications" },
   { title: "Majors", icon: BookOpen, url: "/majors" },
   { title: "Resume Builder", icon: FileUser, url: "/resume-builder" },
   { title: "Essays", icon: FileText, url: "/essays" },

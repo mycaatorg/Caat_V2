@@ -13,6 +13,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ExternalLink } from "lucide-react";
 import SchoolBookmarkButton from "./bookmark-button";
+import ApplicationButton from "./application-button";
 
 export default async function SchoolDetailPage({
   params,
@@ -69,7 +70,10 @@ export default async function SchoolDetailPage({
             )}
             <h1 className="text-3xl font-bold">{school.name}</h1>
           </div>
-          <SchoolBookmarkButton schoolId={school.id} />
+          <div className="flex items-center gap-2 shrink-0">
+            <ApplicationButton schoolId={school.id} />
+            <SchoolBookmarkButton schoolId={school.id} />
+          </div>
         </div>
 
         {school.description && (

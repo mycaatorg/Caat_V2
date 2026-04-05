@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Calendar, CheckSquare, BookOpen, School } from "lucide-react";
+import { Calendar, CheckSquare, BookOpen, School, Clock } from "lucide-react";
 import type { ComponentType } from "react";
 
 export interface WidgetDefinition {
@@ -21,6 +21,7 @@ import { CalendarWidget } from "./widgets/CalendarWidget";
 import { TodoWidget } from "./widgets/TodoWidget";
 import { BookmarkedMajorsWidget } from "./widgets/BookmarkedMajorsWidget";
 import { BookmarkedSchoolsWidget } from "./widgets/BookmarkedSchoolsWidget";
+import { UpcomingDeadlinesWidget } from "./widgets/UpcomingDeadlinesWidget";
 
 export const widgetRegistry: WidgetDefinition[] = [
   {
@@ -50,6 +51,13 @@ export const widgetRegistry: WidgetDefinition[] = [
     description: "Quick access to the schools you have saved.",
     icon: School,
     component: BookmarkedSchoolsWidget,
+  },
+  {
+    id: "upcoming-deadlines",
+    title: "Upcoming Deadlines",
+    description: "See upcoming scholarship and application deadlines.",
+    icon: Clock,
+    component: UpcomingDeadlinesWidget,
   },
 ];
 
