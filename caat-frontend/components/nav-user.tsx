@@ -37,15 +37,7 @@ import {
 
 import { supabase } from "@/src/lib/supabaseClient"
 import { toast } from "sonner"
-
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0].toUpperCase())
-    .join("")
-}
+import { getInitials } from "@/lib/user-utils"
 
 export function NavUser({
   user,

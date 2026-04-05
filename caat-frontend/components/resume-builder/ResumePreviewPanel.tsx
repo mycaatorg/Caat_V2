@@ -8,10 +8,7 @@ import React, {
   useState,
 } from "react";
 import { ResumeSection } from "./types";
-
-function safeText(x: unknown) {
-  return typeof x === "string" ? x : "";
-}
+import { safeText } from "@/lib/resume-utils";
 
 // True A4 dimensions at 96 CSS-dpi (210mm x 297mm)
 export const PAGE_WIDTH_PX = 794;
