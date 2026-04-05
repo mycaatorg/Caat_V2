@@ -10,6 +10,7 @@ import CompareTable from "@/components/majors/compare-table";
 import { Button } from "@/components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
 import { supabase } from "@/src/lib/supabaseClient";
+import { useAuth } from "@/src/context/AuthContext";
 import { toast } from "sonner";
 import { MAJOR_CATEGORIES } from "@/constants/majors";
 
@@ -47,7 +48,8 @@ export default function MajorsClient({
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
-  const [userId, setUserId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
 
   const pushParams = useCallback(
     (filter: FilterView, q: string) => {
@@ -71,24 +73,19 @@ export default function MajorsClient({
   }
 
   useEffect(() => {
-    async function loadBookmarks() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
-
-      setUserId(session.user.id);
-
-      const { data } = await supabase
-        .from("user_bookmarked_majors")
-        .select("major_id")
-        .eq("user_id", session.user.id);
-
-      if (data) {
-        setBookmarkedIds(new Set(data.map((row) => row.major_id)));
-      }
+    if (!userId) {
+      setBookmarkedIds(new Set());
+      return;
     }
 
-    loadBookmarks();
-  }, []);
+    supabase
+      .from("user_bookmarked_majors")
+      .select("major_id")
+      .eq("user_id", userId)
+      .then(({ data }) => {
+        if (data) setBookmarkedIds(new Set(data.map((row) => row.major_id)));
+      });
+  }, [userId]);
 
   const filtered = useMemo(() => {
     return majors.filter((m) => {

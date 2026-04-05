@@ -55,32 +55,32 @@ export function experienceToHtml(entries: ExperienceEntry[]): string {
     .join("<p>&nbsp;</p>");
 }
 
+export type ExperienceValue = { entries?: ExperienceEntry[] };
+
 export default function ExperienceGuided({
   value,
   onChange,
 }: {
-  value: Record<string, unknown>;
-  onChange: (next: Record<string, unknown>, html: string) => void;
+  value: ExperienceValue;
+  onChange: (next: ExperienceValue, html: string) => void;
 }) {
-  const entries: ExperienceEntry[] = Array.isArray(value.entries)
-    ? (value.entries as ExperienceEntry[])
-    : [emptyEntry()];
+  const entries: ExperienceEntry[] = Array.isArray(value.entries) ? value.entries : [emptyEntry()];
 
   function update(index: number, patch: Partial<ExperienceEntry>) {
     const next = entries.map((e, i) => (i === index ? { ...e, ...patch } : e));
-    const nextValue = { ...value, entries: next };
+    const nextValue: ExperienceValue = { ...value, entries: next };
     onChange(nextValue, experienceToHtml(next));
   }
 
   function addEntry() {
     const next = [...entries, emptyEntry()];
-    const nextValue = { ...value, entries: next };
+    const nextValue: ExperienceValue = { ...value, entries: next };
     onChange(nextValue, experienceToHtml(next));
   }
 
   function removeEntry(index: number) {
     const next = entries.filter((_, i) => i !== index);
-    const nextValue = { ...value, entries: next };
+    const nextValue: ExperienceValue = { ...value, entries: next };
     onChange(nextValue, experienceToHtml(next));
   }
 

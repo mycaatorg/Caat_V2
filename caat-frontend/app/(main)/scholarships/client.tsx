@@ -32,6 +32,7 @@ import {
   formatAmountDisplay,
 } from "@/types/scholarships";
 import { supabase } from "@/src/lib/supabaseClient";
+import { useAuth } from "@/src/context/AuthContext";
 import { toast } from "sonner";
 
 const ELIGIBILITY_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
@@ -76,7 +77,8 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   );
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
   const [showBookmarked, setShowBookmarked] = useState(sp.get("bookmarked") === "1");
-  const [userId, setUserId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [currentPage, setCurrentPage] = useState(Number(sp.get("page")) || 1);
 
   const pushParams = useCallback(
@@ -92,26 +94,19 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   );
 
   useEffect(() => {
-    async function loadBookmarks() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.user) return;
-
-      setUserId(session.user.id);
-
-      const { data } = await supabase
-        .from("user_bookmarked_scholarships")
-        .select("scholarship_id")
-        .eq("user_id", session.user.id);
-
-      if (data) {
-        setBookmarkedIds(new Set(data.map((r) => r.scholarship_id as string)));
-      }
+    if (!userId) {
+      setBookmarkedIds(new Set());
+      return;
     }
 
-    loadBookmarks();
-  }, []);
+    supabase
+      .from("user_bookmarked_scholarships")
+      .select("scholarship_id")
+      .eq("user_id", userId)
+      .then(({ data }) => {
+        if (data) setBookmarkedIds(new Set(data.map((r) => r.scholarship_id as string)));
+      });
+  }, [userId]);
 
   async function handleToggleBookmark(id: string) {
     if (!userId) {

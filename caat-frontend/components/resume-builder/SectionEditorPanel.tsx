@@ -3,9 +3,9 @@
 import React from "react";
 import { ResumeSection, SectionMode } from "./types";
 import PersonalInfoGuided from "./editors/PersonalInfoGuided";
-import EducationGuided from "./editors/EducationGuided";
-import ExperienceGuided from "./editors/ExperienceGuided";
-import SkillsGuided from "./editors/SkillsGuided";
+import EducationGuided, { type EducationValue } from "./editors/EducationGuided";
+import ExperienceGuided, { type ExperienceValue } from "./editors/ExperienceGuided";
+import SkillsGuided, { type SkillsValue } from "./editors/SkillsGuided";
 import RichTextEditor from "@/components/RichTextEditor";
 
 const GUIDED_TYPES = new Set(["personal", "education", "experience", "skills"]);
@@ -40,7 +40,7 @@ export default function SectionEditorPanel({
     if (section!.type === "education") {
       return (
         <EducationGuided
-          value={structuredData}
+          value={structuredData as EducationValue}
           onChange={(data, html) => onChange({ structuredData: data, contentHtml: html })}
         />
       );
@@ -49,7 +49,7 @@ export default function SectionEditorPanel({
     if (section!.type === "experience") {
       return (
         <ExperienceGuided
-          value={structuredData}
+          value={structuredData as ExperienceValue}
           onChange={(data, html) => onChange({ structuredData: data, contentHtml: html })}
         />
       );
@@ -58,7 +58,7 @@ export default function SectionEditorPanel({
     if (section!.type === "skills") {
       return (
         <SkillsGuided
-          value={structuredData}
+          value={structuredData as SkillsValue}
           onChange={(data, html) => onChange({ structuredData: data, contentHtml: html })}
         />
       );

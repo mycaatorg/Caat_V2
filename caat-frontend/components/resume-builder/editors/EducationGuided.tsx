@@ -58,32 +58,32 @@ export function educationToHtml(entries: EducationEntry[]): string {
     .join("<p>&nbsp;</p>");
 }
 
+export type EducationValue = { entries?: EducationEntry[] };
+
 export default function EducationGuided({
   value,
   onChange,
 }: {
-  value: Record<string, unknown>;
-  onChange: (next: Record<string, unknown>, html: string) => void;
+  value: EducationValue;
+  onChange: (next: EducationValue, html: string) => void;
 }) {
-  const entries: EducationEntry[] = Array.isArray(value.entries)
-    ? (value.entries as EducationEntry[])
-    : [emptyEntry()];
+  const entries: EducationEntry[] = Array.isArray(value.entries) ? value.entries : [emptyEntry()];
 
   function update(index: number, patch: Partial<EducationEntry>) {
     const next = entries.map((e, i) => (i === index ? { ...e, ...patch } : e));
-    const nextValue = { ...value, entries: next };
+    const nextValue: EducationValue = { ...value, entries: next };
     onChange(nextValue, educationToHtml(next));
   }
 
   function addEntry() {
     const next = [...entries, emptyEntry()];
-    const nextValue = { ...value, entries: next };
+    const nextValue: EducationValue = { ...value, entries: next };
     onChange(nextValue, educationToHtml(next));
   }
 
   function removeEntry(index: number) {
     const next = entries.filter((_, i) => i !== index);
-    const nextValue = { ...value, entries: next };
+    const nextValue: EducationValue = { ...value, entries: next };
     onChange(nextValue, educationToHtml(next));
   }
 

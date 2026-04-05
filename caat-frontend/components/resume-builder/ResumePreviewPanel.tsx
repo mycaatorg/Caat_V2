@@ -350,10 +350,9 @@ export default function ResumePreviewPanel({
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const anyDoc = document as any;
-    if (anyDoc.fonts?.ready) {
-      anyDoc.fonts.ready
+    const docFonts = (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts;
+    if (docFonts?.ready) {
+      docFonts.ready
         .then(() => setFontsReady(true))
         .catch(() => setFontsReady(true));
     } else {
