@@ -61,6 +61,7 @@ function discoverProjects(startDir) {
           scripts: {
             lint: Boolean(scripts.lint),
             test: Boolean(scripts.test),
+            'test:unit': Boolean(scripts['test:unit']),
             typecheck: Boolean(scripts.typecheck),
             build: Boolean(scripts.build),
           },

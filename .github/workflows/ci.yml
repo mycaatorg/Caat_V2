@@ -157,6 +157,10 @@ jobs:
         if: ${{ matrix.project.scripts.test }}
         run: npm test
 
+      - name: Unit tests (Vitest)
+        if: ${{ matrix.project.scripts['test:unit'] }}
+        run: npm run test:unit
+
       - name: Build
         # Build only when a "build" script exists (e.g. Next.js "next build").
         # This will run `next build` with Supabase environment variables provided
