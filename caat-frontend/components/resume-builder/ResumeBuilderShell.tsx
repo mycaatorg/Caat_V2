@@ -66,6 +66,10 @@ export default function ResumeBuilderShell() {
   const [draftResumeTitle, setDraftResumeTitle] = useState("");
   const [deleteResumeDialogOpen, setDeleteResumeDialogOpen] = useState(false);
 
+  // Mobile tab navigation
+  type MobileTab = "structure" | "editor" | "preview";
+  const [mobileTab, setMobileTab] = useState<MobileTab>("editor");
+
   const activeSection = useMemo(() => {
     if (sections.length === 0) return undefined;
     return sections.find((s) => s.id === activeSectionId) ?? sections[0];
@@ -457,13 +461,10 @@ export default function ResumeBuilderShell() {
   }
 
   return (
-    <div className="h-[calc(100vh-64px)] w-full">
+    <div className="flex flex-col h-[calc(100vh-64px)] w-full">
       {/* Top bar */}
       <div className="flex items-center justify-between border-b bg-background px-4 py-3">
         <div className="flex items-center gap-2">
-          <div className="h-6 w-6 rounded bg-blue-600 text-white grid place-items-center text-sm font-bold shrink-0">
-            CA
-          </div>
           {editingResumeTitle ? (
             <input
               value={draftResumeTitle}
@@ -552,38 +553,64 @@ export default function ResumeBuilderShell() {
         </div>
       </div>
 
-      {/* 3-panel body */}
-      <div className="grid h-full grid-cols-[360px_1fr_520px]">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-            <DocumentStructurePanel
-              sections={sections}
-              activeSectionId={activeSectionId}
-              onSelect={setActiveSectionId}
-              onAdd={addSection}
-              onRename={(id, label) => updateSection(id, { label })}
-              onDelete={deleteSection}
-              renamingSectionId={renamingSectionId}
-              onFinishRenaming={() => setRenamingSectionId(null)}
-            />
-          </SortableContext>
-        </DndContext>
+      {/* Mobile tab bar */}
+      <div className="flex border-b md:hidden">
+        {(["structure", "editor", "preview"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setMobileTab(tab)}
+            className={`flex-1 py-2 text-sm capitalize font-medium ${
+              mobileTab === tab
+                ? "border-b-2 border-blue-600 text-blue-600"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {tab === "structure" ? "Sections" : tab === "editor" ? "Edit" : "Preview"}
+          </button>
+        ))}
+      </div>
 
-        <SectionEditorPanel
-          section={activeSection}
-          onChange={(patch) => {
-            if (!activeSection) return;
-            updateSection(activeSection.id, patch);
-          }}
-        />
+      {/* 3-panel body — desktop grid / mobile single-panel */}
+      <div className="flex-1 min-h-0 md:grid md:grid-cols-[360px_1fr_520px] flex flex-col overflow-hidden">
+        <div className={`${mobileTab === "structure" ? "flex" : "hidden"} flex-col md:flex`}>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              <DocumentStructurePanel
+                sections={sections}
+                activeSectionId={activeSectionId}
+                onSelect={(id) => {
+                  setActiveSectionId(id);
+                  setMobileTab("editor");
+                }}
+                onAdd={addSection}
+                onRename={(id, label) => updateSection(id, { label })}
+                onDelete={deleteSection}
+                renamingSectionId={renamingSectionId}
+                onFinishRenaming={() => setRenamingSectionId(null)}
+              />
+            </SortableContext>
+          </DndContext>
+        </div>
 
-        <ResumePreviewPanel
-          sections={sections}
-          onPagesComputed={(pages, personal) => {
-            setPrintPages(pages);
-            setPrintPersonal(personal);
-          }}
-        />
+        <div className={`${mobileTab === "editor" ? "flex" : "hidden"} flex-col md:flex overflow-auto`}>
+          <SectionEditorPanel
+            section={activeSection}
+            onChange={(patch) => {
+              if (!activeSection) return;
+              updateSection(activeSection.id, patch);
+            }}
+          />
+        </div>
+
+        <div className={`${mobileTab === "preview" ? "flex" : "hidden"} flex-col md:flex`}>
+          <ResumePreviewPanel
+            sections={sections}
+            onPagesComputed={(pages, personal) => {
+              setPrintPages(pages);
+              setPrintPersonal(personal);
+            }}
+          />
+        </div>
       </div>
 
       {/* Print container — portalled to document.body so @media print CSS
