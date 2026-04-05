@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { supabase } from "@/src/lib/supabaseClient";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -28,7 +29,6 @@ export default async function ScholarshipsPage() {
 
   return (
     <>
-      {/* Header — matches pattern used across all (main) pages */}
       <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
         <SidebarTrigger className="-ml-1" />
         <Separator
@@ -42,11 +42,11 @@ export default async function ScholarshipsPage() {
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
-
-        {/* Search lives inside ScholarshipsClient so it can read filter state */}
       </header>
 
-      <ScholarshipsClient scholarships={(data ?? []) as ScholarshipRow[]} />
+      <Suspense>
+        <ScholarshipsClient scholarships={(data ?? []) as ScholarshipRow[]} />
+      </Suspense>
     </>
   );
 }

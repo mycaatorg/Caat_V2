@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { supabase } from "@/src/lib/supabaseClient";
 import {
   Breadcrumb,
@@ -8,14 +9,15 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import MajorsClient from "./client";
+import type { FilterView } from "@/types/majors";
 
 export default async function MajorsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string }>;
+  searchParams: Promise<{ category?: string; q?: string }>;
 }) {
-  const { filter } = await searchParams;
-  const initialFilter = filter === "bookmarked" ? "Bookmarked" : "All";
+  const params = await searchParams;
+  const initialFilter = (params.category ?? "All") as FilterView;
 
   const { data: majors, error } = await supabase
     .from("majors")
@@ -43,7 +45,9 @@ export default async function MajorsPage({
         </Breadcrumb>
       </header>
 
-      <MajorsClient majors={majors ?? []} initialFilter={initialFilter} />
+      <Suspense>
+        <MajorsClient majors={majors ?? []} initialFilter={initialFilter} />
+      </Suspense>
     </>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeftRight } from "lucide-react";
 import { Major, FilterView } from "@/types/majors";
 import MajorCard from "@/components/majors/major-card";
@@ -10,8 +11,15 @@ import { Button } from "@/components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
 import { supabase } from "@/src/lib/supabaseClient";
 import { toast } from "sonner";
+import { MAJOR_CATEGORIES } from "@/constants/majors";
 
 const MAX_COMPARE = 3;
+
+const VALID_FILTERS = new Set<string>([
+  "All",
+  "Bookmarked",
+  ...MAJOR_CATEGORIES.filter((c) => c !== "All"),
+]);
 
 interface Props {
   majors: Major[];
@@ -22,14 +30,46 @@ export default function MajorsClient({
   majors,
   initialFilter = "All",
 }: Props) {
-  const [selectedFilter, setSelectedFilter] = useState<FilterView>(initialFilter);
-  const [searchQuery, setSearchQuery] = useState("");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const categoryFromUrl = searchParams.get("category") ?? "";
+  const qFromUrl = searchParams.get("q") ?? "";
+  const filterFromUrl = categoryFromUrl === "Bookmarked"
+    ? "Bookmarked"
+    : VALID_FILTERS.has(categoryFromUrl)
+      ? (categoryFromUrl as FilterView)
+      : initialFilter;
+
+  const [selectedFilter, setSelectedFilter] = useState<FilterView>(filterFromUrl);
+  const [searchQuery, setSearchQuery] = useState(qFromUrl);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
 
-  // Load current user and their bookmarks on mount
+  const pushParams = useCallback(
+    (filter: FilterView, q: string) => {
+      const params = new URLSearchParams();
+      if (filter !== "All") params.set("category", filter);
+      if (q.trim()) params.set("q", q.trim());
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [router, pathname],
+  );
+
+  function handleFilterChange(filter: FilterView) {
+    setSelectedFilter(filter);
+    pushParams(filter, searchQuery);
+  }
+
+  function handleSearchChange(q: string) {
+    setSearchQuery(q);
+    pushParams(selectedFilter, q);
+  }
+
   useEffect(() => {
     async function loadBookmarks() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -123,9 +163,9 @@ export default function MajorsClient({
       <div className="max-w-5xl mx-auto">
         <MajorFilters
           searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          onSearchChange={handleSearchChange}
           selectedFilter={selectedFilter}
-          onFilterChange={setSelectedFilter}
+          onFilterChange={handleFilterChange}
           bookmarkedCount={bookmarkedIds.size}
         />
 
@@ -164,7 +204,6 @@ export default function MajorsClient({
         )}
       </div>
 
-      {/* Compare bar — appears when 2+ majors are selected */}
       {compareIds.length >= 2 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
           <div className="flex items-center gap-3 bg-background border rounded-full px-5 py-2.5 shadow-xl pointer-events-auto">
@@ -186,7 +225,6 @@ export default function MajorsClient({
         </div>
       )}
 
-      {/* Compare modal */}
       <Dialog.Root open={isCompareOpen} onOpenChange={setIsCompareOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
