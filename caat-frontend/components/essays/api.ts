@@ -115,6 +115,32 @@ export async function createDraft(args: {
 }
 
 /* ---------------------------
+   Mark a draft as is_current, unsetting all other drafts for the same prompt
+---------------------------- */
+
+export async function setCurrentDraft(draftId: string, promptId: string): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error("Not signed in");
+
+  // Unset all drafts for this prompt first
+  await supabase
+    .from("essay_drafts")
+    .update({ is_current: false })
+    .eq("user_id", user.id)
+    .eq("prompt_id", promptId);
+
+  // Then mark the selected one
+  const { error } = await supabase
+    .from("essay_drafts")
+    .update({ is_current: true })
+    .eq("id", draftId)
+    .eq("user_id", user.id);
+
+  if (error) throw error;
+}
+
+/* ---------------------------
    Delete a draft
 ---------------------------- */
 

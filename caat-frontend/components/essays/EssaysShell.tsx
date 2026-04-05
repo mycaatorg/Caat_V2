@@ -29,6 +29,7 @@ import {
   updateDraft,
   createDraft,
   deleteDraft,
+  setCurrentDraft,
   type EssayPrompt,
   type EssayDraft,
 } from "./api";
@@ -59,6 +60,7 @@ export default function EssaysShell() {
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [draftsPopoverOpen, setDraftsPopoverOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const selectedPrompt = prompts?.find((p) => p.id === selectedPromptId);
 
@@ -169,6 +171,12 @@ export default function EssaysShell() {
     setActiveDraft(draft);
     setEssayContent(draft.content);
     setRenamingId(null);
+    // Update is_current in DB — fire and forget, UI already updated optimistically
+    if (draft.prompt_id) {
+      setCurrentDraft(draft.id, draft.prompt_id).catch(() => {
+        // Non-critical: the correct draft is still shown, just is_current may be stale
+      });
+    }
   }, []);
 
   const startRename = useCallback((draft: EssayDraft) => {
@@ -188,6 +196,7 @@ export default function EssaysShell() {
         if (activeDraft?.id === draftId) setActiveDraft((p) => (p ? { ...p, label: value } : p));
       } catch {
         setRenameValue("");
+        toast.error("Failed to rename draft. Please try again.");
       }
     },
     [renameValue, activeDraft?.id]
@@ -216,6 +225,7 @@ export default function EssaysShell() {
   const handleDeleteDraft = useCallback(
     async (draftId: string) => {
       if (deletingId) return;
+      setConfirmDeleteId(null);
       setDeletingId(draftId);
       try {
         await deleteDraft(draftId);
@@ -228,6 +238,7 @@ export default function EssaysShell() {
         }
       } catch (err) {
         setSaveError(err instanceof Error ? err.message : "Failed to delete draft");
+        toast.error("Failed to delete draft. Please try again.");
       } finally {
         setDeletingId(null);
       }
@@ -452,19 +463,36 @@ export default function EssaysShell() {
                                         >
                                           <Pencil className="h-3.5 w-3.5" />
                                         </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                                          aria-label="Delete draft"
-                                          disabled={deletingId === draft.id}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteDraft(draft.id);
-                                          }}
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                        </Button>
+                                        {confirmDeleteId === draft.id ? (
+                                          <div className="flex items-center gap-1 shrink-0">
+                                            <button
+                                              className="h-7 px-2 text-xs font-medium text-destructive hover:bg-destructive/10 rounded transition-colors"
+                                              onClick={(e) => { e.stopPropagation(); handleDeleteDraft(draft.id); }}
+                                            >
+                                              Delete
+                                            </button>
+                                            <button
+                                              className="h-7 px-2 text-xs font-medium text-muted-foreground hover:bg-muted rounded transition-colors"
+                                              onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                                            aria-label="Delete draft"
+                                            disabled={deletingId === draft.id}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setConfirmDeleteId(draft.id);
+                                            }}
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </Button>
+                                        )}
                                       </>
                                     )}
                                   </div>
@@ -536,6 +564,14 @@ export default function EssaysShell() {
                         disabled={draftsLoading}
                         className="min-h-70 flex-1 resize-y font-mono text-sm"
                       />
+                      <div className="flex items-center justify-end gap-3 mt-1.5 text-xs text-muted-foreground">
+                        <span>
+                          {essayContent.trim() === ""
+                            ? "0 words"
+                            : `${essayContent.trim().split(/\s+/).length} word${essayContent.trim().split(/\s+/).length !== 1 ? "s" : ""}`}
+                        </span>
+                        <span>{essayContent.length} characters</span>
+                      </div>
                     </>
                   )}
                 </CardContent>
