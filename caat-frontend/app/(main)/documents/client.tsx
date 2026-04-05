@@ -649,6 +649,8 @@ export default function DocumentVaultClient() {
         </div>
 
         {/* Table header */}
+        <div className="overflow-x-auto">
+        <div className="min-w-[640px]">
         <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.6fr)] px-5 py-3 border-b">
           {["DOCUMENT NAME", "CATEGORY", "STATUS", "DATE UPLOADED", "ACTION"].map(
             (col) => (
@@ -700,6 +702,11 @@ export default function DocumentVaultClient() {
                   {doc.file_size && (
                     <span className="text-xs text-muted-foreground">
                       {formatFileSize(doc.file_size)}
+                    </span>
+                  )}
+                  {doc.review_notes && (
+                    <span className="mt-0.5 block text-xs text-amber-600 dark:text-amber-400 truncate" title={doc.review_notes}>
+                      Note: {doc.review_notes}
                     </span>
                   )}
                 </div>
@@ -794,6 +801,9 @@ export default function DocumentVaultClient() {
           </div>
         )}
 
+        </div>{/* end min-w wrapper */}
+        </div>{/* end overflow-x-auto */}
+
         {/* Table footer */}
         <div className="flex items-center justify-between border-t px-5 py-3">
           <span className="text-sm text-muted-foreground">
@@ -860,10 +870,13 @@ export default function DocumentVaultClient() {
             If you are having trouble uploading your documents or have questions
             about specific requirements, our admissions team is here to help.
           </p>
-          <button className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline underline-offset-4">
+          <a
+            href="mailto:support@caat.app?subject=Document%20Upload%20Help"
+            className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline underline-offset-4"
+          >
             Contact Support Team
             <ArrowRight className="h-3.5 w-3.5" />
-          </button>
+          </a>
         </div>
       </div>
 
