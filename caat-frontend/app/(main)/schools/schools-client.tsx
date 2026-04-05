@@ -165,6 +165,8 @@ export function BookmarkedSchoolsList() {
 // ---------------------------------------------------------------------------
 // Hook: load bookmarked count for the filter chip badge
 // ---------------------------------------------------------------------------
+export const SCHOOL_BOOKMARK_EVENT = "school-bookmark-change";
+
 export function useBookmarkedSchoolCount() {
   const [count, setCount] = useState(0);
 
@@ -183,6 +185,13 @@ export function useBookmarkedSchoolCount() {
       setCount(c ?? 0);
     }
     load();
+
+    function handleChange(e: Event) {
+      const delta = (e as CustomEvent<number>).detail;
+      setCount((prev) => Math.max(0, prev + delta));
+    }
+    window.addEventListener(SCHOOL_BOOKMARK_EVENT, handleChange);
+    return () => window.removeEventListener(SCHOOL_BOOKMARK_EVENT, handleChange);
   }, []);
 
   return count;

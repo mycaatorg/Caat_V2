@@ -21,18 +21,20 @@ import { ChevronLeft, ChevronRight, Link as LinkIcon } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import SchoolSearch from "./school-search";
 import CountrySelect from "./country-select";
+import SortSelect from "./sort-select";
 import { BookmarkedSchoolsList } from "./schools-client";
 import SchoolFilterBarClient from "./school-filter-bar-client";
+import SchoolBookmarkButton from "./school-bookmark-button";
 
 export default async function SchoolsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string; country?: string; filter?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; country?: string; sort?: string; filter?: string }>;
 }) {
   const params = await searchParams;
   const activeFilter = params.filter === "bookmarked" ? "Bookmarked" : "All";
 
-  // ----- Bookmarked view — no DB query needed here, client component handles it -----
+  // ----- Bookmarked view — client component handles the query -----
   if (activeFilter === "Bookmarked") {
     return (
       <>
@@ -44,7 +46,7 @@ export default async function SchoolsPage({
           />
           <Breadcrumb>
             <BreadcrumbList>
-              <BreadcrumbItem className="hidden md:block">
+              <BreadcrumbItem>
                 <BreadcrumbLink>Schools</BreadcrumbLink>
               </BreadcrumbItem>
             </BreadcrumbList>
@@ -66,7 +68,8 @@ export default async function SchoolsPage({
   // ----- Normal paginated view -----
   const currentPage = Number(params.page) || 1;
   const searchQuery = params.q || "";
-  const selectedCountry = params.country || "Australia";
+  const selectedCountry = params.country || "";
+  const sortParam = params.sort || "name_asc";
   const itemsPerPage = 24;
 
   const from = (currentPage - 1) * itemsPerPage;
@@ -75,15 +78,25 @@ export default async function SchoolsPage({
   let query = supabase
     .from("schools")
     .select("*", { count: "exact" })
-    .eq("country", selectedCountry)
     .range(from, to);
+
+  if (selectedCountry) {
+    query = query.eq("country", selectedCountry);
+  }
 
   if (searchQuery) {
     const orQuery = `name.ilike.${searchQuery}%,name.ilike.% ${searchQuery}%,name.ilike.%(${searchQuery})%`;
     query = query.or(orQuery);
   }
 
-  query = query.order("name", { ascending: true });
+  // Apply sort
+  if (sortParam === "name_desc") {
+    query = query.order("name", { ascending: false });
+  } else if (sortParam === "country_asc") {
+    query = query.order("country", { ascending: true }).order("name", { ascending: true });
+  } else {
+    query = query.order("name", { ascending: true });
+  }
 
   const { data: schools, count, error } = await query;
 
@@ -98,8 +111,11 @@ export default async function SchoolsPage({
     urlParams.set("page", page.toString());
     if (searchQuery) urlParams.set("q", searchQuery);
     if (selectedCountry) urlParams.set("country", selectedCountry);
+    if (sortParam && sortParam !== "name_asc") urlParams.set("sort", sortParam);
     return `/schools?${urlParams.toString()}`;
   };
+
+  const countryLabel = selectedCountry || "All Countries";
 
   return (
     <>
@@ -111,7 +127,7 @@ export default async function SchoolsPage({
         />
         <Breadcrumb>
           <BreadcrumbList>
-            <BreadcrumbItem className="hidden md:block">
+            <BreadcrumbItem>
               <BreadcrumbLink>Schools</BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>
@@ -126,17 +142,18 @@ export default async function SchoolsPage({
             <SchoolFilterBarClient activeFilter="All" />
           </div>
 
-          {/* Search + country */}
-          <div className="flex flex-col md:flex-row gap-4 mb-6 items-start">
+          {/* Search + country + sort */}
+          <div className="flex flex-col md:flex-row gap-3 mb-6 items-start">
             <div className="flex-1 w-full max-w-md">
               <SchoolSearch defaultValue={searchQuery} />
             </div>
             <CountrySelect defaultValue={selectedCountry} />
+            <SortSelect defaultValue={sortParam} />
           </div>
 
-          <div className="mb-10 flex flex-col gap-2">
+          <div className="mb-6">
             <p className="text-zinc-500 dark:text-zinc-400">
-              Showing {count || 0} results in <strong>{selectedCountry}</strong>{" "}
+              Showing {count || 0} results in <strong>{countryLabel}</strong>{" "}
               {totalPages > 0 && `(Page ${currentPage} of ${totalPages})`}
             </p>
           </div>
@@ -159,6 +176,9 @@ export default async function SchoolsPage({
                   <CardContent className="flex-grow" />
 
                   <CardFooter className="justify-end flex gap-2">
+                    {/* Inline bookmark button */}
+                    <SchoolBookmarkButton schoolId={school.id} compact />
+
                     <Button asChild size="sm" variant="default">
                       <Link href={`/schools/${school.id}`}>View Details</Link>
                     </Button>
@@ -201,41 +221,33 @@ export default async function SchoolsPage({
 
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-4">
-              <Button
-                variant="outline"
-                disabled={currentPage <= 1}
-                asChild={currentPage > 1}
-              >
-                {currentPage > 1 ? (
+              {currentPage > 1 ? (
+                <Button variant="outline" asChild>
                   <Link href={createPageUrl(currentPage - 1)}>
                     <ChevronLeft className="mr-2 h-4 w-4" />
                   </Link>
-                ) : (
-                  <button aria-disabled="true" disabled>
-                    <ChevronLeft className="mr-2 h-4 w-4" />
-                  </button>
-                )}
-              </Button>
+                </Button>
+              ) : (
+                <Button variant="outline" disabled>
+                  <ChevronLeft className="mr-2 h-4 w-4" />
+                </Button>
+              )}
 
               <span className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
                 Page {currentPage} of {totalPages}
               </span>
 
-              <Button
-                variant="outline"
-                disabled={currentPage >= totalPages}
-                asChild={currentPage < totalPages}
-              >
-                {currentPage < totalPages ? (
+              {currentPage < totalPages ? (
+                <Button variant="outline" asChild>
                   <Link href={createPageUrl(currentPage + 1)}>
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </Link>
-                ) : (
-                  <button aria-disabled="true" disabled>
-                    <ChevronRight className="ml-2 h-4 w-4" />
-                  </button>
-                )}
-              </Button>
+                </Button>
+              ) : (
+                <Button variant="outline" disabled>
+                  <ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
+              )}
             </div>
           )}
         </main>

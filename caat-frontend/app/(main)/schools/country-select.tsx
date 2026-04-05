@@ -22,20 +22,25 @@ export default function CountrySelect({ defaultValue }: { defaultValue: string }
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const handleValueChange = (value: string) => {
+  function handleValueChange(value: string) {
     const params = new URLSearchParams(searchParams.toString());
-    params.set("country", value);
-    params.set("page", "1"); // Reset pagination on filter change
+    if (value === "__all__") {
+      params.delete("country");
+    } else {
+      params.set("country", value);
+    }
+    params.set("page", "1");
     router.replace(`${pathname}?${params.toString()}`);
-  };
+  }
 
   return (
     <div className="w-full md:w-[200px]">
-      <Select defaultValue={defaultValue} onValueChange={handleValueChange}>
+      <Select defaultValue={defaultValue || "__all__"} onValueChange={handleValueChange}>
         <SelectTrigger className="w-full">
-          <SelectValue placeholder="Select Country" />
+          <SelectValue placeholder="All Countries" />
         </SelectTrigger>
         <SelectContent>
+          <SelectItem value="__all__">All Countries</SelectItem>
           {COUNTRIES.map((country) => (
             <SelectItem key={country} value={country}>
               {country}
