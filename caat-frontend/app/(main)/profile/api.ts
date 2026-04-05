@@ -17,7 +17,7 @@ export async function fetchProfile(): Promise<ProfileRow> {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, first_name, last_name, email, birth_date, phone, linkedin, github, avatar_url, nationality, current_location, school_name, curriculum, graduation_year, target_majors, preferred_countries"
+      "id, first_name, last_name, email, birth_date, phone, linkedin, github, avatar_url, nationality, current_location, school_name, curriculum, graduation_year, target_majors, preferred_countries, activities"
     )
     .eq("id", user.id)
     .single();
@@ -41,6 +41,34 @@ export async function updateProfile(
     .from("profiles")
     .update(fields)
     .eq("id", userId);
+
+  if (error) throw new Error(error.message);
+}
+
+// ── Activities ────────────────────────────────────────────────────────────────
+
+export async function fetchActivities(): Promise<string[]> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("activities")
+    .eq("id", user.id)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return (data?.activities as string[] | null) ?? [];
+}
+
+export async function updateActivities(activities: string[]): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ activities })
+    .eq("id", user.id);
 
   if (error) throw new Error(error.message);
 }

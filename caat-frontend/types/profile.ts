@@ -29,6 +29,7 @@ export interface ProfileRow {
   graduation_year: number | null;
   target_majors: string[] | null;
   preferred_countries: string[] | null;
+  activities: string[] | null;
 }
 
 /** Row from the standardised_test_scores table */

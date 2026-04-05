@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Circle, ChevronRight, AlertCircle, RefreshCw } from "lucide-react";
+import { CheckCircle2, Circle, ChevronRight, ChevronDown, AlertCircle, RefreshCw } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -168,6 +168,7 @@ export function ApplicationReadiness() {
   const [steps, setSteps] = useState<ReadinessStep[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [stepsOpen, setStepsOpen] = useState(true);
   const lastRefreshRef = useRef<number>(0);
 
   const refresh = useCallback(async (silent = false) => {
@@ -247,52 +248,70 @@ export function ApplicationReadiness() {
         </div>
       </div>
 
-      {/* Progress bar */}
-      <Progress value={percentage} className="h-2" />
+      {/* Progress bar — always visible, clickable to toggle steps */}
+      <button
+        type="button"
+        onClick={() => setStepsOpen((o) => !o)}
+        className="w-full group flex items-center gap-3"
+        aria-expanded={stepsOpen}
+        aria-label={stepsOpen ? "Hide steps" : "Show steps"}
+      >
+        <div className="flex-1">
+          <Progress value={percentage} className="h-2" />
+        </div>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 text-muted-foreground shrink-0 transition-transform duration-200",
+            stepsOpen && "rotate-180"
+          )}
+        />
+      </button>
 
-      {/* Step list */}
-      <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-        {steps.map((step) => (
-          <li key={step.id}>
-            <Link
-              href={step.href}
-              className={cn(
-                "flex items-start gap-3 rounded-lg border p-3 text-sm transition-colors hover:bg-muted/50",
-                step.completed && "bg-muted/30 border-transparent",
-                step.failed && "border-dashed opacity-60"
-              )}
-            >
-              {step.completed ? (
-                <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-500 shrink-0" />
-              ) : step.failed ? (
-                <AlertCircle className="h-4 w-4 mt-0.5 text-amber-500 shrink-0" />
-              ) : (
-                <Circle className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-              )}
-              <div className="flex-1 min-w-0">
-                <p
-                  className={cn(
-                    "font-medium leading-tight",
-                    step.completed && "text-muted-foreground line-through"
-                  )}
-                >
-                  {step.label}
-                </p>
-                {step.failed ? (
-                  <p className="text-xs text-amber-500 mt-0.5 leading-snug">Could not check</p>
-                ) : step.description && !step.completed ? (
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                    {step.description}
+      {/* Step list — collapsible */}
+      {stepsOpen && (
+        <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {steps.map((step) => (
+            <li key={step.id}>
+              <Link
+                href={step.href}
+                className={cn(
+                  "flex items-start gap-3 rounded-lg border p-3 text-sm transition-colors hover:bg-muted/50",
+                  step.completed && "bg-muted/30 border-transparent",
+                  step.failed && "border-dashed opacity-60"
+                )}
+              >
+                {step.completed ? (
+                  <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-500 shrink-0" />
+                ) : step.failed ? (
+                  <AlertCircle className="h-4 w-4 mt-0.5 text-amber-500 shrink-0" />
+                ) : (
+                  <Circle className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={cn(
+                      "font-medium leading-tight",
+                      step.completed && "text-muted-foreground line-through"
+                    )}
+                  >
+                    {step.label}
                   </p>
-                ) : null}
-              </div>
-              {!step.completed && !step.failed && (
-                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-              )}
-            </Link>
-          </li>
-        ))}
-      </ul>
+                  {step.failed ? (
+                    <p className="text-xs text-amber-500 mt-0.5 leading-snug">Could not check</p>
+                  ) : step.description && !step.completed ? (
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                      {step.description}
+                    </p>
+                  ) : null}
+                </div>
+                {!step.completed && !step.failed && (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                )}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
