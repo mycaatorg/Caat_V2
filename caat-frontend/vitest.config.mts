@@ -9,9 +9,6 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./tests/setup.ts"],
     pool: "vmThreads",
-    environmentMatchGlobs: [
-      ["tests/components/**", "jsdom"],
-    ],
   },
   resolve: {
     alias: {
