@@ -4,25 +4,25 @@ import { toDateKey, formatTime } from "@/lib/calendar-utils";
 // ── toDateKey ──────────────────────────────────────────────────────────────────
 
 describe("toDateKey()", () => {
-  it("converts a Date to YYYY-MM-DD string", () => {
-    // Use UTC to avoid timezone issues
-    expect(toDateKey(new Date("2024-06-15T00:00:00.000Z"))).toBe("2024-06-15");
+  it("converts a Date to YYYY-MM-DD using local date parts", () => {
+    const d = new Date(2024, 5, 15); // June 15 — local time, no UTC shift
+    expect(toDateKey(d)).toBe("2024-06-15");
   });
 
-  it("zero-pads single-digit months", () => {
-    expect(toDateKey(new Date("2024-03-05T00:00:00.000Z"))).toBe("2024-03-05");
+  it("zero-pads single-digit months and days", () => {
+    expect(toDateKey(new Date(2024, 2, 5))).toBe("2024-03-05"); // March 5
   });
 
   it("first day of year", () => {
-    expect(toDateKey(new Date("2024-01-01T00:00:00.000Z"))).toBe("2024-01-01");
+    expect(toDateKey(new Date(2024, 0, 1))).toBe("2024-01-01");
   });
 
   it("last day of year", () => {
-    expect(toDateKey(new Date("2024-12-31T00:00:00.000Z"))).toBe("2024-12-31");
+    expect(toDateKey(new Date(2024, 11, 31))).toBe("2024-12-31");
   });
 
   it("leap year Feb 29", () => {
-    expect(toDateKey(new Date("2024-02-29T00:00:00.000Z"))).toBe("2024-02-29");
+    expect(toDateKey(new Date(2024, 1, 29))).toBe("2024-02-29");
   });
 });
 
