@@ -12,13 +12,17 @@ const ToolbarButton = ({
   onClick,
   isActive,
   children,
+  label,
 }: {
   onClick: () => void;
   isActive: boolean;
   children: React.ReactNode;
+  label: string;
 }) => (
   <button
     onClick={onClick}
+    aria-label={label}
+    aria-pressed={isActive}
     className={`px-2 py-1 rounded-md transition text-sm font-medium ${
       isActive
         ? "bg-blue-600 text-white"
@@ -70,8 +74,13 @@ export default function RichTextEditor({
   return (
     <div>
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 mb-3 bg-muted p-2 rounded-md">
+      <div
+        role="toolbar"
+        aria-label="Text formatting"
+        className="flex flex-wrap items-center gap-2 mb-3 bg-muted p-2 rounded-md"
+      >
         <ToolbarButton
+          label="Bold"
           onClick={() => editor.chain().focus().toggleBold().run()}
           isActive={editor.isActive("bold")}
         >
@@ -79,6 +88,7 @@ export default function RichTextEditor({
         </ToolbarButton>
 
         <ToolbarButton
+          label="Italic"
           onClick={() => editor.chain().focus().toggleItalic().run()}
           isActive={editor.isActive("italic")}
         >
@@ -86,6 +96,7 @@ export default function RichTextEditor({
         </ToolbarButton>
 
         <ToolbarButton
+          label="Align left"
           onClick={() => editor.chain().focus().setTextAlign("left").run()}
           isActive={editor.isActive({ textAlign: "left" })}
         >
@@ -93,6 +104,7 @@ export default function RichTextEditor({
         </ToolbarButton>
 
         <ToolbarButton
+          label="Align center"
           onClick={() => editor.chain().focus().setTextAlign("center").run()}
           isActive={editor.isActive({ textAlign: "center" })}
         >
@@ -100,6 +112,7 @@ export default function RichTextEditor({
         </ToolbarButton>
 
         <ToolbarButton
+          label="Align right"
           onClick={() => editor.chain().focus().setTextAlign("right").run()}
           isActive={editor.isActive({ textAlign: "right" })}
         >
@@ -107,6 +120,7 @@ export default function RichTextEditor({
         </ToolbarButton>
 
         <select
+          aria-label="Font family"
           onChange={(e) =>
             editor.chain().focus().setFontFamily(e.target.value).run()
           }
@@ -123,6 +137,7 @@ export default function RichTextEditor({
         </select>
 
         <select
+          aria-label="Font size"
           onChange={(e) =>
             editor.chain().focus().setMark("textStyle", { fontSize: e.target.value }).run()
           }

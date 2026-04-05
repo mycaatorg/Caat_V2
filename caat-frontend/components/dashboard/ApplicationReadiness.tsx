@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, Circle, ChevronRight, AlertCircle, RefreshCw } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
@@ -148,6 +148,7 @@ export function ApplicationReadiness() {
   const [steps, setSteps] = useState<ReadinessStep[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const lastRefreshRef = useRef<number>(0);
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setRefreshing(true);
@@ -159,14 +160,21 @@ export function ApplicationReadiness() {
   }, []);
 
   useEffect(() => {
+    const now = Date.now();
+    lastRefreshRef.current = now;
     checkReadiness()
       .then(setSteps)
       .finally(() => setLoading(false));
 
-    // Re-check when user returns to this tab (e.g. after completing a step)
+    // Re-check when user returns to this tab, but at most once per 60 seconds
+    // to avoid firing 5 parallel Supabase queries on every tab switch.
     function onVisibilityChange() {
       if (document.visibilityState === "visible") {
-        refresh(true);
+        const elapsed = Date.now() - lastRefreshRef.current;
+        if (elapsed > 60_000) {
+          lastRefreshRef.current = Date.now();
+          refresh(true);
+        }
       }
     }
     document.addEventListener("visibilitychange", onVisibilityChange);

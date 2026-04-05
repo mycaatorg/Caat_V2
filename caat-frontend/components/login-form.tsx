@@ -41,11 +41,19 @@ export function LoginForm({
       if (signInError) throw signInError
 
       // Redirect to the page the user originally tried to access, or dashboard
+      // Validate via URL constructor to prevent open redirect attacks
       const next = searchParams.get("next")
-      const destination =
-        next && next.startsWith("/") && !next.startsWith("//")
-          ? next
-          : "/dashboard"
+      let destination = "/dashboard"
+      if (next) {
+        try {
+          const parsed = new URL(next, window.location.origin)
+          if (parsed.origin === window.location.origin) {
+            destination = next
+          }
+        } catch {
+          // Invalid URL — fall back to dashboard
+        }
+      }
       router.push(destination)
       router.refresh()
     } catch (err: unknown) {
