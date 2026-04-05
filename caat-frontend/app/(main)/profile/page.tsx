@@ -29,7 +29,7 @@ import {
   saveTestScores,
 } from "./api";
 
-// Maps academic curriculum → standardised test curriculum key
+// Maps SCHOOL_CURRICULUM_OPTIONS values → standardised test curriculum key
 const CURRICULUM_TO_TEST: Record<string, string> = {
   "A-Levels": "A-Levels",
   "IB Diploma (IBDP)": "IB",
@@ -56,6 +56,8 @@ function calcCompletion(
     profile.birth_date,
     profile.nationality,
     profile.current_location,
+    profile.phone,
+    profile.linkedin,
     profile.school_name,
     profile.curriculum,
     profile.graduation_year,
@@ -155,6 +157,9 @@ export default function ProfilePage() {
     birthDate: string;
     nationality: string;
     currentLocation: string;
+    phone: string;
+    linkedin: string;
+    github: string;
   }) {
     if (!profile) return;
     try {
@@ -164,6 +169,9 @@ export default function ProfilePage() {
         birth_date: data.birthDate,
         nationality: data.nationality,
         current_location: data.currentLocation,
+        phone: data.phone || null,
+        linkedin: data.linkedin || null,
+        github: data.github || null,
       });
       setProfile((p) =>
         p ? {
@@ -173,6 +181,9 @@ export default function ProfilePage() {
           birth_date: data.birthDate,
           nationality: data.nationality,
           current_location: data.currentLocation,
+          phone: data.phone || null,
+          linkedin: data.linkedin || null,
+          github: data.github || null,
         } : p
       );
       toast.success("Personal info saved.");
@@ -395,6 +406,9 @@ export default function ProfilePage() {
               birthDate: profile.birth_date ?? "",
               nationality: profile.nationality ?? "",
               currentLocation: profile.current_location ?? "",
+              phone: profile.phone ?? "",
+              linkedin: profile.linkedin ?? "",
+              github: profile.github ?? "",
             }}
             onSave={handlePersonalSave}
           />

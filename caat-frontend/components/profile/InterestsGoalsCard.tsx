@@ -221,7 +221,7 @@ export function InterestsGoalsCard({ data, majorOptions, onSave }: InterestsGoal
 
   return (
     <ProfileCard
-      title="Interests & Goals"
+      title="Interests & Preferences"
       icon={<Target className="h-4 w-4" />}
       isEditing={isEditing}
       isSaving={isSaving}
