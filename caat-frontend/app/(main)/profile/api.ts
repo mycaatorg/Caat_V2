@@ -26,10 +26,12 @@ export async function fetchProfile(): Promise<ProfileRow> {
 
   // New user — no profile row yet. Create a blank one and return it.
   if (!data) {
+    const fullName: string = user.user_metadata?.full_name ?? "";
+    const [firstName, ...rest] = fullName.trim().split(" ");
     const blank: Omit<ProfileRow, never> = {
       id: user.id,
-      first_name: null,
-      last_name: null,
+      first_name: firstName || null,
+      last_name: rest.join(" ") || null,
       email: user.email ?? null,
       birth_date: null,
       phone: null,
