@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/src/lib/supabaseClient";
 import { cn } from "@/lib/utils";
+import { calcCompletion } from "@/lib/profile-utils";
+import type { ProfileRow, StandardisedTestScore } from "@/types/profile";
 
 interface ReadinessStep {
   id: string;
@@ -28,10 +30,14 @@ async function checkReadiness(): Promise<ReadinessStep[]> {
   }
 
   // Run checks in parallel
-  const [profileRes, documentsRes, essaysRes, schoolsRes, scholarshipsRes, applicationsRes] =
+  const [profileRes, scoresRes, documentsRes, essaysRes, schoolsRes, scholarshipsRes, applicationsRes] =
     await Promise.allSettled([
-      // Profile: check if user has actually filled in their first name
-      supabase.from("profiles").select("first_name").eq("id", user.id).maybeSingle(),
+      // Profile: fetch all completion fields
+      supabase.from("profiles").select(
+        "id, first_name, last_name, birth_date, nationality, current_location, phone, linkedin, school_name, curriculum, graduation_year, avatar_url, target_majors, preferred_countries"
+      ).eq("id", user.id).maybeSingle(),
+      // Test scores: needed for calcCompletion
+      supabase.from("standardised_test_scores").select("id, profile_id, curriculum, cumulative_score, score_scale, created_at, updated_at").eq("profile_id", user.id),
       // Documents: at least one uploaded
       supabase
         .from("documents")
@@ -65,13 +71,16 @@ async function checkReadiness(): Promise<ReadinessStep[]> {
 
   const profileData =
     profileRes.status === "fulfilled"
-      ? (profileRes.value.data as { first_name: string | null } | null)
+      ? (profileRes.value.data as ProfileRow | null)
       : null;
+  const scoresData =
+    scoresRes.status === "fulfilled"
+      ? ((scoresRes as PromiseFulfilledResult<{ data: unknown[] | null; error: unknown }>).value.data as StandardisedTestScore[] ?? [])
+      : [];
   const profileDone =
     isOk(profileRes) &&
     profileData !== null &&
-    typeof profileData?.first_name === "string" &&
-    profileData.first_name.trim().length > 0;
+    calcCompletion(profileData, scoresData) === 100;
   const profileFailed = profileRes.status === "rejected" || (profileRes.status === "fulfilled" && !!profileRes.value.error);
 
   const docsDone =

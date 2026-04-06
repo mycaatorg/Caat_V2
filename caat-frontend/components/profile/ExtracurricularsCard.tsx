@@ -52,7 +52,17 @@ export function ExtracurricularsCard() {
             contentHtml: s.contentHtml,
             structuredData: s.structuredData,
           }));
-        setSections(loaded);
+        // Only show preview when the user has actually added content —
+        // ignore seeded empty default sections.
+        const hasContent = loaded.some((s) => {
+          if (s.contentHtml && s.contentHtml.trim().length > 0) return true;
+          if (s.type === "personal" && s.structuredData) {
+            const p = s.structuredData as { fullName?: string };
+            return !!p.fullName?.trim();
+          }
+          return false;
+        });
+        setSections(hasContent ? loaded : null);
       })
       .catch(() => setSections(null))
       .finally(() => setResumeLoading(false));
