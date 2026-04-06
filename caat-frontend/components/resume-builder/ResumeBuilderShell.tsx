@@ -18,7 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 
 import { getDefaultSections } from "./defaultSections";
-import { ResumeSection } from "./types";
+import { ResumeSection, SectionType } from "./types";
 
 // Supabase API helpers
 import {
@@ -185,21 +185,33 @@ export default function ResumeBuilderShell() {
   // --------------------------------------------------
   // Add section
   // --------------------------------------------------
-  function addSection() {
-    const newId = crypto.randomUUID(); // real UUID for Supabase
+  function addSection(type: SectionType = "custom") {
+    const newId = crypto.randomUUID();
+
+    // Preset guided sections get the same defaults as the initial seed
+    const PRESET_DEFAULTS: Partial<Record<SectionType, Partial<ResumeSection>>> = {
+      education: { label: "Education", mode: "guided", structuredData: {} },
+      experience: { label: "Experience", mode: "guided", structuredData: {} },
+      skills: { label: "Skills & Interests", mode: "guided", structuredData: {} },
+    };
+
+    const preset = PRESET_DEFAULTS[type];
     const newSection: ResumeSection = {
       id: newId,
-      type: "custom",
-      label: "Custom Section",
-      mode: "free",
+      type,
+      label: preset?.label ?? "Custom Section",
+      mode: preset?.mode ?? "free",
       contentHtml: "",
+      structuredData: preset?.structuredData,
     };
 
     setSections((prev) => [...prev, newSection]);
     setActiveSectionId(newId);
 
-    // Immediately enter rename mode for the newly added section
-    setRenamingSectionId(newId);
+    // Only enter rename mode for custom sections (presets have a fixed label)
+    if (type === "custom") {
+      setRenamingSectionId(newId);
+    }
   }
 
   // --------------------------------------------------
@@ -582,7 +594,7 @@ export default function ResumeBuilderShell() {
                   setActiveSectionId(id);
                   setMobileTab("editor");
                 }}
-                onAdd={addSection}
+                onAdd={(type) => addSection(type)}
                 onRename={(id, label) => updateSection(id, { label })}
                 onDelete={deleteSection}
                 renamingSectionId={renamingSectionId}
