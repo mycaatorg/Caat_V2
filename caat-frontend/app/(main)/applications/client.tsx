@@ -198,19 +198,22 @@ export default function ApplicationsClient() {
 
   if (loading) {
     return (
-      <div className="p-6 max-w-5xl mx-auto space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-20 w-full rounded-lg" />
-          ))}
+      <div className="p-6">
+        <div className="max-w-5xl mx-auto space-y-4">
+          <Skeleton className="h-8 w-48" />
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-20 w-full rounded-lg" />
+            ))}
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6">
+      <div className="max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="flex items-center gap-3">
@@ -334,6 +337,7 @@ export default function ApplicationsClient() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
