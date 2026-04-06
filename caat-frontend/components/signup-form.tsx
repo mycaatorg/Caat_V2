@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -25,6 +26,8 @@ export function SignupForm({
   const [confirmationSent, setConfirmationSent] = useState(false)
   const [password, setPassword] = useState("")
   const [passwordTouched, setPasswordTouched] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   const passwordTooShort = password.length > 0 && password.length < 8
   const passwordValid = password.length >= 8
@@ -153,16 +156,26 @@ export function SignupForm({
         </Field>
         <Field>
           <FieldLabel htmlFor="password">Password</FieldLabel>
-          <Input
-            name="password"
-            id="password"
-            type="password"
-            required
-            minLength={8}
-            value={password}
-            onChange={handlePasswordChange}
-            className={passwordTouched && passwordTooShort ? "border-destructive focus-visible:ring-destructive" : ""}
-          />
+          <div className="relative">
+            <Input
+              name="password"
+              id="password"
+              type={showPassword ? "text" : "password"}
+              required
+              minLength={8}
+              value={password}
+              onChange={handlePasswordChange}
+              className={`pr-10 ${passwordTouched && passwordTooShort ? "border-destructive focus-visible:ring-destructive" : ""}`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
           {passwordTouched && password.length > 0 && (
             <div className="space-y-1.5 mt-1">
               {/* Strength bar */}
@@ -199,7 +212,23 @@ export function SignupForm({
         </Field>
         <Field>
           <FieldLabel htmlFor="confirm-password">Confirm Password</FieldLabel>
-          <Input name="confirm-password" id="confirm-password" type="password" required />
+          <div className="relative">
+            <Input
+              name="confirm-password"
+              id="confirm-password"
+              type={showConfirm ? "text" : "password"}
+              required
+              className="pr-10"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirm((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label={showConfirm ? "Hide password" : "Show password"}
+            >
+              {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
           <FieldDescription>Please confirm your password.</FieldDescription>
         </Field>
         <Field>

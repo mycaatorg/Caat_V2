@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { Eye, EyeOff } from "lucide-react"
 import { supabase } from "@/src/lib/supabaseClient"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -22,6 +23,7 @@ export function LoginForm({
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -98,12 +100,23 @@ export function LoginForm({
           <div className="flex items-center">
             <FieldLabel htmlFor="password">Password</FieldLabel>
           </div>
-          <Input 
-            name="password" 
-            id="password" 
-            type="password" 
-            required 
-          />
+          <div className="relative">
+            <Input
+              name="password"
+              id="password"
+              type={showPassword ? "text" : "password"}
+              required
+              className="pr-10"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
           <Link
             href="/forgot-password"
             className="ml-auto text-sm underline-offset-4 hover:underline"
