@@ -2,7 +2,13 @@
 
 import React, { useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Camera, Loader2, X } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { supabase } from "@/src/lib/supabaseClient";
 import { toast } from "sonner";
 
@@ -30,40 +36,29 @@ export function AvatarUpload({
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Reset input so the same file can be re-selected
     e.target.value = "";
 
     if (!ACCEPTED_TYPES.includes(file.type)) {
       toast.error("Please upload a JPEG, PNG, WebP, or GIF image.");
       return;
     }
-
     if (file.size > MAX_FILE_SIZE) {
       toast.error("Image must be under 5 MB.");
       return;
     }
 
     setUploading(true);
-
     try {
       const ext = file.name.split(".").pop() ?? "jpg";
       const storagePath = `${userId}/avatar.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from(BUCKET)
-        .upload(storagePath, file, {
-          contentType: file.type,
-          upsert: true,
-        });
+        .upload(storagePath, file, { contentType: file.type, upsert: true });
 
       if (uploadError) throw uploadError;
 
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
-
-      // Append cache-buster so the browser shows the new image
+      const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
       const freshUrl = `${publicUrl}?t=${Date.now()}`;
 
       const { error: updateError } = await supabase
@@ -83,17 +78,15 @@ export function AvatarUpload({
     }
   }
 
-  async function handleRemove(e: React.MouseEvent) {
-    e.stopPropagation();
+  async function handleRemove() {
     setRemoving(true);
     try {
-      const { error: updateError } = await supabase
+      const { error } = await supabase
         .from("profiles")
         .update({ avatar_url: null })
         .eq("id", userId);
 
-      if (updateError) throw updateError;
-
+      if (error) throw error;
       onUploaded(null);
       toast.success("Avatar removed.");
     } catch (err) {
@@ -108,45 +101,52 @@ export function AvatarUpload({
 
   return (
     <div className="relative shrink-0">
-      <div
-        className="relative group cursor-pointer"
-        onClick={() => !isBusy && inputRef.current?.click()}
-      >
-        <Avatar className="size-20 text-xl">
-          {avatarUrl && <AvatarImage src={avatarUrl} alt="Profile avatar" />}
-          <AvatarFallback className="text-lg font-semibold">
-            {fallbackInitials}
-          </AvatarFallback>
-        </Avatar>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <div className="relative group cursor-pointer">
+            <Avatar className="size-20 text-xl">
+              {avatarUrl && <AvatarImage src={avatarUrl} alt="Profile avatar" />}
+              <AvatarFallback className="text-lg font-semibold">
+                {fallbackInitials}
+              </AvatarFallback>
+            </Avatar>
 
-        <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-          {isBusy ? (
-            <Loader2 className="h-5 w-5 text-white animate-spin" />
-          ) : (
-            <Camera className="h-5 w-5 text-white" />
-          )}
-        </div>
+            <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+              {isBusy ? (
+                <Loader2 className="h-5 w-5 text-white animate-spin" />
+              ) : (
+                <span className="text-[10px] font-medium text-white text-center leading-tight px-1">
+                  Edit
+                </span>
+              )}
+            </div>
+          </div>
+        </DropdownMenuTrigger>
 
-        <input
-          ref={inputRef}
-          type="file"
-          accept={ACCEPTED_TYPES.join(",")}
-          className="hidden"
-          onChange={handleFileChange}
-        />
-      </div>
+        {!isBusy && (
+          <DropdownMenuContent align="start" sideOffset={6}>
+            <DropdownMenuItem onClick={() => inputRef.current?.click()}>
+              {avatarUrl ? "Edit profile picture" : "Upload profile picture"}
+            </DropdownMenuItem>
+            {avatarUrl && (
+              <DropdownMenuItem
+                onClick={handleRemove}
+                className="text-destructive focus:text-destructive"
+              >
+                Remove profile picture
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        )}
+      </DropdownMenu>
 
-      {/* Remove button — only shown when an avatar is set */}
-      {avatarUrl && !isBusy && (
-        <button
-          type="button"
-          onClick={handleRemove}
-          aria-label="Remove avatar"
-          className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow hover:bg-destructive/90 transition-colors"
-        >
-          <X className="h-3 w-3" />
-        </button>
-      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept={ACCEPTED_TYPES.join(",")}
+        className="hidden"
+        onChange={handleFileChange}
+      />
     </div>
   );
 }

@@ -17,12 +17,41 @@ export async function fetchProfile(): Promise<ProfileRow> {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, first_name, last_name, email, birth_date, phone, linkedin, github, avatar_url, nationality, current_location, school_name, curriculum, graduation_year, target_majors, preferred_countries"
+      "id, first_name, last_name, email, birth_date, phone, linkedin, github, avatar_url, nationality, current_location, school_name, curriculum, graduation_year, target_majors, preferred_countries, activities"
     )
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
 
   if (error) throw new Error(error.message);
+
+  // New user — no profile row yet. Create a blank one and return it.
+  if (!data) {
+    const fullName: string = user.user_metadata?.full_name ?? "";
+    const [firstName, ...rest] = fullName.trim().split(" ");
+    const blank: Omit<ProfileRow, never> = {
+      id: user.id,
+      first_name: firstName || null,
+      last_name: rest.join(" ") || null,
+      email: user.email ?? null,
+      birth_date: null,
+      phone: null,
+      linkedin: null,
+      github: null,
+      avatar_url: null,
+      nationality: null,
+      current_location: null,
+      school_name: null,
+      curriculum: null,
+      graduation_year: null,
+      target_majors: null,
+      preferred_countries: null,
+      activities: null,
+    };
+    const { error: insertError } = await supabase.from("profiles").insert(blank);
+    if (insertError) throw new Error(insertError.message);
+    return blank;
+  }
+
   return data as ProfileRow;
 }
 
@@ -41,6 +70,34 @@ export async function updateProfile(
     .from("profiles")
     .update(fields)
     .eq("id", userId);
+
+  if (error) throw new Error(error.message);
+}
+
+// ── Activities ────────────────────────────────────────────────────────────────
+
+export async function fetchActivities(): Promise<string[]> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("activities")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return (data?.activities as string[] | null) ?? [];
+}
+
+export async function updateActivities(activities: string[]): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ activities })
+    .eq("id", user.id);
 
   if (error) throw new Error(error.message);
 }

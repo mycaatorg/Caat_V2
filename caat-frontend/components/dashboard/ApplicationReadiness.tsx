@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Circle, ChevronRight, AlertCircle, RefreshCw } from "lucide-react";
+import { CheckCircle2, Circle, ChevronRight, ChevronDown, AlertCircle, RefreshCw } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/src/lib/supabaseClient";
 import { cn } from "@/lib/utils";
+import { calcCompletion } from "@/lib/profile-utils";
+import type { ProfileRow, StandardisedTestScore } from "@/types/profile";
 
 interface ReadinessStep {
   id: string;
@@ -28,10 +30,14 @@ async function checkReadiness(): Promise<ReadinessStep[]> {
   }
 
   // Run checks in parallel
-  const [profileRes, documentsRes, essaysRes, schoolsRes, scholarshipsRes, applicationsRes] =
+  const [profileRes, scoresRes, documentsRes, essaysRes, schoolsRes, scholarshipsRes, applicationsRes] =
     await Promise.allSettled([
-      // Profile: check if user has actually filled in their first name
-      supabase.from("profiles").select("first_name").eq("id", user.id).maybeSingle(),
+      // Profile: fetch all completion fields
+      supabase.from("profiles").select(
+        "id, first_name, last_name, birth_date, nationality, current_location, phone, linkedin, school_name, curriculum, graduation_year, avatar_url, target_majors, preferred_countries"
+      ).eq("id", user.id).maybeSingle(),
+      // Test scores: needed for calcCompletion
+      supabase.from("standardised_test_scores").select("id, profile_id, curriculum, cumulative_score, score_scale, created_at, updated_at").eq("profile_id", user.id),
       // Documents: at least one uploaded
       supabase
         .from("documents")
@@ -65,13 +71,16 @@ async function checkReadiness(): Promise<ReadinessStep[]> {
 
   const profileData =
     profileRes.status === "fulfilled"
-      ? (profileRes.value.data as { first_name: string | null } | null)
+      ? (profileRes.value.data as ProfileRow | null)
       : null;
+  const scoresData =
+    scoresRes.status === "fulfilled"
+      ? ((scoresRes as PromiseFulfilledResult<{ data: unknown[] | null; error: unknown }>).value.data as StandardisedTestScore[] ?? [])
+      : [];
   const profileDone =
     isOk(profileRes) &&
     profileData !== null &&
-    typeof profileData?.first_name === "string" &&
-    profileData.first_name.trim().length > 0;
+    calcCompletion(profileData, scoresData) === 100;
   const profileFailed = profileRes.status === "rejected" || (profileRes.status === "fulfilled" && !!profileRes.value.error);
 
   const docsDone =
@@ -168,6 +177,7 @@ export function ApplicationReadiness() {
   const [steps, setSteps] = useState<ReadinessStep[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [stepsOpen, setStepsOpen] = useState(true);
   const lastRefreshRef = useRef<number>(0);
 
   const refresh = useCallback(async (silent = false) => {
@@ -247,52 +257,70 @@ export function ApplicationReadiness() {
         </div>
       </div>
 
-      {/* Progress bar */}
-      <Progress value={percentage} className="h-2" />
+      {/* Progress bar — always visible, clickable to toggle steps */}
+      <button
+        type="button"
+        onClick={() => setStepsOpen((o) => !o)}
+        className="w-full group flex items-center gap-3"
+        aria-expanded={stepsOpen}
+        aria-label={stepsOpen ? "Hide steps" : "Show steps"}
+      >
+        <div className="flex-1">
+          <Progress value={percentage} className="h-2" />
+        </div>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 text-muted-foreground shrink-0 transition-transform duration-200",
+            stepsOpen && "rotate-180"
+          )}
+        />
+      </button>
 
-      {/* Step list */}
-      <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-        {steps.map((step) => (
-          <li key={step.id}>
-            <Link
-              href={step.href}
-              className={cn(
-                "flex items-start gap-3 rounded-lg border p-3 text-sm transition-colors hover:bg-muted/50",
-                step.completed && "bg-muted/30 border-transparent",
-                step.failed && "border-dashed opacity-60"
-              )}
-            >
-              {step.completed ? (
-                <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-500 shrink-0" />
-              ) : step.failed ? (
-                <AlertCircle className="h-4 w-4 mt-0.5 text-amber-500 shrink-0" />
-              ) : (
-                <Circle className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-              )}
-              <div className="flex-1 min-w-0">
-                <p
-                  className={cn(
-                    "font-medium leading-tight",
-                    step.completed && "text-muted-foreground line-through"
-                  )}
-                >
-                  {step.label}
-                </p>
-                {step.failed ? (
-                  <p className="text-xs text-amber-500 mt-0.5 leading-snug">Could not check</p>
-                ) : step.description && !step.completed ? (
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                    {step.description}
+      {/* Step list — collapsible */}
+      {stepsOpen && (
+        <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {steps.map((step) => (
+            <li key={step.id}>
+              <Link
+                href={step.href}
+                className={cn(
+                  "flex items-start gap-3 rounded-lg border p-3 text-sm transition-colors hover:bg-muted/50",
+                  step.completed && "bg-muted/30 border-transparent",
+                  step.failed && "border-dashed opacity-60"
+                )}
+              >
+                {step.completed ? (
+                  <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-500 shrink-0" />
+                ) : step.failed ? (
+                  <AlertCircle className="h-4 w-4 mt-0.5 text-amber-500 shrink-0" />
+                ) : (
+                  <Circle className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={cn(
+                      "font-medium leading-tight",
+                      step.completed && "text-muted-foreground line-through"
+                    )}
+                  >
+                    {step.label}
                   </p>
-                ) : null}
-              </div>
-              {!step.completed && !step.failed && (
-                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-              )}
-            </Link>
-          </li>
-        ))}
-      </ul>
+                  {step.failed ? (
+                    <p className="text-xs text-amber-500 mt-0.5 leading-snug">Could not check</p>
+                  ) : step.description && !step.completed ? (
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                      {step.description}
+                    </p>
+                  ) : null}
+                </div>
+                {!step.completed && !step.failed && (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                )}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

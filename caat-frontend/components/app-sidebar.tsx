@@ -59,10 +59,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           authUser.user_metadata?.name ||
           authUser.email?.split("@")[0] ||
           "User"
+        // Prefer profile avatar (uploaded via profile page) over auth metadata avatar
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("avatar_url")
+          .eq("id", authUser.id)
+          .single()
         setUser({
           name,
           email: authUser.email ?? "",
-          avatar: authUser.user_metadata?.avatar_url ?? "",
+          avatar: profileData?.avatar_url ?? authUser.user_metadata?.avatar_url ?? "",
         })
       }
     }
@@ -77,11 +83,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           authUser.user_metadata?.name ||
           authUser.email?.split("@")[0] ||
           "User"
-        setUser({
-          name,
-          email: authUser.email ?? "",
-          avatar: authUser.user_metadata?.avatar_url ?? "",
-        })
+        // Re-fetch profile avatar on auth state change
+        supabase
+          .from("profiles")
+          .select("avatar_url")
+          .eq("id", authUser.id)
+          .single()
+          .then(({ data: profileData }) => {
+            setUser({
+              name,
+              email: authUser.email ?? "",
+              avatar: profileData?.avatar_url ?? authUser.user_metadata?.avatar_url ?? "",
+            })
+          })
       } else {
         setUser(null)
       }

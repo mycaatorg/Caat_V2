@@ -22,6 +22,7 @@ function emptyProfile(): ProfileRow {
     graduation_year: null,
     target_majors: null,
     preferred_countries: null,
+    activities: null,
   };
 }
 
@@ -43,6 +44,7 @@ function fullProfile(): ProfileRow {
     graduation_year: 2024,
     target_majors: ["Computer Science"],
     preferred_countries: ["Australia"],
+    activities: null,
   };
 }
 
