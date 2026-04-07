@@ -214,6 +214,8 @@
   /* Each .resume-print-page wraps one ResumePage (794px = 210mm at 96dpi).
      The browser maps CSS px to physical dimensions when printing. */
   .resume-print-page {
+    height: 297mm;
+    overflow: hidden;
     page-break-after: always;
     break-after: page;
   }
@@ -223,8 +225,13 @@
     break-after: auto;
   }
 
-  /* Ensure the page background prints white with black text */
+  /* Constrain ResumePage to exact A4 dimensions in print.
+     The inline style uses 1123px (Math.round of 297mm at 96dpi) which is
+     ~0.5px taller than the physical A4 page. Without this override the
+     sub-pixel overflow bleeds onto a new print page, doubling the count. */
   .resume-page {
+    height: 297mm !important;
+    width: 210mm !important;
     background: white !important;
     color: black !important;
   }

@@ -598,7 +598,7 @@ export default function ResumePreviewPanel({
   }, [blocks, fontsReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div ref={containerRef} className="border-l bg-muted/30 p-4 overflow-auto">
+    <div ref={containerRef} className="border-l bg-muted/30 p-4 overflow-auto h-full">
       <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
         <div>A4</div>
         <div>Professional Resume Style</div>

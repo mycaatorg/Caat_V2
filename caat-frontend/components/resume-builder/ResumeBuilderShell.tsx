@@ -614,7 +614,7 @@ export default function ResumeBuilderShell() {
           />
         </div>
 
-        <div className={`${mobileTab === "preview" ? "flex" : "hidden"} flex-col md:flex`}>
+        <div className={`${mobileTab === "preview" ? "flex" : "hidden"} flex-col md:flex min-h-0 overflow-hidden`}>
           <ResumePreviewPanel
             sections={sections}
             onPagesComputed={(pages, personal) => {
