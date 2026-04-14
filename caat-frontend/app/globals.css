@@ -123,6 +123,12 @@
     @apply bg-background text-foreground;
   }
 
+  /* Hide browser-native password reveal buttons (Edge, Chrome) */
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none;
+  }
+
   /* Shared typography for resume preview content.
      Font sizes are tuned for true A4 rendering (794px = 210mm at 96 CSS-dpi).
      ~21px at 794px ≈ 11pt when printed on A4. */

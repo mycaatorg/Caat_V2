@@ -8,5 +8,11 @@ const EssaysShell = dynamic(
 );
 
 export default function EssaysClient() {
-  return <EssaysShell />;
+  return (
+    <div className="p-6">
+      <div className="max-w-5xl mx-auto">
+        <EssaysShell />
+      </div>
+    </div>
+  );
 }
