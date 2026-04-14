@@ -10,6 +10,10 @@ import {
   BookOpen,
   FileText,
   Check,
+  GraduationCap,
+  Award,
+  FolderOpen,
+  Calendar,
 } from "lucide-react";
 import Navbar from "./Navbar";
 
@@ -273,21 +277,51 @@ function FeaturesGrid() {
   const features = [
     {
       icon: <LayoutGrid size={20} strokeWidth={1.5} />,
-      title: "All-in-One Tracking",
+      title: "Application Tracker",
       description:
-        "Manage every application, deadline, and requirement from a single unified dashboard. No more scattered spreadsheets or missed deadlines.",
+        "Manage every application, deadline, and requirement from a single unified dashboard. Status updates, progress bars, and task checklists in one view.",
+    },
+    {
+      icon: <GraduationCap size={20} strokeWidth={1.5} />,
+      title: "School Search",
+      description:
+        "Browse 4,000+ universities worldwide. Compare acceptance rates, deadlines, tuition, and requirements side by side to build your perfect list.",
     },
     {
       icon: <Pencil size={20} strokeWidth={1.5} />,
-      title: "Expert Essay Support",
+      title: "Essay Workshop",
       description:
-        "Interactive prompts, version history, and AI-powered feedback to help you craft compelling personal statements that stand out.",
+        "Interactive prompts guide you from blank page to polished draft. Version history keeps every revision, and built-in feedback helps you refine.",
+    },
+    {
+      icon: <Award size={20} strokeWidth={1.5} />,
+      title: "Scholarship Finder",
+      description:
+        "AI-powered matching surfaces scholarships tailored to your profile, field of study, and background. Track applications and deadlines in one place.",
+    },
+    {
+      icon: <FileText size={20} strokeWidth={1.5} />,
+      title: "Resume Builder",
+      description:
+        "Guided templates walk you through activities, awards, and achievements. Export a polished resume formatted the way admissions offices expect.",
+    },
+    {
+      icon: <FolderOpen size={20} strokeWidth={1.5} />,
+      title: "Document Vault",
+      description:
+        "Upload transcripts, recommendation letters, and test scores to secure encrypted storage. Share access links directly with institutions.",
+    },
+    {
+      icon: <Calendar size={20} strokeWidth={1.5} />,
+      title: "Deadline Dashboard",
+      description:
+        "Every deadline across every school in one calendar view. Smart alerts warn you days in advance so nothing slips through the cracks.",
     },
     {
       icon: <Lock size={20} strokeWidth={1.5} />,
-      title: "Secure Doc Storage",
+      title: "Secure by Default",
       description:
-        "Military-grade encryption keeps your transcripts, letters of recommendation, and documents safe, organized, and always accessible.",
+        "AES-256 encryption and SOC2-compliant infrastructure protect every file and form entry. Your data is yours — always private, always accessible.",
     },
   ];
 
@@ -309,27 +343,34 @@ function FeaturesGrid() {
           </p>
         </div>
 
-        {/* Cards */}
-        <div className="grid md:grid-cols-3 border border-black">
-          {features.map((feature, i) => (
-            <div
-              key={feature.title}
-              className={`group p-8 lg:p-10 transition-colors duration-100 hover:bg-black hover:text-white cursor-default ${
-                i < 2 ? "border-b md:border-b-0 md:border-r border-black" : ""
-              }`}
-            >
-              <div className="mb-6 group-hover:text-white transition-colors duration-100">
-                {feature.icon}
+        {/* Scrollable cards */}
+        <div className="border border-black overflow-x-auto">
+          <div className="flex min-w-max">
+            {features.map((feature, i) => (
+              <div
+                key={feature.title}
+                className={`group w-72 flex-none p-8 transition-colors duration-100 hover:bg-black hover:text-white cursor-default ${
+                  i < features.length - 1 ? "border-r border-black" : ""
+                }`}
+              >
+                <div className="mb-6 group-hover:text-white transition-colors duration-100">
+                  {feature.icon}
+                </div>
+                <h3 className="text-xl font-bold mb-4 font-display">
+                  {feature.title}
+                </h3>
+                <p className="text-[#525252] group-hover:text-[#BFBFBF] leading-relaxed transition-colors duration-100 font-serif text-sm">
+                  {feature.description}
+                </p>
               </div>
-              <h3 className="text-xl font-bold mb-4 font-display">
-                {feature.title}
-              </h3>
-              <p className="text-[#525252] group-hover:text-[#BFBFBF] leading-relaxed transition-colors duration-100 font-serif text-sm">
-                {feature.description}
-              </p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
+
+        {/* Scroll hint */}
+        <p className="text-[11px] tracking-[0.12em] uppercase font-code text-[#BFBFBF] mt-4 text-right">
+          Scroll to explore →
+        </p>
       </div>
     </section>
   );
@@ -577,57 +618,29 @@ function ThreeSteps() {
       number: "01",
       title: "Create Your Free Account",
       description:
-        "Sign up in under a minute — no credit card, no setup fees. Your dashboard is ready instantly.",
+        "Sign up in under a minute — no credit card, no setup fees. Your personalized dashboard is ready the moment you confirm your email.",
       tag: "Getting Started",
     },
     {
       number: "02",
       title: "Build Your School List",
       description:
-        "Search and save from 4,000+ universities worldwide. Compare acceptance rates, deadlines, and requirements side by side.",
-      tag: "Schools",
+        "Search 4,000+ universities, compare deadlines and requirements, and add schools to your tracker. Everything about each application lives in one place.",
+      tag: "Research & Plan",
     },
     {
       number: "03",
-      title: "Track Every Application",
+      title: "Write, Prepare & Apply",
       description:
-        "Add each school to your tracker and monitor status, outstanding tasks, and deadlines in one unified view. Never miss a cutoff.",
-      tag: "Applications",
+        "Draft essays in the Workshop, find matching scholarships, build your resume, and upload documents — all tracked against your live deadlines.",
+      tag: "Execute",
     },
     {
       number: "04",
-      title: "Craft Standout Essays",
-      description:
-        "The Essay Workshop guides you prompt by prompt. Version history keeps every draft, and built-in feedback helps you refine until it's right.",
-      tag: "Essay Workshop",
-    },
-    {
-      number: "05",
-      title: "Find & Apply for Scholarships",
-      description:
-        "Our matching engine surfaces scholarships relevant to your profile, major, and background — so you leave no funding on the table.",
-      tag: "Scholarships",
-    },
-    {
-      number: "06",
-      title: "Build Your Resume",
-      description:
-        "Guided templates walk you through activities, awards, and achievements. Export a polished resume formatted the way admissions offices expect.",
-      tag: "Resume Builder",
-    },
-    {
-      number: "07",
-      title: "Organize Your Documents",
-      description:
-        "Upload transcripts, recommendation letters, and test scores to secure encrypted storage. Share links directly with institutions.",
-      tag: "Documents",
-    },
-    {
-      number: "08",
       title: "Submit with Confidence",
       description:
-        "Your completion checklist turns green item by item. When every box is checked, hit submit — knowing nothing was missed.",
-      tag: "Final Review",
+        "Your completion checklist turns item by item. When every box is checked, hit submit — knowing nothing was missed and no deadline slipped by.",
+      tag: "Submit",
     },
   ];
 
