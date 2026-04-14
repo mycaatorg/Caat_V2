@@ -569,27 +569,65 @@ function MoreFeatures() {
   );
 }
 
-// ─── Three Steps ──────────────────────────────────────────────────────────────
+// ─── How It Works ─────────────────────────────────────────────────────────────
 
 function ThreeSteps() {
   const steps = [
     {
       number: "01",
-      title: "Sign up for CAAT",
+      title: "Create Your Free Account",
       description:
-        "Create your free account in under a minute. No credit card required, no setup fees.",
+        "Sign up in under a minute — no credit card, no setup fees. Your dashboard is ready instantly.",
+      tag: "Getting Started",
     },
     {
       number: "02",
-      title: "Add Your Dream Schools",
+      title: "Build Your School List",
       description:
-        "Search from 4,000+ universities worldwide and build your perfect college list.",
+        "Search and save from 4,000+ universities worldwide. Compare acceptance rates, deadlines, and requirements side by side.",
+      tag: "Schools",
     },
     {
       number: "03",
-      title: "Complete Your Journey",
+      title: "Track Every Application",
       description:
-        "Track every requirement, deadline, and essay until your applications are submitted and accepted.",
+        "Add each school to your tracker and monitor status, outstanding tasks, and deadlines in one unified view. Never miss a cutoff.",
+      tag: "Applications",
+    },
+    {
+      number: "04",
+      title: "Craft Standout Essays",
+      description:
+        "The Essay Workshop guides you prompt by prompt. Version history keeps every draft, and built-in feedback helps you refine until it's right.",
+      tag: "Essay Workshop",
+    },
+    {
+      number: "05",
+      title: "Find & Apply for Scholarships",
+      description:
+        "Our matching engine surfaces scholarships relevant to your profile, major, and background — so you leave no funding on the table.",
+      tag: "Scholarships",
+    },
+    {
+      number: "06",
+      title: "Build Your Resume",
+      description:
+        "Guided templates walk you through activities, awards, and achievements. Export a polished resume formatted the way admissions offices expect.",
+      tag: "Resume Builder",
+    },
+    {
+      number: "07",
+      title: "Organize Your Documents",
+      description:
+        "Upload transcripts, recommendation letters, and test scores to secure encrypted storage. Share links directly with institutions.",
+      tag: "Documents",
+    },
+    {
+      number: "08",
+      title: "Submit with Confidence",
+      description:
+        "Your completion checklist turns green item by item. When every box is checked, hit submit — knowing nothing was missed.",
+      tag: "Final Review",
     },
   ];
 
@@ -600,19 +638,19 @@ function ThreeSteps() {
     >
       <DiagonalTexture />
       <div className="relative max-w-6xl mx-auto px-6 lg:px-12">
-        <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-start">
+        <div className="grid lg:grid-cols-[40%_60%] gap-12 lg:gap-20 items-start">
           {/* Left sticky heading */}
           <div className="lg:sticky lg:top-28">
             <p className="text-[11px] tracking-[0.18em] uppercase text-[#525252] mb-5 font-code">
-              Process
+              How It Works
             </p>
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] mb-6 font-display">
-              Your Journey in Three Steps
+            <h2 className="text-4xl md:text-5xl lg:text-[3.25rem] font-bold tracking-tight leading-[1.05] mb-6 font-display">
+              Everything you need, step by step
             </h2>
-            <p className="text-lg text-[#525252] leading-relaxed font-serif">
-              We&apos;ve simplified the complex college application process into
-              three clear, manageable phases.
+            <p className="text-lg text-[#525252] leading-relaxed font-serif mb-8">
+              CAAT guides you through every stage of the college application process — from first search to final submission.
             </p>
+            <div className="h-[4px] w-12 bg-black" aria-hidden />
           </div>
 
           {/* Right steps */}
@@ -621,28 +659,33 @@ function ThreeSteps() {
               <div
                 key={step.number}
                 className={`flex gap-6 ${
-                  i < steps.length - 1 ? "pb-10 mb-10 border-b border-[#E5E5E5]" : ""
+                  i < steps.length - 1 ? "pb-8 mb-8 border-b border-[#E5E5E5]" : ""
                 }`}
               >
                 {/* Number + connector */}
                 <div className="flex flex-col items-center flex-shrink-0">
-                  <div className="w-12 h-12 bg-black text-white flex items-center justify-center text-xs font-code tracking-[0.1em]">
+                  <div className="w-10 h-10 bg-black text-white flex items-center justify-center text-[11px] font-code tracking-[0.05em]">
                     {step.number}
                   </div>
                   {i < steps.length - 1 && (
                     <div
-                      className="w-px bg-black mt-3"
-                      style={{ minHeight: "40px", flex: 1 }}
+                      className="w-px bg-[#E5E5E5] mt-3"
+                      style={{ minHeight: "32px", flex: 1 }}
                     />
                   )}
                 </div>
 
                 {/* Content */}
-                <div className="pt-2 pb-2">
-                  <h3 className="text-xl font-bold mb-2.5 font-display">
-                    {step.title}
-                  </h3>
-                  <p className="text-[#525252] leading-relaxed font-serif">
+                <div className="pt-1 pb-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="text-lg font-bold font-display">
+                      {step.title}
+                    </h3>
+                    <span className="text-[10px] tracking-[0.1em] uppercase font-code text-[#525252] border border-[#E5E5E5] px-2 py-0.5 hidden sm:inline-block">
+                      {step.tag}
+                    </span>
+                  </div>
+                  <p className="text-[#525252] leading-relaxed font-serif text-sm">
                     {step.description}
                   </p>
                 </div>

@@ -8,8 +8,6 @@ import { Menu, X } from "lucide-react";
 const NAV_LINKS = [
   { label: "Features", href: "#features" },
   { label: "How it Works", href: "#how-it-works" },
-  { label: "Scholarships", href: "#scholarships" },
-  { label: "Pricing", href: "#pricing" },
 ];
 
 export default function Navbar() {
