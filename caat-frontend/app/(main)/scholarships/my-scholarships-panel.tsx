@@ -661,7 +661,6 @@ export default function MyScholarshipsPanel() {
   const [editing, setEditing] = useState<UserScholarship | null>(null);
 
   useEffect(() => {
-    setLoading(true);
     fetchUserScholarships()
       .then(setScholarships)
       .catch(() => toast.error("Could not load your scholarships."))
