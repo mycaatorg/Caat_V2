@@ -89,10 +89,10 @@ function deadlineLabel(deadline_at: string | null): string | null {
 function deadlineColor(deadline_at: string | null): string {
   if (!deadline_at) return "";
   const days = differenceInCalendarDays(new Date(deadline_at), new Date());
-  if (days < 0) return "text-muted-foreground line-through";
-  if (days <= 7) return "text-red-500 dark:text-red-400";
-  if (days <= 30) return "text-amber-500 dark:text-amber-400";
-  return "text-green-600 dark:text-green-400";
+  if (days < 0) return "text-[#525252] line-through";
+  if (days <= 7) return "font-bold text-black";
+  if (days <= 30) return "text-black";
+  return "text-[#525252]";
 }
 
 function toggleArray<T>(arr: T[], item: T): T[] {
@@ -203,7 +203,7 @@ function ScholarshipFormDialog({
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         {/* Centering wrapper: offset by sidebar width (16rem) on md+ so the dialog is centred in the content area, not the full viewport */}
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:pl-[16rem] pointer-events-none">
-        <Dialog.Content className="pointer-events-auto w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl bg-background border data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+        <Dialog.Content className="pointer-events-auto w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-background border border-black data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
           <Dialog.Title className="sr-only">
             {isEdit ? "Edit Scholarship" : "Add Scholarship"}
           </Dialog.Title>
@@ -225,7 +225,7 @@ function ScholarshipFormDialog({
             <div className="px-6 py-5 space-y-5">
               {/* Required section */}
               <div className="space-y-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <p className="text-[11px] font-code tracking-[0.15em] uppercase text-[#525252]">
                   Required
                 </p>
 
@@ -268,7 +268,7 @@ function ScholarshipFormDialog({
 
               {/* Optional section */}
               <div className="space-y-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <p className="text-[11px] font-code tracking-[0.15em] uppercase text-[#525252]">
                   Optional — fill in what you know
                 </p>
 
@@ -331,7 +331,7 @@ function ScholarshipFormDialog({
                       onChange={(e) =>
                         set("frequency", e.target.value || null)
                       }
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      className="flex h-9 w-full border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:border-black"
                     >
                       {FREQUENCY_OPTIONS.map((o) => (
                         <option key={o.value} value={o.value}>
@@ -516,11 +516,11 @@ function UserScholarshipCard({
     scholarship.study_level.length > 0 || scholarship.funding_type.length > 0;
 
   return (
-    <Card className="flex flex-col h-full hover:shadow-lg transition-shadow">
+    <Card className="flex flex-col h-full transition-colors duration-100 hover:border-foreground">
       <CardHeader className="pb-3 gap-2">
         {/* Provider + actions */}
         <div className="flex items-start justify-between gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-400 leading-tight">
+          <span className="text-[10px] font-code tracking-[0.12em] uppercase text-[#525252] leading-tight">
             {scholarship.provider_name}
           </span>
           <div className="flex items-center gap-1 shrink-0">
@@ -535,14 +535,14 @@ function UserScholarshipCard({
             {confirmDelete ? (
               <div className="flex items-center gap-1">
                 <button
-                  className="h-7 px-2 text-xs font-medium text-destructive hover:bg-destructive/10 rounded transition-colors"
+                  className="h-7 px-2 text-xs font-medium text-destructive hover:bg-[#F5F5F5] transition-colors"
                   disabled={deleting}
                   onClick={handleDelete}
                 >
                   {deleting ? "…" : "Delete"}
                 </button>
                 <button
-                  className="h-7 px-2 text-xs font-medium text-muted-foreground hover:bg-muted rounded transition-colors"
+                  className="h-7 px-2 text-xs font-medium text-[#525252] hover:bg-[#F5F5F5] transition-colors"
                   onClick={() => setConfirmDelete(false)}
                 >
                   Cancel
@@ -573,7 +573,7 @@ function UserScholarshipCard({
             {scholarship.funding_type.map((t) => (
               <span
                 key={t}
-                className="text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+                className="text-[10px] font-code tracking-[0.08em] uppercase border border-black px-2 py-0.5"
               >
                 {FUNDING_LABELS[t] ?? t}
               </span>
@@ -581,7 +581,7 @@ function UserScholarshipCard({
             {scholarship.study_level.map((l) => (
               <span
                 key={l}
-                className="text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                className="text-[10px] font-code tracking-[0.08em] uppercase border border-[#E5E5E5] text-[#525252] px-2 py-0.5"
               >
                 {l}
               </span>
@@ -625,7 +625,7 @@ function UserScholarshipCard({
         {scholarship.external_url ? (
           <Button
             asChild
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-600 dark:hover:bg-blue-700"
+            className="w-full bg-black text-white hover:bg-white hover:text-black border border-black font-code tracking-[0.1em] uppercase text-[11px] transition-colors duration-100"
           >
             <a
               href={scholarship.external_url}
@@ -638,8 +638,7 @@ function UserScholarshipCard({
           </Button>
         ) : (
           <Button
-            variant="outline"
-            className="w-full"
+            className="w-full bg-transparent text-black border border-black hover:bg-black hover:text-white font-code tracking-[0.1em] uppercase text-[11px] transition-colors duration-100"
             onClick={() => onEdit(scholarship)}
           >
             <Pencil className="h-3.5 w-3.5 mr-1.5" />
@@ -695,15 +694,18 @@ export default function MyScholarshipsPanel() {
   return (
     <div className="space-y-6">
       {/* Panel header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between pb-6 border-b border-[#E5E5E5]">
         <div>
-          <h2 className="text-lg font-semibold">My Scholarships</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-xl font-bold font-display">My Scholarships</h2>
+          <p className="text-sm text-[#525252] font-serif mt-1">
             Track scholarships you&apos;ve found outside this platform.
           </p>
         </div>
-        <Button onClick={openAdd} className="gap-2">
-          <Plus className="h-4 w-4" />
+        <Button
+          onClick={openAdd}
+          className="gap-2 bg-black text-white hover:bg-white hover:text-black border border-black font-code tracking-[0.1em] uppercase text-[11px] transition-colors duration-100"
+        >
+          <Plus className="h-4 w-4" strokeWidth={1.5} />
           Add Scholarship
         </Button>
       </div>
@@ -713,23 +715,26 @@ export default function MyScholarshipsPanel() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="space-y-3">
-              <Skeleton className="h-40 w-full rounded-xl" />
+              <Skeleton className="h-40 w-full" />
             </div>
           ))}
         </div>
       ) : scholarships.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center gap-4 border border-dashed rounded-xl">
-          <BookOpen className="h-10 w-10 text-muted-foreground/40" />
+        <div className="flex flex-col items-center justify-center py-24 text-center gap-6 border border-[#E5E5E5]">
+          <BookOpen className="h-8 w-8 text-[#525252]" strokeWidth={1.5} />
           <div>
-            <p className="text-base font-medium text-muted-foreground">
+            <p className="text-base font-bold font-display">
               No scholarships added yet
             </p>
-            <p className="text-sm text-muted-foreground/70 mt-1">
+            <p className="text-sm text-[#525252] font-serif mt-1">
               Found a scholarship elsewhere? Add it here to keep track.
             </p>
           </div>
-          <Button onClick={openAdd} variant="outline" className="gap-2">
-            <Plus className="h-4 w-4" />
+          <Button
+            onClick={openAdd}
+            className="gap-2 bg-transparent text-black border border-black hover:bg-black hover:text-white font-code tracking-[0.1em] uppercase text-[11px] transition-colors duration-100"
+          >
+            <Plus className="h-4 w-4" strokeWidth={1.5} />
             Add your first scholarship
           </Button>
         </div>

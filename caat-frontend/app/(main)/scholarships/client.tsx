@@ -255,28 +255,28 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     <div className="p-6">
       <main className="max-w-5xl mx-auto">
 
-        {/* View switcher — prominent tab bar */}
-        <div className="flex items-center gap-2 mb-6 p-1 bg-muted rounded-lg w-fit">
+        {/* View switcher */}
+        <div className="flex items-center border border-black mb-6 w-fit">
           <button
             onClick={() => switchView("browse")}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            className={`px-5 py-2 text-xs tracking-[0.1em] uppercase font-code transition-colors duration-100 focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-black focus-visible:outline-offset-[-2px] ${
               view === "browse"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-black text-white"
+                : "text-[#525252] hover:text-black"
             }`}
           >
             Browse
           </button>
           <button
             onClick={() => switchView("mine")}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-5 py-2 text-xs tracking-[0.1em] uppercase font-code border-l border-black transition-colors duration-100 focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-black focus-visible:outline-offset-[-2px] ${
               view === "mine"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-black text-white"
+                : "text-[#525252] hover:text-black"
             }`}
           >
             <Star
-              className={`h-3.5 w-3.5 ${view === "mine" ? "fill-amber-400 text-amber-400" : "text-amber-400"}`}
+              className={`h-3 w-3 ${view === "mine" ? "fill-white text-white" : "text-[#525252]"}`}
             />
             My Scholarships
           </button>
@@ -360,7 +360,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
                   <SlidersHorizontal className="h-3.5 w-3.5 opacity-60" />
                   Eligibility
                   {selectedEligibility.length > 0 && (
-                    <span className="bg-primary text-primary-foreground text-[10px] font-semibold rounded-full px-1.5 py-0.5 leading-none">
+                    <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
                       {selectedEligibility.length}
                     </span>
                   )}
