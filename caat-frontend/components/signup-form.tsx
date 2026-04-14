@@ -30,7 +30,6 @@ export function SignupForm({
   const [showConfirm, setShowConfirm] = useState(false)
 
   const passwordTooShort = password.length > 0 && password.length < 8
-  const passwordValid = password.length >= 8
 
   // Strength criteria
   const hasMinLength = password.length >= 8

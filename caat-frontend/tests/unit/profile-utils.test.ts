@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { calcCompletion, completionHint, formatDOB } from "@/lib/profile-utils";
-import type { ProfileRow, StandardisedTestScore } from "@/types/profile";
+import type { ProfileRow } from "@/types/profile";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

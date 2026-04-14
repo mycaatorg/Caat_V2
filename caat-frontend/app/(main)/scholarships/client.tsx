@@ -9,7 +9,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Bookmark,
+  Star,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const MyScholarshipsPanel = dynamic(
+  () => import("./my-scholarships-panel"),
+  { ssr: false },
+);
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -70,6 +77,9 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   const pathname = usePathname();
   const sp = useSearchParams();
 
+  const [view, setView] = useState<"browse" | "mine">(
+    sp.get("view") === "mine" ? "mine" : "browse",
+  );
   const [searchQuery, setSearchQuery] = useState(sp.get("q") ?? "");
   const [locationQuery, setLocationQuery] = useState(sp.get("location") ?? "");
   const [selectedEligibility, setSelectedEligibility] = useState<string[]>(
@@ -80,6 +90,15 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const [currentPage, setCurrentPage] = useState(Number(sp.get("page")) || 1);
+
+  function switchView(next: "browse" | "mine") {
+    setView(next);
+    const params = new URLSearchParams();
+    if (next === "mine") params.set("view", "mine");
+    router.replace(`${pathname}${params.toString() ? `?${params.toString()}` : ""}`, {
+      scroll: false,
+    });
+  }
 
   const pushParams = useCallback(
     (overrides: Record<string, string | null>) => {
@@ -236,6 +255,38 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     <div className="p-6">
       <main className="max-w-5xl mx-auto">
 
+        {/* View switcher — prominent tab bar */}
+        <div className="flex items-center gap-2 mb-6 p-1 bg-muted rounded-lg w-fit">
+          <button
+            onClick={() => switchView("browse")}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              view === "browse"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Browse
+          </button>
+          <button
+            onClick={() => switchView("mine")}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              view === "mine"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Star
+              className={`h-3.5 w-3.5 ${view === "mine" ? "fill-amber-400 text-amber-400" : "text-amber-400"}`}
+            />
+            My Scholarships
+          </button>
+        </div>
+
+        {/* My Scholarships view */}
+        {view === "mine" && <MyScholarshipsPanel />}
+
+        {/* Browse view */}
+        {view === "browse" && <>
         <div className="mb-6">
           {/* Search bar */}
           <div className="relative mb-4">
@@ -446,6 +497,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
             </Button>
           </div>
         )}
+        </>}
       </main>
     </div>
   );
