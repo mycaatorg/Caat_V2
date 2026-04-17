@@ -3,17 +3,9 @@
 import { useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff, ArrowRight } from "lucide-react"
 import { supabase } from "@/src/lib/supabaseClient"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 
 export function LoginForm({
   className,
@@ -42,8 +34,6 @@ export function LoginForm({
 
       if (signInError) throw signInError
 
-      // Redirect to the page the user originally tried to access, or dashboard
-      // Validate via URL constructor to prevent open redirect attacks
       const next = searchParams.get("next")
       let destination = "/dashboard"
       if (next) {
@@ -66,79 +56,98 @@ export function LoginForm({
   }
 
   return (
-    <form 
-      onSubmit={handleSubmit} 
-      className={cn("flex flex-col gap-6", className)} 
+    <form
+      onSubmit={handleSubmit}
+      className={cn("flex flex-col gap-0", className)}
       {...props}
     >
-      <FieldGroup>
-        <div className="flex flex-col items-center gap-1 text-center">
-          <h1 className="text-2xl font-bold">Login to your account</h1>
-          <p className="text-muted-foreground text-sm text-balance">
-            Enter your email below to login to your account
-          </p>
+      {/* Heading */}
+      <div className="mb-10">
+        <h1 className="text-3xl font-bold tracking-tight font-display mb-2">
+          Welcome back
+        </h1>
+        <p className="text-sm text-[#525252] font-serif">
+          Enter your credentials to access your account.
+        </p>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="mb-6 border-l-4 border-black bg-[#F5F5F5] px-4 py-3 text-sm text-black font-serif">
+          {error}
         </div>
+      )}
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 text-red-600 text-sm p-3 rounded-md border border-red-200">
-            {error}
-          </div>
-        )}
+      {/* Email */}
+      <div className="mb-8">
+        <label htmlFor="email" className="block text-[11px] tracking-[0.12em] uppercase font-code text-[#525252] mb-2">
+          Email
+        </label>
+        <input
+          name="email"
+          id="email"
+          type="email"
+          placeholder="you@example.com"
+          required
+          className="w-full bg-transparent border-0 border-b-2 border-black px-0 py-2 text-base text-black placeholder:text-[#BFBFBF] focus:border-b-[3px] focus:outline-none transition-none font-serif"
+        />
+      </div>
 
-        <Field>
-          <FieldLabel htmlFor="email">Email</FieldLabel>
-          <Input 
-            name="email" 
-            id="email" 
-            type="email" 
-            placeholder="m@example.com" 
-            required 
+      {/* Password */}
+      <div className="mb-3">
+        <label htmlFor="password" className="block text-[11px] tracking-[0.12em] uppercase font-code text-[#525252] mb-2">
+          Password
+        </label>
+        <div className="relative">
+          <input
+            name="password"
+            id="password"
+            type={showPassword ? "text" : "password"}
+            required
+            className="w-full bg-transparent border-0 border-b-2 border-black px-0 py-2 pr-10 text-base text-black placeholder:text-[#BFBFBF] focus:border-b-[3px] focus:outline-none transition-none font-serif"
           />
-        </Field>
-        <Field>
-          <div className="flex items-center">
-            <FieldLabel htmlFor="password">Password</FieldLabel>
-          </div>
-          <div className="relative">
-            <Input
-              name="password"
-              id="password"
-              type={showPassword ? "text" : "password"}
-              required
-              className="pr-10"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-              aria-label={showPassword ? "Hide password" : "Show password"}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-          <Link
-            href="/forgot-password"
-            className="ml-auto text-sm underline-offset-4 hover:underline"
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            className="absolute right-0 top-1/2 -translate-y-1/2 text-[#525252] hover:text-black transition-colors focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-black focus-visible:outline-offset-2"
+            aria-label={showPassword ? "Hide password" : "Show password"}
           >
-            Forgot your password?
-          </Link>
-        </Field>
-        <Field>
-          <Button type="submit" disabled={loading}>
-            {loading ? "Logging in..." : "Login"}
-          </Button>
-        </Field>
-        {/* <FieldSeparator>Or continue with</FieldSeparator> */}
-        <Field>
-          <FieldDescription className="text-center">
-            Don&apos;t have an account?{" "}
-            <Link href="/signup" className="underline underline-offset-4">
-              Sign up
-            </Link>
-          </FieldDescription>
-        </Field>
-      </FieldGroup>
+            {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.5} /> : <Eye className="h-4 w-4" strokeWidth={1.5} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Forgot password */}
+      <div className="mb-10 flex justify-end">
+        <Link
+          href="/forgot-password"
+          className="text-xs text-[#525252] hover:text-black hover:underline underline-offset-4 font-code"
+        >
+          Forgot password?
+        </Link>
+      </div>
+
+      {/* Submit */}
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full bg-black text-white text-[11px] tracking-[0.18em] uppercase px-8 py-4 border border-black hover:bg-white hover:text-black transition-colors duration-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-[3px] font-code disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+      >
+        {loading ? "Signing in…" : (
+          <>
+            Sign in
+            <ArrowRight size={13} strokeWidth={1.5} />
+          </>
+        )}
+      </button>
+
+      {/* Sign up link */}
+      <p className="text-center text-sm text-[#525252] mt-8 font-serif">
+        Don&apos;t have an account?{" "}
+        <Link href="/signup" className="text-black underline underline-offset-4 hover:no-underline">
+          Create one
+        </Link>
+      </p>
     </form>
   )
 }

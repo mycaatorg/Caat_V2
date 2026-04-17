@@ -2,32 +2,28 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import Link from "next/link";
+import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/src/lib/supabaseClient";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
 
-  // Supabase exchanges the code from the URL hash on auth state change.
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        setSessionReady(true);
-      }
+      if (event === "PASSWORD_RECOVERY") setSessionReady(true);
       setCheckingSession(false);
     });
 
-    // Fallback: check if a session already exists (user may have exchanged the
-    // code before this effect ran).
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) setSessionReady(true);
       setCheckingSession(false);
@@ -55,82 +51,132 @@ export default function ResetPasswordPage() {
       if (updateError) throw updateError;
       router.push("/dashboard");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Something went wrong";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
   }
 
-  if (checkingSession) {
-    return (
-      <div className="flex min-h-svh items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-muted border-t-foreground" />
-      </div>
-    );
-  }
-
-  if (!sessionReady) {
-    return (
-      <div className="flex min-h-svh items-center justify-center p-6">
-        <div className="w-full max-w-sm text-center space-y-4">
-          <h1 className="text-xl font-semibold">Invalid or expired link</h1>
-          <p className="text-sm text-muted-foreground">
-            This password reset link is no longer valid. Please request a new one.
-          </p>
-          <Link href="/forgot-password">
-            <Button className="w-full">Request new link</Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex min-h-svh items-center justify-center p-6">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="space-y-1 text-center">
-          <h1 className="text-2xl font-semibold">Set new password</h1>
-          <p className="text-sm text-muted-foreground">
-            Choose a strong password for your account.
-          </p>
-        </div>
+    <div className="flex flex-col min-h-svh bg-white">
+      {/* Top bar */}
+      <div className="flex items-center px-8 py-6 border-b border-[#E5E5E5]">
+        <Link href="/" className="flex items-center focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-2">
+          <Image src="/logo.png" alt="CAAT" width={72} height={28} className="object-contain" priority />
+        </Link>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="password">New password</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="At least 8 characters"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="new-password"
-            />
-          </div>
+      {/* Content */}
+      <div className="flex flex-1 items-center justify-center px-8 py-12">
+        <div className="w-full max-w-sm">
+          {checkingSession ? (
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-5 border-2 border-[#E5E5E5] border-t-black animate-spin" />
+              <span className="text-sm text-[#525252] font-code">Verifying link…</span>
+            </div>
+          ) : !sessionReady ? (
+            <div className="space-y-6">
+              <div className="h-[4px] w-12 bg-black" />
+              <h1 className="text-3xl font-bold tracking-tight font-display">
+                Link expired
+              </h1>
+              <p className="text-sm text-[#525252] font-serif leading-relaxed">
+                This password reset link is no longer valid. Please request a new one.
+              </p>
+              <Link
+                href="/forgot-password"
+                className="inline-flex items-center gap-2 bg-black text-white text-[11px] tracking-[0.18em] uppercase px-6 py-3.5 hover:bg-white hover:text-black border border-black transition-colors duration-100 font-code"
+              >
+                Request new link
+                <ArrowRight size={13} strokeWidth={1.5} />
+              </Link>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-0">
+              <div className="mb-10">
+                <h1 className="text-3xl font-bold tracking-tight font-display mb-2">
+                  Set new password
+                </h1>
+                <p className="text-sm text-[#525252] font-serif">
+                  Choose a strong password for your account.
+                </p>
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="confirm">Confirm password</Label>
-            <Input
-              id="confirm"
-              type="password"
-              placeholder="Repeat your password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-              autoComplete="new-password"
-            />
-          </div>
+              {error && (
+                <div className="mb-6 border-l-4 border-black bg-[#F5F5F5] px-4 py-3 text-sm text-black font-serif">
+                  {error}
+                </div>
+              )}
 
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
+              {/* New password */}
+              <div className="mb-6">
+                <label htmlFor="password" className="block text-[11px] tracking-[0.12em] uppercase font-code text-[#525252] mb-2">
+                  New Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="At least 8 characters"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="new-password"
+                    className="w-full bg-transparent border-0 border-b-2 border-black px-0 py-2 pr-10 text-base text-black placeholder:text-[#BFBFBF] focus:border-b-[3px] focus:outline-none transition-none font-serif"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 text-[#525252] hover:text-black transition-colors focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-black"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.5} /> : <Eye className="h-4 w-4" strokeWidth={1.5} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirm password */}
+              <div className="mb-10">
+                <label htmlFor="confirm" className="block text-[11px] tracking-[0.12em] uppercase font-code text-[#525252] mb-2">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="confirm"
+                    type={showConfirm ? "text" : "password"}
+                    placeholder="Repeat your password"
+                    value={confirm}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    required
+                    autoComplete="new-password"
+                    className="w-full bg-transparent border-0 border-b-2 border-black px-0 py-2 pr-10 text-base text-black placeholder:text-[#BFBFBF] focus:border-b-[3px] focus:outline-none transition-none font-serif"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm((v) => !v)}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 text-[#525252] hover:text-black transition-colors focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-black"
+                    aria-label={showConfirm ? "Hide password" : "Show password"}
+                  >
+                    {showConfirm ? <EyeOff className="h-4 w-4" strokeWidth={1.5} /> : <Eye className="h-4 w-4" strokeWidth={1.5} />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-black text-white text-[11px] tracking-[0.18em] uppercase px-8 py-4 border border-black hover:bg-white hover:text-black transition-colors duration-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-[3px] font-code disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {loading ? "Updating…" : (
+                  <>
+                    Update password
+                    <ArrowRight size={13} strokeWidth={1.5} />
+                  </>
+                )}
+              </button>
+            </form>
           )}
-
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Updating..." : "Update password"}
-          </Button>
-        </form>
+        </div>
       </div>
     </div>
   );
