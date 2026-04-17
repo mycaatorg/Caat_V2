@@ -17,7 +17,7 @@ export async function fetchProfile(): Promise<ProfileRow> {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, first_name, last_name, email, birth_date, phone, linkedin, github, avatar_url, nationality, current_location, school_name, curriculum, graduation_year, target_majors, preferred_countries, activities"
+      "id, first_name, last_name, email, birth_date, phone, linkedin, github, avatar_url, nationality, current_location, school_name, curriculum, graduation_year, target_majors, preferred_countries, activities, default_resume_id"
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -46,6 +46,7 @@ export async function fetchProfile(): Promise<ProfileRow> {
       target_majors: null,
       preferred_countries: null,
       activities: null,
+      default_resume_id: null,
     };
     const { error: insertError } = await supabase.from("profiles").insert(blank);
     if (insertError) throw new Error(insertError.message);
@@ -97,6 +98,18 @@ export async function updateActivities(activities: string[]): Promise<void> {
   const { error } = await supabase
     .from("profiles")
     .update({ activities })
+    .eq("id", user.id);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function setDefaultResumeId(resumeId: string | null): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ default_resume_id: resumeId })
     .eq("id", user.id);
 
   if (error) throw new Error(error.message);

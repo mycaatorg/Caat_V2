@@ -30,6 +30,7 @@ export interface ProfileRow {
   target_majors: string[] | null;
   preferred_countries: string[] | null;
   activities: string[] | null;
+  default_resume_id: string | null;
 }
 
 /** Row from the standardised_test_scores table */

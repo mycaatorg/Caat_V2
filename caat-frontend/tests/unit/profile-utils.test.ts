@@ -23,6 +23,7 @@ function emptyProfile(): ProfileRow {
     target_majors: null,
     preferred_countries: null,
     activities: null,
+    default_resume_id: null,
   };
 }
 
@@ -45,6 +46,7 @@ function fullProfile(): ProfileRow {
     target_majors: ["Computer Science"],
     preferred_countries: ["Australia"],
     activities: null,
+    default_resume_id: null,
   };
 }
 
