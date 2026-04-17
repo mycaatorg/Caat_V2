@@ -56,7 +56,7 @@ export default function SignupPage() {
             Your journey starts here.
           </blockquote>
           <p className="text-[#888] text-base font-serif leading-relaxed max-w-sm">
-            Join thousands of students who've used CAAT to organize their applications, track deadlines, and get into their dream schools.
+            Join thousands of students who&apos;ve used CAAT to organize their applications, track deadlines, and get into their dream schools.
           </p>
 
           {/* Mini stats */}
