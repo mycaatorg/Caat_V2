@@ -1,6 +1,56 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* ── Newsprint Design System ──────────────────────────────── */
+.np-hard-hover {
+  transition: box-shadow 200ms ease-out, transform 200ms ease-out;
+}
+.np-hard-hover:hover {
+  box-shadow: 4px 4px 0px 0px #111111;
+  transform: translate(-2px, -2px);
+}
+.np-hard-hover-red {
+  transition: box-shadow 200ms ease-out, transform 200ms ease-out;
+}
+.np-hard-hover-red:hover {
+  box-shadow: 4px 4px 0px 0px #CC0000;
+  transform: translate(-2px, -2px);
+}
+
+.np-texture {
+  position: relative;
+}
+.np-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(0deg, transparent 98%, rgba(0,0,0,0.025) 100%),
+    linear-gradient(90deg, transparent 98%, rgba(0,0,0,0.025) 100%);
+  background-size: 3px 3px;
+  pointer-events: none;
+  opacity: 0.6;
+  z-index: 0;
+}
+
+@keyframes np-ticker {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.np-ticker-track {
+  animation: np-ticker 35s linear infinite;
+  display: flex;
+  width: max-content;
+}
+
+@keyframes np-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+.np-cursor {
+  animation: np-cursor-blink 1.1s ease-in-out infinite;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -113,6 +163,38 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Luxury / Editorial — Landing Page Design System
+   ═══════════════════════════════════════════════════════════════════ */
+:root {
+  --lx-bg: #F9F8F6;
+  --lx-fg: #1A1A1A;
+  --lx-taupe: #EBE5DE;
+  --lx-muted: #6C6863;
+  --lx-gold: #D4AF37;
+}
+
+/* Paper grain overlay — sits above content at ~2% opacity */
+.lx-noise::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0.022;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes lx-fade-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes lx-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
 }
 
 @layer base {
