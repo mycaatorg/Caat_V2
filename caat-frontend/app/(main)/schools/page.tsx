@@ -70,8 +70,14 @@ export default async function SchoolsPage({
   }
 
   if (searchQuery) {
-    const orQuery = `name.ilike.${searchQuery}%,name.ilike.% ${searchQuery}%,name.ilike.%(${searchQuery})%`;
-    query = query.or(orQuery);
+    // Strip PostgREST filter syntax characters to prevent filter injection (C1).
+    // These chars (. , ( )) are used as delimiters in PostgREST's .or() syntax
+    // and would allow a crafted ?q= value to inject additional filter clauses.
+    const safeQuery = searchQuery.replace(/[.,()]/g, "");
+    if (safeQuery) {
+      const orQuery = `name.ilike.${safeQuery}%,name.ilike.% ${safeQuery}%,name.ilike.%(${safeQuery})%`;
+      query = query.or(orQuery);
+    }
   }
 
   // Apply sort

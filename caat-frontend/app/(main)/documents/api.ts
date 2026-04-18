@@ -1,6 +1,24 @@
 import { supabase } from "@/src/lib/supabaseClient";
 import { sanitizeFileName } from "@/lib/document-utils";
 
+const ALLOWED_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
+
+/**
+ * Validates a file by checking its magic bytes (file signature) rather than
+ * trusting the browser-reported MIME type, which can be spoofed (E1).
+ */
+async function validateFileMagicBytes(file: File): Promise<boolean> {
+  const buffer = await file.slice(0, 8).arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  // PDF: %PDF (25 50 44 46)
+  if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) return true;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return true;
+  // JPEG: FF D8 FF
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return true;
+  return false;
+}
+
 const BUCKET = "user-documents";
 
 export type DocCategory = "transcripts" | "identity" | "language" | "letters";
@@ -46,6 +64,17 @@ export async function uploadDocument(
     error: authError,
   } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Not authenticated");
+
+  // Validate MIME type against allowlist (E1)
+  if (!ALLOWED_MIME_TYPES.has(file.type)) {
+    throw new Error("File type not allowed. Only PDF, JPG, and PNG are accepted.");
+  }
+
+  // Validate actual file content via magic bytes — prevents MIME type spoofing (E1)
+  const validBytes = await validateFileMagicBytes(file);
+  if (!validBytes) {
+    throw new Error("File content does not match an allowed file type.");
+  }
 
   const storagePath = `${user.id}/${category}/${Date.now()}_${sanitizeFileName(file.name)}`;
 
@@ -126,6 +155,15 @@ export async function reuploadDocument(
   } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Not authenticated");
 
+  // Validate MIME type and magic bytes for re-uploads (E1)
+  if (!ALLOWED_MIME_TYPES.has(newFile.type)) {
+    throw new Error("File type not allowed. Only PDF, JPG, and PNG are accepted.");
+  }
+  const validBytes = await validateFileMagicBytes(newFile);
+  if (!validBytes) {
+    throw new Error("File content does not match an allowed file type.");
+  }
+
   const newStoragePath = `${user.id}/${doc.category}/${Date.now()}_${sanitizeFileName(newFile.name)}`;
 
   const { error: storageError } = await supabase.storage
@@ -163,6 +201,18 @@ export async function reuploadDocument(
 export async function getDocumentSignedUrl(
   storagePath: string
 ): Promise<string> {
+  // Verify the path belongs to the authenticated user before issuing a
+  // signed URL — prevents accessing other users' documents (B4)
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
+  if (!storagePath.startsWith(`${user.id}/`)) {
+    throw new Error("Not authorized");
+  }
+
   const { data, error } = await supabase.storage
     .from(BUCKET)
     .createSignedUrl(storagePath, 3600);
