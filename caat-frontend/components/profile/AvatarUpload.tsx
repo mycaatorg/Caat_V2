@@ -95,7 +95,7 @@ export function AvatarUpload({
       onUploaded(freshUrl);
       toast.success("Avatar updated.");
     } catch (err) {
-      console.error(err);
+      if (process.env.NODE_ENV !== "production") console.error(err);
       toast.error("Failed to upload avatar.");
     } finally {
       setUploading(false);
@@ -114,7 +114,7 @@ export function AvatarUpload({
       onUploaded(null);
       toast.success("Avatar removed.");
     } catch (err) {
-      console.error(err);
+      if (process.env.NODE_ENV !== "production") console.error(err);
       toast.error("Failed to remove avatar.");
     } finally {
       setRemoving(false);

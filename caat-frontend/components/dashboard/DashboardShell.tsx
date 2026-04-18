@@ -56,7 +56,7 @@ export function DashboardShell() {
       toast.success("Widget added");
     } catch (err) {
       toast.error("Failed to add widget");
-      console.error(err);
+      if (process.env.NODE_ENV !== "production") console.error(err);
     } finally {
       setAdding(null);
     }

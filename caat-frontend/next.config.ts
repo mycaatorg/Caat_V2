@@ -48,6 +48,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   turbopack: {},
+  // H4 — Prevent source maps from being served to browsers in production,
+  // which would expose original source code and internal logic.
+  productionBrowserSourceMaps: false,
   async headers() {
     return [
       {
