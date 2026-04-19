@@ -18,7 +18,7 @@ export default async function MajorsPage({
     .order("name");
 
   if (error) {
-    return <div className="p-10 text-red-500">Error: {error.message}</div>;
+    return <div className="p-10 text-red-500">Unable to load majors. Please try again later.</div>;
   }
 
   return (

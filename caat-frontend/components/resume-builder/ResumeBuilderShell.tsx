@@ -140,7 +140,7 @@ export default function ResumeBuilderShell() {
         setSections(loadedSections);
         setActiveSectionId(loadedSections[0]?.id ?? "");
       } catch (err) {
-        console.error(err);
+        if (process.env.NODE_ENV !== "production") console.error(err);
         toast.error("Could not load your resume. Working offline with default sections.");
 
         // Fall back to local defaults so the UI still works
@@ -234,7 +234,7 @@ export default function ResumeBuilderShell() {
     });
 
     deleteSectionFromDb(id).catch((err) => {
-      console.error("Failed to delete section from database:", err);
+      if (process.env.NODE_ENV !== "production") console.error("Failed to delete section from database:", err);
       toast.error("Section removed locally but could not be deleted from the server.");
     });
   }
@@ -265,7 +265,7 @@ export default function ResumeBuilderShell() {
 
       setLastSavedAt(new Date());
     } catch (err) {
-      console.error(err);
+      if (process.env.NODE_ENV !== "production") console.error(err);
       toast.error("Failed to save resume. Please try again.");
     } finally {
       setIsSaving(false);
@@ -343,7 +343,7 @@ export default function ResumeBuilderShell() {
       const list = await listResumes();
       setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
     } catch (err) {
-      console.error(err);
+      if (process.env.NODE_ENV !== "production") console.error(err);
       toast.error("Could not switch resume. Please try again.");
     } finally {
       setIsLoading(false);
@@ -382,7 +382,7 @@ export default function ResumeBuilderShell() {
       const list = await listResumes();
       setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
     } catch (err) {
-      console.error(err);
+      if (process.env.NODE_ENV !== "production") console.error(err);
       toast.error("Could not create a new resume. Please try again.");
     } finally {
       setIsLoading(false);
@@ -445,7 +445,7 @@ export default function ResumeBuilderShell() {
         await onNewResume();
       }
     } catch (err) {
-      console.error(err);
+      if (process.env.NODE_ENV !== "production") console.error(err);
       toast.error("Could not delete resume. Please try again.");
     }
   }

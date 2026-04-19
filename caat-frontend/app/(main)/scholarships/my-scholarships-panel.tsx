@@ -32,6 +32,7 @@ import {
   type UserScholarship,
   type UserScholarshipInput,
 } from "./user-scholarships-api";
+import { safeHref } from "@/lib/safe-href";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -622,13 +623,13 @@ function UserScholarshipCard({
       </CardContent>
 
       <CardFooter className="pt-0 gap-2">
-        {scholarship.external_url ? (
+        {safeHref(scholarship.external_url) ? (
           <Button
             asChild
             className="w-full bg-black text-white hover:bg-white hover:text-black border border-black font-code tracking-[0.1em] uppercase text-[11px] transition-colors duration-100"
           >
             <a
-              href={scholarship.external_url}
+              href={safeHref(scholarship.external_url)!}
               target="_blank"
               rel="noopener noreferrer"
             >

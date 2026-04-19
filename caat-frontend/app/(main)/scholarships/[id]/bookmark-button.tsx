@@ -17,16 +17,16 @@ export default function ScholarshipBookmarkButton({ scholarshipId }: Props) {
   useEffect(() => {
     async function load() {
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.user) return;
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
-      setUserId(session.user.id);
+      setUserId(user.id);
 
       const { data } = await supabase
         .from("user_bookmarked_scholarships")
         .select("scholarship_id")
-        .eq("user_id", session.user.id)
+        .eq("user_id", user.id)
         .eq("scholarship_id", scholarshipId)
         .maybeSingle();
 

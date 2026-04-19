@@ -28,26 +28,35 @@ function emptyEntry(): ExperienceEntry {
   };
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 export function experienceToHtml(entries: ExperienceEntry[]): string {
   return entries
     .filter((e) => e.company || e.title)
     .map((e) => {
       const datePart = e.current
-        ? `${e.startDate} – Present`
-        : [e.startDate, e.endDate].filter(Boolean).join(" – ");
-      const metaParts = [datePart, e.location].filter(Boolean).join(" · ");
+        ? `${escapeHtml(e.startDate)} – Present`
+        : [e.startDate, e.endDate].filter(Boolean).map(escapeHtml).join(" – ");
+      const metaParts = [datePart, escapeHtml(e.location)].filter(Boolean).join(" · ");
       const lines: string[] = [];
 
       if (e.company || e.title) {
         lines.push(
-          `<p><strong>${e.company}</strong>${e.title ? ` — ${e.title}` : ""}</p>`
+          `<p><strong>${escapeHtml(e.company)}</strong>${e.title ? ` — ${escapeHtml(e.title)}` : ""}</p>`
         );
       }
       if (metaParts) lines.push(`<p>${metaParts}</p>`);
 
       const filledBullets = e.bullets.map((b) => b.trim()).filter(Boolean);
       if (filledBullets.length > 0) {
-        lines.push(`<ul>${filledBullets.map((b) => `<li>${b}</li>`).join("")}</ul>`);
+        lines.push(`<ul>${filledBullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`);
       }
 
       return lines.join("");

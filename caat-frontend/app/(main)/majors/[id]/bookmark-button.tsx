@@ -16,15 +16,15 @@ export default function BookmarkButton({ majorId }: Props) {
 
   useEffect(() => {
     async function load() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      setUserId(session.user.id);
+      setUserId(user.id);
 
       const { data } = await supabase
         .from("user_bookmarked_majors")
         .select("major_id")
-        .eq("user_id", session.user.id)
+        .eq("user_id", user.id)
         .eq("major_id", majorId)
         .maybeSingle();
 

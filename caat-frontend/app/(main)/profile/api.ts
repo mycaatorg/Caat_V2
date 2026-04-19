@@ -7,6 +7,15 @@ import type {
 
 // ── Profile ────────────────────────────────────────────────────────────────────
 
+// Explicit allowlist of user-editable profile fields (D4 — prevents mass assignment
+// if the profiles table gains new privileged columns not intended to be user-writable).
+const ALLOWED_PROFILE_UPDATE_FIELDS = new Set<keyof Omit<ProfileRow, "id">>([
+  "first_name", "last_name", "email", "birth_date", "phone",
+  "linkedin", "github", "avatar_url", "nationality", "current_location",
+  "school_name", "curriculum", "graduation_year", "target_majors",
+  "preferred_countries", "activities", "default_resume_id",
+]);
+
 export async function fetchProfile(): Promise<ProfileRow> {
   const {
     data: { user },
@@ -67,9 +76,16 @@ export async function updateProfile(
   if (authError || !user) throw new Error("Not authenticated");
   if (user.id !== userId) throw new Error("Unauthorized");
 
+  // Only pass through allowlisted fields to prevent mass assignment (D4)
+  const safeFields = Object.fromEntries(
+    Object.entries(fields).filter(([key]) =>
+      ALLOWED_PROFILE_UPDATE_FIELDS.has(key as keyof Omit<ProfileRow, "id">)
+    )
+  );
+
   const { error } = await supabase
     .from("profiles")
-    .update(fields)
+    .update(safeFields)
     .eq("id", userId);
 
   if (error) throw new Error(error.message);

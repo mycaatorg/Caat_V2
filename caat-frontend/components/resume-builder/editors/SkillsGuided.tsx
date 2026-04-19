@@ -17,14 +17,23 @@ function emptyCategory(): SkillCategory {
   };
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 export function skillsToHtml(categories: SkillCategory[]): string {
   return categories
     .filter((c) => c.skills.trim())
     .map((c) => {
       if (c.name.trim()) {
-        return `<p><strong>${c.name}:</strong> ${c.skills}</p>`;
+        return `<p><strong>${escapeHtml(c.name)}:</strong> ${escapeHtml(c.skills)}</p>`;
       }
-      return `<p>${c.skills}</p>`;
+      return `<p>${escapeHtml(c.skills)}</p>`;
     })
     .join("");
 }

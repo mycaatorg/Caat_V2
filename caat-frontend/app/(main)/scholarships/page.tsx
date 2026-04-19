@@ -15,7 +15,7 @@ export default async function ScholarshipsPage() {
   if (error) {
     return (
       <div className="p-10 text-red-500">
-        Error loading scholarships: {error.message}
+        Unable to load scholarships. Please try again later.
       </div>
     );
   }

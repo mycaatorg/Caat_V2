@@ -93,7 +93,7 @@ export default function ProfilePage() {
         setScores(s);
         setMajorOptions(majors);
       } catch (err) {
-        console.error(err);
+        if (process.env.NODE_ENV !== "production") console.error(err);
         setLoadError(true);
         toast.error("Failed to load profile.");
       } finally {

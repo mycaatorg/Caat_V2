@@ -79,10 +79,14 @@ export async function searchSchools(
   query: string
 ): Promise<{ id: number; name: string; country: string | null }[]> {
   if (!query.trim()) return [];
+  // Escape LIKE special characters so user input is treated as a literal string (C2).
+  // % and _ are wildcard characters in SQL LIKE/ILIKE; without escaping they allow
+  // unintended broad matching (e.g. "%" matches every row).
+  const safeQuery = query.replace(/[\\%_]/g, "\\$&");
   const { data, error } = await supabase
     .from("schools")
     .select("id, name, country")
-    .ilike("name", `%${query}%`)
+    .ilike("name", `%${safeQuery}%`)
     .order("name", { ascending: true })
     .limit(10);
   if (error) throw new Error(error.message);

@@ -1,7 +1,26 @@
 import { supabase } from "@/src/lib/supabaseClient";
 import { sanitizeFileName } from "@/lib/document-utils";
 
+const ALLOWED_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
+
+/**
+ * Validates a file by checking its magic bytes (file signature) rather than
+ * trusting the browser-reported MIME type, which can be spoofed (E1).
+ */
+async function validateFileMagicBytes(file: File): Promise<boolean> {
+  const buffer = await file.slice(0, 8).arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  // PDF: %PDF (25 50 44 46)
+  if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) return true;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return true;
+  // JPEG: FF D8 FF
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return true;
+  return false;
+}
+
 const BUCKET = "user-documents";
+const MAX_DOCUMENTS_PER_USER = 50;
 
 export type DocCategory = "transcripts" | "identity" | "language" | "letters";
 
@@ -46,6 +65,26 @@ export async function uploadDocument(
     error: authError,
   } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Not authenticated");
+
+  // Enforce per-user document limit (E3)
+  const { count } = await supabase
+    .from("documents")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id);
+  if ((count ?? 0) >= MAX_DOCUMENTS_PER_USER) {
+    throw new Error(`Document limit reached (${MAX_DOCUMENTS_PER_USER} max). Please delete old documents before uploading new ones.`);
+  }
+
+  // Validate MIME type against allowlist (E1)
+  if (!ALLOWED_MIME_TYPES.has(file.type)) {
+    throw new Error("File type not allowed. Only PDF, JPG, and PNG are accepted.");
+  }
+
+  // Validate actual file content via magic bytes — prevents MIME type spoofing (E1)
+  const validBytes = await validateFileMagicBytes(file);
+  if (!validBytes) {
+    throw new Error("File content does not match an allowed file type.");
+  }
 
   const storagePath = `${user.id}/${category}/${Date.now()}_${sanitizeFileName(file.name)}`;
 
@@ -105,7 +144,18 @@ export async function deleteDocument(doc: DocumentRow): Promise<void> {
   } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Not authenticated");
 
-  await supabase.storage.from(BUCKET).remove([doc.storage_path]);
+  // Re-fetch storage_path from DB scoped to this user — prevents client-supplied
+  // path from targeting another user's storage file (B5).
+  const { data: dbDoc } = await supabase
+    .from("documents")
+    .select("storage_path")
+    .eq("id", doc.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (dbDoc?.storage_path) {
+    await supabase.storage.from(BUCKET).remove([dbDoc.storage_path]);
+  }
 
   const { error } = await supabase
     .from("documents")
@@ -126,7 +176,27 @@ export async function reuploadDocument(
   } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Not authenticated");
 
-  const newStoragePath = `${user.id}/${doc.category}/${Date.now()}_${sanitizeFileName(newFile.name)}`;
+  // Validate MIME type and magic bytes for re-uploads (E1)
+  if (!ALLOWED_MIME_TYPES.has(newFile.type)) {
+    throw new Error("File type not allowed. Only PDF, JPG, and PNG are accepted.");
+  }
+  const validBytes = await validateFileMagicBytes(newFile);
+  if (!validBytes) {
+    throw new Error("File content does not match an allowed file type.");
+  }
+
+  // Re-fetch the existing storage_path from DB scoped to this user — prevents
+  // client-supplied path from removing another user's storage file (B5).
+  const { data: dbDoc } = await supabase
+    .from("documents")
+    .select("storage_path, category")
+    .eq("id", doc.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!dbDoc) throw new Error("Document not found");
+
+  const newStoragePath = `${user.id}/${dbDoc.category}/${Date.now()}_${sanitizeFileName(newFile.name)}`;
 
   const { error: storageError } = await supabase.storage
     .from(BUCKET)
@@ -154,8 +224,8 @@ export async function reuploadDocument(
     throw new Error(error.message);
   }
 
-  // Remove old file after successful DB update
-  await supabase.storage.from(BUCKET).remove([doc.storage_path]);
+  // Remove old file after successful DB update using DB-verified path
+  await supabase.storage.from(BUCKET).remove([dbDoc.storage_path]);
 
   return data as DocumentRow;
 }
@@ -163,6 +233,18 @@ export async function reuploadDocument(
 export async function getDocumentSignedUrl(
   storagePath: string
 ): Promise<string> {
+  // Verify the path belongs to the authenticated user before issuing a
+  // signed URL — prevents accessing other users' documents (B4)
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Not authenticated");
+
+  if (!storagePath.startsWith(`${user.id}/`)) {
+    throw new Error("Not authorized");
+  }
+
   const { data, error } = await supabase.storage
     .from(BUCKET)
     .createSignedUrl(storagePath, 3600);

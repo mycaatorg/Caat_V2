@@ -1,5 +1,6 @@
 import { supabase } from "@/src/lib/supabaseClient";
 import { notFound } from "next/navigation";
+import { safeHref } from "@/lib/safe-href";
 import Link from "next/link";
 import {
   Breadcrumb,
@@ -82,11 +83,11 @@ export default async function SchoolDetailPage({
           </p>
         )}
 
-        {school.website && (
+        {safeHref(school.website) && (
           <section className="mb-8">
             <Button asChild variant="default" size="sm" className="gap-1.5">
               <a
-                href={school.website}
+                href={safeHref(school.website)!}
                 target="_blank"
                 rel="noopener noreferrer"
               >
