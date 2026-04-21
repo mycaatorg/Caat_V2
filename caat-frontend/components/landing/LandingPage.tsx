@@ -285,7 +285,7 @@ function FeaturesGrid() {
       icon: <GraduationCap size={20} strokeWidth={1.5} />,
       title: "School Search",
       description:
-        "Browse 4,000+ universities worldwide. Compare acceptance rates, deadlines, tuition, and requirements side by side to build your perfect list.",
+        "Browse 10,000+ universities worldwide. Compare acceptance rates, deadlines, tuition, and requirements side by side to build your perfect list.",
     },
     {
       icon: <Pencil size={20} strokeWidth={1.5} />,
@@ -618,28 +618,28 @@ function ThreeSteps() {
       number: "01",
       title: "Create Your Free Account",
       description:
-        "Sign up in under a minute — no credit card, no setup fees. Your personalized dashboard is ready the moment you confirm your email.",
+        "Sign up in under a minute, no credit card or setup fees needed. Your personalized dashboard is ready the moment you confirm your email.",
       tag: "Getting Started",
     },
     {
       number: "02",
       title: "Build Your School List",
       description:
-        "Search 4,000+ universities, compare deadlines and requirements, and add schools to your tracker. Everything about each application lives in one place.",
+        "Search 10,000+ universities, compare deadlines and requirements, and add schools to your tracker. Everything about each application lives in one place.",
       tag: "Research & Plan",
     },
     {
       number: "03",
       title: "Write, Prepare & Apply",
       description:
-        "Draft essays in the Workshop, find matching scholarships, build your resume, and upload documents — all tracked against your live deadlines.",
+        "Draft essays in the Workshop, find matching scholarships, build your resume, and upload documents. All of it tracked against your live deadlines.",
       tag: "Execute",
     },
     {
       number: "04",
       title: "Submit with Confidence",
       description:
-        "Your completion checklist turns item by item. When every box is checked, hit submit — knowing nothing was missed and no deadline slipped by.",
+        "Your completion checklist turns item by item. When every box is checked, hit submit knowing nothing was missed and no deadline slipped by.",
       tag: "Submit",
     },
   ];
