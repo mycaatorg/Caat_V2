@@ -130,6 +130,14 @@
     @apply font-display;
   }
 
+  /* Design system: sharp corners everywhere.
+     All rounded-* utilities other than rounded-full already resolve to 0
+     via the --radius-* CSS vars above. Only rounded-full needs explicit
+     zeroing. Avatars are exempt — they are intentionally circular. */
+  .rounded-full:not([data-slot="avatar"]):not([data-slot="avatar-fallback"]) {
+    border-radius: 0 !important;
+  }
+
   /* Hide browser-native password reveal buttons (Edge, Chrome) */
   input::-ms-reveal,
   input::-ms-clear {

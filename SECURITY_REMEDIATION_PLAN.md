@@ -1,4 +1,4 @@
-# CAAT V2 — Remaining Vulnerabilities: Unified Remediation Plan
+# `CAAT V2 — Remaining Vulnerabilities: Unified Remediation Plan
 
 **Date:** 2026-04-18
 **Scope:** All vulnerabilities skipped across the three fix rounds (High / Medium / Low)

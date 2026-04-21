@@ -29,86 +29,57 @@ async function checkReadiness(): Promise<ReadinessStep[]> {
     return getDefaultSteps(false);
   }
 
-  // Run checks in parallel
-  const [profileRes, scoresRes, documentsRes, essaysRes, schoolsRes, scholarshipsRes, applicationsRes] =
-    await Promise.allSettled([
-      // Profile: fetch all completion fields
-      supabase.from("profiles").select(
-        "id, first_name, last_name, birth_date, nationality, current_location, phone, linkedin, school_name, curriculum, graduation_year, avatar_url, target_majors, preferred_countries"
-      ).eq("id", user.id).maybeSingle(),
-      // Test scores: needed for calcCompletion
-      supabase.from("standardised_test_scores").select("id, profile_id, curriculum, cumulative_score, score_scale, created_at, updated_at").eq("profile_id", user.id),
-      // Documents: at least one uploaded
-      supabase
-        .from("documents")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id),
-      // Essays: at least one draft started
-      supabase
-        .from("essay_drafts")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id),
-      // Schools: at least one bookmarked
-      supabase
-        .from("user_bookmarked_schools")
-        .select("school_id", { count: "exact", head: true })
-        .eq("user_id", user.id),
-      // Scholarships: at least one bookmarked
-      supabase
-        .from("user_bookmarked_scholarships")
-        .select("scholarship_id", { count: "exact", head: true })
-        .eq("user_id", user.id),
-      // Applications: at least one tracked
-      supabase
-        .from("user_school_applications")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id),
-    ]);
+  // Run all checks in parallel
+  const [
+    profileRes, scoresRes,
+    documentsRes, essaysRes,
+    schoolsRes, scholarshipsRes,
+    applicationsRes, resumesRes,
+    recommendersRes, majorsRes,
+    schoolListRes,
+  ] = await Promise.allSettled([
+    supabase.from("profiles").select(
+      "id, first_name, last_name, birth_date, nationality, current_location, phone, linkedin, school_name, curriculum, graduation_year, avatar_url, target_majors, preferred_countries"
+    ).eq("id", user.id).maybeSingle(),
+    supabase.from("standardised_test_scores").select("id, profile_id, curriculum, cumulative_score, score_scale, created_at, updated_at").eq("profile_id", user.id),
+    supabase.from("documents").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase.from("essay_drafts").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase.from("user_bookmarked_schools").select("school_id", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase.from("user_bookmarked_scholarships").select("scholarship_id", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase.from("user_school_applications").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase.from("resumes").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase.from("user_recommenders").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase.from("user_bookmarked_majors").select("major_id", { count: "exact", head: true }).eq("user_id", user.id),
+    // School count for "build a balanced list" check (>= 3 schools)
+    supabase.from("user_bookmarked_schools").select("school_id", { count: "exact", head: true }).eq("user_id", user.id),
+  ]);
 
+  type CountRes = PromiseFulfilledResult<{ count: number | null; error: unknown }>;
   function isOk(res: PromiseSettledResult<{ error: unknown }>) {
     return res.status === "fulfilled" && !res.value.error;
   }
+  function countOf(res: PromiseSettledResult<{ count: number | null; error: unknown }>) {
+    return isOk(res) ? ((res as CountRes).value.count ?? 0) : 0;
+  }
+  function failed(res: PromiseSettledResult<{ error: unknown }>) {
+    return res.status === "rejected" || (res.status === "fulfilled" && !!res.value.error);
+  }
 
-  const profileData =
-    profileRes.status === "fulfilled"
-      ? (profileRes.value.data as ProfileRow | null)
-      : null;
-  const scoresData =
-    scoresRes.status === "fulfilled"
-      ? ((scoresRes as PromiseFulfilledResult<{ data: unknown[] | null; error: unknown }>).value.data as StandardisedTestScore[] ?? [])
-      : [];
-  const profileDone =
-    isOk(profileRes) &&
-    profileData !== null &&
-    calcCompletion(profileData, scoresData) === 100;
-  const profileFailed = profileRes.status === "rejected" || (profileRes.status === "fulfilled" && !!profileRes.value.error);
+  const profileData = profileRes.status === "fulfilled" ? (profileRes.value.data as ProfileRow | null) : null;
+  const scoresData = scoresRes.status === "fulfilled"
+    ? ((scoresRes as PromiseFulfilledResult<{ data: unknown[] | null; error: unknown }>).value.data as StandardisedTestScore[] ?? [])
+    : [];
+  const profileDone = isOk(profileRes) && profileData !== null && calcCompletion(profileData, scoresData) === 100;
 
-  const docsDone =
-    isOk(documentsRes) &&
-    ((documentsRes as PromiseFulfilledResult<{ count: number | null; error: unknown }>).value.count ?? 0) > 0;
-  const docsFailed = documentsRes.status === "rejected" || (documentsRes.status === "fulfilled" && !!documentsRes.value.error);
-
-  const essaysDone =
-    isOk(essaysRes) &&
-    ((essaysRes as PromiseFulfilledResult<{ count: number | null; error: unknown }>).value.count ?? 0) > 0;
-  const essaysFailed = essaysRes.status === "rejected" || (essaysRes.status === "fulfilled" && !!essaysRes.value.error);
-
-  const schoolsDone =
-    isOk(schoolsRes) &&
-    ((schoolsRes as PromiseFulfilledResult<{ count: number | null; error: unknown }>).value.count ?? 0) > 0;
-  const schoolsFailed = schoolsRes.status === "rejected" || (schoolsRes.status === "fulfilled" && !!schoolsRes.value.error);
-
-  const scholarshipsDone =
-    isOk(scholarshipsRes) &&
-    ((scholarshipsRes as PromiseFulfilledResult<{ count: number | null; error: unknown }>).value.count ?? 0) > 0;
-  const scholarshipsFailed =
-    scholarshipsRes.status === "rejected" || (scholarshipsRes.status === "fulfilled" && !!scholarshipsRes.value.error);
-
-  const appsDone =
-    isOk(applicationsRes) &&
-    ((applicationsRes as PromiseFulfilledResult<{ count: number | null; error: unknown }>).value.count ?? 0) > 0;
-  const appsFailed =
-    applicationsRes.status === "rejected" || (applicationsRes.status === "fulfilled" && !!applicationsRes.value.error);
+  const docsDone        = countOf(documentsRes) > 0;
+  const essaysDone      = countOf(essaysRes) > 0;
+  const schoolsDone     = countOf(schoolsRes) > 0;
+  const scholarsDone    = countOf(scholarshipsRes) > 0;
+  const appsDone        = countOf(applicationsRes) > 0;
+  const resumeDone      = countOf(resumesRes) > 0;
+  const recommendersDone = countOf(recommendersRes) > 0;
+  const majorsDone      = countOf(majorsRes) > 0;
+  const schoolListDone  = countOf(schoolListRes) >= 3;
 
   return [
     {
@@ -117,59 +88,95 @@ async function checkReadiness(): Promise<ReadinessStep[]> {
       description: "Add your personal details and academic background.",
       href: "/profile",
       completed: profileDone,
-      failed: profileFailed && !profileDone,
+      failed: failed(profileRes) && !profileDone,
     },
     {
       id: "schools",
-      label: "Bookmark target schools",
-      description: "Save at least one school you're interested in.",
+      label: "Shortlist target schools",
+      description: "Bookmark schools you plan to apply to.",
       href: "/schools",
       completed: schoolsDone,
-      failed: schoolsFailed && !schoolsDone,
+      failed: failed(schoolsRes) && !schoolsDone,
     },
     {
-      id: "documents",
-      label: "Upload a document",
-      description: "Upload transcripts, test scores, or other documents.",
-      href: "/documents",
-      completed: docsDone,
-      failed: docsFailed && !docsDone,
-    },
-    {
-      id: "essays",
-      label: "Start an essay draft",
-      description: "Begin drafting your application essays.",
-      href: "/essays",
-      completed: essaysDone,
-      failed: essaysFailed && !essaysDone,
-    },
-    {
-      id: "scholarships",
-      label: "Explore scholarships",
-      description: "Bookmark at least one scholarship opportunity.",
-      href: "/scholarships",
-      completed: scholarshipsDone,
-      failed: scholarshipsFailed && !scholarshipsDone,
+      id: "majors",
+      label: "Research your majors",
+      description: "Bookmark majors that match your interests.",
+      href: "/majors",
+      completed: majorsDone,
+      failed: failed(majorsRes) && !majorsDone,
     },
     {
       id: "applications",
-      label: "Track your first application",
-      description: "Start tracking a school application to stay organised.",
+      label: "Open your applications",
+      description: "Start tracking applications for your target schools.",
       href: "/applications",
       completed: appsDone,
-      failed: appsFailed && !appsDone,
+      failed: failed(applicationsRes) && !appsDone,
+    },
+    {
+      id: "resume",
+      label: "Build your resume",
+      description: "Create a resume to attach to your applications.",
+      href: "/resume-builder",
+      completed: resumeDone,
+      failed: failed(resumesRes) && !resumeDone,
+    },
+    {
+      id: "essays",
+      label: "Draft your essays",
+      description: "Begin writing your personal statement and supplements.",
+      href: "/essays",
+      completed: essaysDone,
+      failed: failed(essaysRes) && !essaysDone,
+    },
+    {
+      id: "recommenders",
+      label: "Add recommenders",
+      description: "Log teachers or counsellors writing your letters.",
+      href: "/profile",
+      completed: recommendersDone,
+      failed: failed(recommendersRes) && !recommendersDone,
+    },
+    {
+      id: "documents",
+      label: "Upload your documents",
+      description: "Upload transcripts, test scores, or ID documents.",
+      href: "/documents",
+      completed: docsDone,
+      failed: failed(documentsRes) && !docsDone,
+    },
+    {
+      id: "scholarships",
+      label: "Find scholarships",
+      description: "Bookmark scholarships you're eligible to apply for.",
+      href: "/scholarships",
+      completed: scholarsDone,
+      failed: failed(scholarshipsRes) && !scholarsDone,
+    },
+    {
+      id: "school-list",
+      label: "Build a balanced list (3+ schools)",
+      description: "A strong list has safety, match, and reach schools.",
+      href: "/schools",
+      completed: schoolListDone,
+      failed: failed(schoolListRes) && !schoolListDone,
     },
   ];
 }
 
 function getDefaultSteps(completed: boolean): ReadinessStep[] {
   return [
-    { id: "profile", label: "Complete your profile", description: "", href: "/profile", completed },
-    { id: "schools", label: "Bookmark target schools", description: "", href: "/schools", completed },
-    { id: "documents", label: "Upload a document", description: "", href: "/documents", completed },
-    { id: "essays", label: "Start an essay draft", description: "", href: "/essays", completed },
-    { id: "scholarships", label: "Explore scholarships", description: "", href: "/scholarships", completed },
-    { id: "applications", label: "Track your first application", description: "", href: "/applications", completed },
+    { id: "profile",       label: "Complete your profile",    description: "", href: "/profile",        completed },
+    { id: "schools",       label: "Shortlist target schools", description: "", href: "/schools",        completed },
+    { id: "majors",        label: "Research your majors",     description: "", href: "/majors",         completed },
+    { id: "applications",  label: "Open your applications",   description: "", href: "/applications",   completed },
+    { id: "resume",        label: "Build your resume",        description: "", href: "/resume-builder", completed },
+    { id: "essays",        label: "Draft your essays",        description: "", href: "/essays",         completed },
+    { id: "recommenders",  label: "Add recommenders",         description: "", href: "/profile",        completed },
+    { id: "documents",     label: "Upload your documents",    description: "", href: "/documents",      completed },
+    { id: "scholarships",  label: "Find scholarships",              description: "", href: "/scholarships", completed },
+    { id: "school-list",   label: "Build a balanced list (3+ schools)", description: "", href: "/schools", completed },
   ];
 }
 
@@ -216,12 +223,12 @@ export function ApplicationReadiness() {
 
   if (loading) {
     return (
-      <div className="rounded-xl border bg-card p-6 space-y-4">
+      <div className="border bg-card p-6 space-y-4">
         <Skeleton className="h-5 w-48" />
-        <Skeleton className="h-2 w-full rounded-full" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="h-14 rounded-lg" />
+        <Skeleton className="h-2 w-full" />
+        <div className="grid grid-cols-3 gap-2">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
+            <Skeleton key={i} className="h-9" />
           ))}
         </div>
       </div>
@@ -229,7 +236,7 @@ export function ApplicationReadiness() {
   }
 
   return (
-    <div className="rounded-xl border bg-card p-6 space-y-5">
+    <div className="border bg-card p-6 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
@@ -276,45 +283,36 @@ export function ApplicationReadiness() {
         />
       </button>
 
-      {/* Step list — collapsible */}
+      {/* Step list — collapsible, fixed height grid with scroll */}
       {stepsOpen && (
-        <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <ul className="grid grid-cols-3 gap-2 max-h-[168px] overflow-y-auto pr-1">
           {steps.map((step) => (
             <li key={step.id}>
               <Link
                 href={step.href}
                 className={cn(
-                  "flex items-start gap-3 rounded-lg border p-3 text-sm transition-colors hover:bg-muted/50",
+                  "flex items-center gap-2 border p-2.5 text-sm transition-colors hover:bg-muted/50",
                   step.completed && "bg-muted/30 border-transparent",
                   step.failed && "border-dashed opacity-60"
                 )}
               >
                 {step.completed ? (
-                  <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-500 shrink-0" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
                 ) : step.failed ? (
-                  <AlertCircle className="h-4 w-4 mt-0.5 text-amber-500 shrink-0" />
+                  <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                 ) : (
-                  <Circle className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                  <Circle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 )}
-                <div className="flex-1 min-w-0">
-                  <p
-                    className={cn(
-                      "font-medium leading-tight",
-                      step.completed && "text-muted-foreground line-through"
-                    )}
-                  >
-                    {step.label}
-                  </p>
-                  {step.failed ? (
-                    <p className="text-xs text-amber-500 mt-0.5 leading-snug">Could not check</p>
-                  ) : step.description && !step.completed ? (
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                      {step.description}
-                    </p>
-                  ) : null}
-                </div>
+                <span
+                  className={cn(
+                    "flex-1 min-w-0 text-xs leading-tight font-medium truncate",
+                    step.completed && "text-muted-foreground line-through"
+                  )}
+                >
+                  {step.label}
+                </span>
                 {!step.completed && !step.failed && (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                  <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
                 )}
               </Link>
             </li>
