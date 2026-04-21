@@ -141,24 +141,12 @@ function Hero() {
               </button>
             </div>
 
-            {/* Social proof */}
-            <div className="flex items-center gap-4 pt-2">
-              <div className="flex -space-x-2">
-                {["KL", "AM", "JR", "TS", "OW"].map((initials) => (
-                  <div
-                    key={initials}
-                    className="w-8 h-8 bg-black text-white flex items-center justify-center text-[10px] border-2 border-white font-code"
-                  >
-                    {initials}
-                  </div>
-                ))}
-              </div>
-              <p className="text-sm text-[#525252] font-serif">
-                Be part of the{" "}
-                <strong className="text-black font-bold">early release</strong>{" "}
-                and get in before everyone else.
-              </p>
-            </div>
+            {/* Early release note */}
+            <p className="text-sm text-[#525252] font-serif pt-2">
+              Be part of the{" "}
+              <strong className="text-black font-bold">early release</strong>{" "}
+              and get in before everyone else.
+            </p>
           </div>
 
           {/* Right: CSS dashboard mockup */}
@@ -841,7 +829,12 @@ function FinalCTA() {
 // ─── Footer ───────────────────────────────────────────────────────────────────
 
 function Footer() {
-  const links = ["Privacy Policy", "Terms of Service", "Contact Us", "Help Center"];
+  const links = [
+    { label: "Privacy Policy", href: "#" },
+    { label: "Terms of Service", href: "/terms" },
+    { label: "Contact Us", href: "#" },
+    { label: "Help Center", href: "#" },
+  ];
 
   return (
     <footer className="py-12 md:py-16 bg-white border-t border-black">
@@ -860,11 +853,11 @@ function Footer() {
           <div className="flex flex-wrap gap-6">
             {links.map((link) => (
               <Link
-                key={link}
-                href="#"
+                key={link.label}
+                href={link.href}
                 className="text-sm text-[#525252] hover:text-black hover:underline transition-colors duration-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-2"
               >
-                {link}
+                {link.label}
               </Link>
             ))}
           </div>
