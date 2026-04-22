@@ -1,8 +1,6 @@
 "use client";
 
-import { GripVertical, X } from "lucide-react";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, X, GripHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getWidgetById } from "./widget-registry";
@@ -10,43 +8,49 @@ import type { PlacedWidget } from "./api";
 
 interface WidgetCardProps {
   widget: PlacedWidget;
+  /** Absolute-positioning style injected by WidgetGrid. */
+  style?: React.CSSProperties;
+  isDragging?: boolean;
+  isResizing?: boolean;
   onRemove: (instanceId: string) => void;
+  /** Called when the user presses on the drag handle. */
+  onDragHandlePointerDown: (e: React.PointerEvent<HTMLButtonElement>) => void;
+  /** Called when the user presses on the resize handle. */
+  onResizeHandlePointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
 }
 
-export function WidgetCard({ widget, onRemove }: WidgetCardProps) {
+export function WidgetCard({
+  widget,
+  style,
+  isDragging,
+  isResizing,
+  onRemove,
+  onDragHandlePointerDown,
+  onResizeHandlePointerDown,
+}: WidgetCardProps) {
   const definition = getWidgetById(widget.widgetId);
-
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: widget.instanceId });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-    zIndex: isDragging ? 50 : undefined,
-  };
-
   if (!definition) return null;
 
   const Icon = definition.icon;
   const WidgetComponent = definition.component;
 
   return (
-    <div ref={setNodeRef} style={style} className="w-full">
-      <Card className="relative group overflow-hidden">
-        <CardHeader className="flex flex-row items-center gap-2 pb-3 pt-3 px-4">
+    <div
+      style={style}
+      className="w-full"
+      data-widget-id={widget.instanceId}
+    >
+      <Card
+        className={`relative group overflow-hidden h-full flex flex-col ${
+          isDragging || isResizing ? "ring-2 ring-primary/40 shadow-xl" : ""
+        }`}
+      >
+        <CardHeader className="flex flex-row items-center gap-2 pb-3 pt-3 px-4 shrink-0">
           {/* Drag handle */}
           <button
-            {...attributes}
-            {...listeners}
+            onPointerDown={onDragHandlePointerDown}
             className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors touch-none"
-            aria-label="Drag to reorder"
+            aria-label="Drag to move"
           >
             <GripVertical className="h-4 w-4" />
           </button>
@@ -69,9 +73,18 @@ export function WidgetCard({ widget, onRemove }: WidgetCardProps) {
           </Button>
         </CardHeader>
 
-        <CardContent className="px-4 pb-4">
+        <CardContent className="px-4 pb-4 flex-1 overflow-hidden">
           <WidgetComponent />
         </CardContent>
+
+        {/* Resize handle — bottom-right corner */}
+        <div
+          onPointerDown={onResizeHandlePointerDown}
+          className="absolute bottom-1 right-1 p-1 cursor-se-resize opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity text-muted-foreground touch-none"
+          aria-label="Drag to resize"
+        >
+          <GripHorizontal className="h-3 w-3 rotate-45" />
+        </div>
       </Card>
     </div>
   );

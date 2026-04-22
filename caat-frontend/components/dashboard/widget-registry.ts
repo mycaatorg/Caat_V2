@@ -9,6 +9,20 @@ export interface WidgetDefinition {
   icon: LucideIcon;
   // Lazy-loaded via dynamic import to keep the registry tree-shakeable
   component: ComponentType;
+  /** Default width in grid units (out of COLS=4). */
+  defaultW: number;
+  /** Default height in grid units. */
+  defaultH: number;
+  /**
+   * Minimum width the widget can be resized to before its content
+   * looks cramped or broken.
+   */
+  minW: number;
+  /**
+   * Minimum height the widget can be resized to before its content
+   * looks cramped or broken.
+   */
+  minH: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -30,6 +44,12 @@ export const widgetRegistry: WidgetDefinition[] = [
     description: "View and track upcoming dates and events.",
     icon: Calendar,
     component: CalendarWidget,
+    defaultW: 2,
+    defaultH: 4,
+    // Needs 2 cols for calendar + event panel side-by-side;
+    // 3 rows so the full month grid fits without clipping.
+    minW: 2,
+    minH: 3,
   },
   {
     id: "todo",
@@ -37,6 +57,12 @@ export const widgetRegistry: WidgetDefinition[] = [
     description: "Keep track of your personal tasks and reminders.",
     icon: CheckSquare,
     component: TodoWidget,
+    defaultW: 2,
+    defaultH: 3,
+    // 1 col is fine for a vertical list; 2 rows = enough for the
+    // input bar + at least one task row visible.
+    minW: 1,
+    minH: 2,
   },
   {
     id: "bookmarked-majors",
@@ -44,6 +70,11 @@ export const widgetRegistry: WidgetDefinition[] = [
     description: "Quick access to the majors you have saved.",
     icon: BookOpen,
     component: BookmarkedMajorsWidget,
+    defaultW: 2,
+    defaultH: 2,
+    // 2 rows = enough for the "View all" button + at least one item.
+    minW: 1,
+    minH: 2,
   },
   {
     id: "bookmarked-schools",
@@ -51,6 +82,10 @@ export const widgetRegistry: WidgetDefinition[] = [
     description: "Quick access to the schools you have saved.",
     icon: School,
     component: BookmarkedSchoolsWidget,
+    defaultW: 2,
+    defaultH: 2,
+    minW: 1,
+    minH: 2,
   },
   {
     id: "upcoming-deadlines",
@@ -58,6 +93,11 @@ export const widgetRegistry: WidgetDefinition[] = [
     description: "See upcoming scholarship and application deadlines.",
     icon: Clock,
     component: UpcomingDeadlinesWidget,
+    defaultW: 2,
+    defaultH: 3,
+    // Each deadline row needs a bit of width for dot + label + countdown.
+    minW: 1,
+    minH: 2,
   },
 ];
 
