@@ -64,7 +64,7 @@ export default function LoginPage() {
         {/* Bottom attribution */}
         <div className="relative border-t border-white/20 pt-6">
           <p className="text-[11px] text-[#666] font-code tracking-[0.12em]">
-            TRUSTED BY 2,000+ STUDENTS THIS CYCLE
+            JOIN THE EARLY RELEASE
           </p>
         </div>
       </div>

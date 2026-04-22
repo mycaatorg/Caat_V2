@@ -10,10 +10,8 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, CheckCircle2, ExternalLink } from "lucide-react";
+import { ChevronLeft, ExternalLink } from "lucide-react";
 import BookmarkButton from "./bookmark-button";
-import { CATEGORY_COLORS } from "@/constants/majors";
 
 export default async function MajorDetailPage({
   params,
@@ -31,10 +29,6 @@ export default async function MajorDetailPage({
   if (error || !major) {
     notFound();
   }
-
-  const categoryColor =
-    CATEGORY_COLORS[major.category] ??
-    "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
 
   return (
     <>
@@ -57,40 +51,47 @@ export default async function MajorDetailPage({
         </Breadcrumb>
       </header>
 
-      <div className="p-8 max-w-3xl mx-auto">
-        <Button variant="ghost" size="sm" asChild className="-ml-2 mb-6">
-          <Link href="/majors">
-            <ChevronLeft className="h-4 w-4" />
-            Back to Majors
-          </Link>
-        </Button>
+      <div className="max-w-3xl mx-auto px-6 lg:px-10 py-8">
+        {/* Back link */}
+        <Link
+          href="/majors"
+          className="inline-flex items-center gap-1.5 text-xs font-code tracking-wide text-muted-foreground hover:text-foreground transition-colors mb-8"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+          Back to Majors
+        </Link>
 
-        <div className="flex items-start justify-between gap-4 mb-6">
-          <div className="space-y-2">
-            <span
-              className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${categoryColor}`}
-            >
-              {major.category}
-            </span>
-            <h1 className="text-3xl font-bold">{major.name}</h1>
+        {/* Title block */}
+        <div className="border-b border-border pb-6 mb-0">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-3">
+              <span className="inline-block border border-border text-[10px] font-code tracking-[0.15em] uppercase px-2.5 py-1 text-muted-foreground">
+                {major.category}
+              </span>
+              <h1 className="text-3xl md:text-4xl font-bold font-display tracking-tight leading-tight">
+                {major.name}
+              </h1>
+            </div>
+            <BookmarkButton majorId={major.id} />
           </div>
-          <BookmarkButton majorId={major.id} />
+          {major.description && (
+            <p className="text-muted-foreground leading-relaxed mt-4 max-w-2xl font-serif">
+              {major.description}
+            </p>
+          )}
         </div>
 
-        {major.description && (
-          <p className="text-muted-foreground leading-relaxed mb-8">
-            {major.description}
-          </p>
-        )}
-
+        {/* Career Paths */}
         {major.career_paths?.length > 0 && (
-          <section className="mb-8">
-            <h2 className="text-lg font-semibold mb-3">Career Paths</h2>
+          <section className="border-b border-border py-6">
+            <h2 className="text-[10px] font-code tracking-[0.18em] uppercase text-muted-foreground mb-4">
+              Career Paths
+            </h2>
             <div className="flex flex-wrap gap-2">
               {major.career_paths.map((path: string) => (
                 <span
                   key={path}
-                  className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-secondary text-secondary-foreground"
+                  className="inline-block border border-border px-3 py-1.5 text-sm font-serif"
                 >
                   {path}
                 </span>
@@ -99,13 +100,23 @@ export default async function MajorDetailPage({
           </section>
         )}
 
+        {/* Typical Coursework */}
         {major.typical_coursework?.length > 0 && (
-          <section className="mb-8">
-            <h2 className="text-lg font-semibold mb-3">Typical Coursework</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {major.typical_coursework.map((course: string) => (
-                <div key={course} className="flex items-center gap-2 text-sm">
-                  <CheckCircle2 className="h-4 w-4 text-primary flex-shrink-0" />
+          <section className="border-b border-border py-6">
+            <h2 className="text-[10px] font-code tracking-[0.18em] uppercase text-muted-foreground mb-4">
+              Typical Coursework
+            </h2>
+            <div className="border border-border">
+              {major.typical_coursework.map((course: string, i: number) => (
+                <div
+                  key={course}
+                  className={`flex items-center gap-3 px-4 py-3 text-sm font-serif ${
+                    i < major.typical_coursework.length - 1
+                      ? "border-b border-border"
+                      : ""
+                  }`}
+                >
+                  <div className="w-1.5 h-1.5 bg-foreground flex-shrink-0" />
                   {course}
                 </div>
               ))}
@@ -113,16 +124,19 @@ export default async function MajorDetailPage({
           </section>
         )}
 
+        {/* World Rankings */}
         {major.qs_ranking_url && (
-          <section className="mb-8">
-            <h2 className="text-lg font-semibold mb-3">World Rankings</h2>
+          <section className="py-6">
+            <h2 className="text-[10px] font-code tracking-[0.18em] uppercase text-muted-foreground mb-4">
+              World Rankings
+            </h2>
             <a
               href={major.qs_ranking_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-sm text-primary hover:underline underline-offset-4"
+              className="inline-flex items-center gap-2 text-sm font-serif border border-border px-4 py-2.5 hover:bg-accent transition-colors"
             >
-              <ExternalLink className="h-4 w-4" />
+              <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" />
               View QS World University Rankings for {major.name}
             </a>
           </section>

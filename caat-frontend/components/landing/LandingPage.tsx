@@ -141,24 +141,12 @@ function Hero() {
               </button>
             </div>
 
-            {/* Social proof */}
-            <div className="flex items-center gap-4 pt-2">
-              <div className="flex -space-x-2">
-                {["KL", "AM", "JR", "TS", "OW"].map((initials) => (
-                  <div
-                    key={initials}
-                    className="w-8 h-8 bg-black text-white flex items-center justify-center text-[10px] border-2 border-white font-code"
-                  >
-                    {initials}
-                  </div>
-                ))}
-              </div>
-              <p className="text-sm text-[#525252] font-serif">
-                Join{" "}
-                <strong className="text-black font-bold">2,000+</strong>{" "}
-                students applying this cycle.
-              </p>
-            </div>
+            {/* Early release note */}
+            <p className="text-sm text-[#525252] font-serif pt-2">
+              Be part of the{" "}
+              <strong className="text-black font-bold">early release</strong>{" "}
+              and get in before everyone else.
+            </p>
           </div>
 
           {/* Right: CSS dashboard mockup */}
@@ -285,7 +273,7 @@ function FeaturesGrid() {
       icon: <GraduationCap size={20} strokeWidth={1.5} />,
       title: "School Search",
       description:
-        "Browse 4,000+ universities worldwide. Compare acceptance rates, deadlines, tuition, and requirements side by side to build your perfect list.",
+        "Browse 10,000+ universities worldwide. Compare acceptance rates, deadlines, tuition, and requirements side by side to build your perfect list.",
     },
     {
       icon: <Pencil size={20} strokeWidth={1.5} />,
@@ -321,7 +309,7 @@ function FeaturesGrid() {
       icon: <Lock size={20} strokeWidth={1.5} />,
       title: "Secure by Default",
       description:
-        "AES-256 encryption and SOC2-compliant infrastructure protect every file and form entry. Your data is yours — always private, always accessible.",
+        "AES-256 encryption and SOC2-compliant infrastructure protect every file and form entry. Your data is yours: always private, always accessible.",
     },
   ];
 
@@ -335,11 +323,11 @@ function FeaturesGrid() {
             Platform
           </p>
           <h2 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-none mb-6 font-display">
-            Engineered for Excellence
+            Built Around Your Application
           </h2>
           <p className="text-lg text-[#525252] max-w-xl mx-auto font-serif">
-            Every tool you need to navigate the college application process with
-            confidence and clarity.
+            All the tools you need to actually get through the college
+            application process, in one place.
           </p>
         </div>
 
@@ -391,7 +379,7 @@ function ProductShowcase() {
             the complex.
           </h2>
           <p className="text-lg text-[#525252] max-w-lg font-serif">
-            Powerful tools built to work the way your mind does — organized,
+            Powerful tools built around how you actually think: organized,
             clear, and always one step ahead.
           </p>
         </div>
@@ -599,7 +587,7 @@ function MoreFeatures() {
                   Education
                 </div>
                 <div className="text-[#525252] font-serif text-[10px]">
-                  Boston Latin School — GPA 3.98 / 4.0
+                  Boston Latin School, GPA 3.98 / 4.0
                 </div>
               </div>
             </div>
@@ -618,28 +606,28 @@ function ThreeSteps() {
       number: "01",
       title: "Create Your Free Account",
       description:
-        "Sign up in under a minute — no credit card, no setup fees. Your personalized dashboard is ready the moment you confirm your email.",
+        "Sign up in under a minute, no credit card or setup fees needed. Your personalized dashboard is ready the moment you confirm your email.",
       tag: "Getting Started",
     },
     {
       number: "02",
       title: "Build Your School List",
       description:
-        "Search 4,000+ universities, compare deadlines and requirements, and add schools to your tracker. Everything about each application lives in one place.",
+        "Search 10,000+ universities, compare deadlines and requirements, and add schools to your tracker. Everything about each application lives in one place.",
       tag: "Research & Plan",
     },
     {
       number: "03",
       title: "Write, Prepare & Apply",
       description:
-        "Draft essays in the Workshop, find matching scholarships, build your resume, and upload documents — all tracked against your live deadlines.",
+        "Draft essays in the Workshop, find matching scholarships, build your resume, and upload documents. All of it tracked against your live deadlines.",
       tag: "Execute",
     },
     {
       number: "04",
       title: "Submit with Confidence",
       description:
-        "Your completion checklist turns item by item. When every box is checked, hit submit — knowing nothing was missed and no deadline slipped by.",
+        "Your completion checklist turns item by item. When every box is checked, hit submit knowing nothing was missed and no deadline slipped by.",
       tag: "Submit",
     },
   ];
@@ -661,7 +649,7 @@ function ThreeSteps() {
               Everything you need, step by step
             </h2>
             <p className="text-lg text-[#525252] leading-relaxed font-serif mb-8">
-              CAAT guides you through every stage of the college application process — from first search to final submission.
+              CAAT walks you through every stage of applying to college, from your first school search to hitting submit.
             </p>
             <div className="h-[4px] w-12 bg-black" aria-hidden />
           </div>
@@ -725,12 +713,12 @@ function SecurityBanner() {
               Security
             </p>
             <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] mb-6 font-display text-white">
-              Fortress-Level Security
+              Your Data Stays Yours
             </h2>
             <p className="text-[#999] leading-relaxed mb-10 text-lg font-serif">
-              Built in partnership with Supabase, your data is protected by
-              enterprise-grade infrastructure trusted by Fortune 500 companies
-              worldwide.
+              We build on Supabase, so your data sits on infrastructure that
+              banks and large companies rely on. You get that same protection,
+              for free.
             </p>
 
             <div className="flex flex-wrap gap-3">
@@ -773,7 +761,7 @@ function SecurityBanner() {
                   Sarah Mitchell
                 </div>
                 <div className="text-[11px] text-[#888] font-code mt-0.5">
-                  Class of 2025 — Harvard University
+                  Class of 2025 at Harvard University
                 </div>
               </div>
             </div>
@@ -810,7 +798,7 @@ function FinalCTA() {
           your journey?
         </h2>
         <p className="text-lg text-[#888] mb-12 max-w-md mx-auto font-serif">
-          The best time to start was yesterday. The second best time is now.
+          Deadlines wait for no one. Get your plan together before the rush.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center mb-10">
@@ -841,7 +829,12 @@ function FinalCTA() {
 // ─── Footer ───────────────────────────────────────────────────────────────────
 
 function Footer() {
-  const links = ["Privacy Policy", "Terms of Service", "Contact Us", "Help Center"];
+  const links = [
+    { label: "Privacy Policy", href: "#" },
+    { label: "Terms of Service", href: "/terms" },
+    { label: "Contact Us", href: "#" },
+    { label: "Help Center", href: "#" },
+  ];
 
   return (
     <footer className="py-12 md:py-16 bg-white border-t border-black">
@@ -852,7 +845,7 @@ function Footer() {
               <Image src="/logo.png" alt="CAAT" width={72} height={28} className="object-contain" />
             </div>
             <p className="text-sm text-[#525252] max-w-xs font-serif">
-              College Application Assistance Tool — your path to university,
+              College Application Assistance Tool. Your path to university,
               organized.
             </p>
           </div>
@@ -860,11 +853,11 @@ function Footer() {
           <div className="flex flex-wrap gap-6">
             {links.map((link) => (
               <Link
-                key={link}
-                href="#"
+                key={link.label}
+                href={link.href}
                 className="text-sm text-[#525252] hover:text-black hover:underline transition-colors duration-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-2"
               >
-                {link}
+                {link.label}
               </Link>
             ))}
           </div>
@@ -875,7 +868,7 @@ function Footer() {
             © {new Date().getFullYear()} CAAT. All rights reserved.
           </p>
           <p className="text-[11px] text-[#525252] font-code">
-            Built for students. Trusted by 2,000+ applicants.
+            Built for students. Trusted by early users.
           </p>
         </div>
       </div>

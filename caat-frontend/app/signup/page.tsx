@@ -56,14 +56,14 @@ export default function SignupPage() {
             Your journey starts here.
           </blockquote>
           <p className="text-[#888] text-base font-serif leading-relaxed max-w-sm">
-            Join thousands of students who&apos;ve used CAAT to organize their applications, track deadlines, and get into their dream schools.
+            Get organized from day one. CAAT keeps your applications, deadlines, and documents in one place so nothing slips through.
           </p>
 
           {/* Mini stats */}
           <div className="grid grid-cols-2 gap-4 pt-4">
             {[
-              { stat: "4,000+", label: "Universities" },
-              { stat: "2,000+", label: "Students" },
+              { stat: "10,000+", label: "Universities" },
+              { stat: "Early", label: "Access" },
             ].map(({ stat, label }) => (
               <div key={label} className="border border-white/20 p-4">
                 <div className="text-3xl font-bold font-display">{stat}</div>
