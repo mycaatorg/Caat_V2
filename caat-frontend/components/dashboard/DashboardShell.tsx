@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApplicationReadiness } from "./ApplicationReadiness";
@@ -14,6 +14,13 @@ import {
   type PlacedWidget,
 } from "./api";
 import { useAuth } from "@/src/context/AuthContext";
+import {
+  autoLayout,
+  findFirstFit,
+  getDefaultSize,
+  type PartialRect,
+} from "@/lib/grid";
+import { getWidgetById } from "./widget-registry";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -22,12 +29,47 @@ function getGreeting() {
   return "Good evening";
 }
 
+/**
+ * Ensure every widget in the list has valid grid coordinates.
+ * Widgets that are missing positions are auto-placed in the first available
+ * free space, respecting all already-positioned widgets.
+ */
+function resolveLayout(widgets: PlacedWidget[]): PlacedWidget[] {
+  const partials: PartialRect[] = widgets.map((w) => {
+    const def = getWidgetById(w.widgetId);
+    const { w: defW, h: defH } = getDefaultSize(w.widgetId);
+    const positioned =
+      w.gridX !== undefined &&
+      w.gridY !== undefined &&
+      w.gridW !== undefined &&
+      w.gridH !== undefined;
+    return {
+      id: w.instanceId,
+      widgetId: w.widgetId,
+      positioned,
+      x: positioned ? w.gridX! : 0,
+      y: positioned ? w.gridY! : 0,
+      w: positioned ? w.gridW! : (def?.defaultW ?? defW),
+      h: positioned ? w.gridH! : (def?.defaultH ?? defH),
+    };
+  });
+
+  const resolved = autoLayout(partials);
+
+  return widgets.map((w) => {
+    const r = resolved.find((r) => r.id === w.instanceId)!;
+    return { ...w, gridX: r.x, gridY: r.y, gridW: r.w, gridH: r.h };
+  });
+}
+
 export function DashboardShell() {
   const { user } = useAuth();
   const [placedWidgets, setPlacedWidgets] = useState<PlacedWidget[]>([]);
   const [loading, setLoading] = useState(true);
   const [storeOpen, setStoreOpen] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
+  // Ref so save callbacks always see the latest widget list.
+  const widgetsRef = useRef<PlacedWidget[]>([]);
 
   const userName =
     user?.user_metadata?.full_name ||
@@ -35,10 +77,26 @@ export function DashboardShell() {
     user?.email?.split("@")[0] ||
     null;
 
-  // Load saved widget layout on mount
+  // -------------------------------------------------------------------------
+  // Load
+  // -------------------------------------------------------------------------
+
   useEffect(() => {
     fetchDashboardWidgets()
-      .then(setPlacedWidgets)
+      .then((raw) => {
+        const resolved = resolveLayout(raw);
+        setPlacedWidgets(resolved);
+        widgetsRef.current = resolved;
+
+        // If any widget needed auto-placement, persist immediately so the
+        // next load skips the auto-layout step.
+        const anyUnpositioned = raw.some((w) => w.gridX === undefined);
+        if (anyUnpositioned) {
+          saveDashboardWidgets(resolved).catch(() => {
+            // Non-critical: positions will be recalculated on next load.
+          });
+        }
+      })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (!msg.includes("Not authenticated")) {
@@ -48,11 +106,37 @@ export function DashboardShell() {
       .finally(() => setLoading(false));
   }, []);
 
+  // -------------------------------------------------------------------------
+  // Add
+  // -------------------------------------------------------------------------
+
   async function handleAdd(widgetId: string) {
     setAdding(widgetId);
     try {
-      const newWidget = await addDashboardWidget(widgetId);
-      setPlacedWidgets((prev) => [...prev, newWidget]);
+      const def = getWidgetById(widgetId);
+      const { w: defW, h: defH } = getDefaultSize(widgetId);
+      const w = def?.defaultW ?? defW;
+      const h = def?.defaultH ?? defH;
+
+      const currentRects = widgetsRef.current
+        .filter((pw) => pw.gridX !== undefined)
+        .map((pw) => ({
+          id: pw.instanceId,
+          x: pw.gridX!,
+          y: pw.gridY!,
+          w: pw.gridW!,
+          h: pw.gridH!,
+        }));
+
+      const { x, y } = findFirstFit(w, h, currentRects);
+      const newWidget = await addDashboardWidget(widgetId, { x, y, w, h });
+      const positioned = { ...newWidget, gridX: x, gridY: y, gridW: w, gridH: h };
+
+      setPlacedWidgets((prev) => {
+        const next = [...prev, positioned];
+        widgetsRef.current = next;
+        return next;
+      });
       toast.success("Widget added");
     } catch (err) {
       toast.error("Failed to add widget");
@@ -62,26 +146,71 @@ export function DashboardShell() {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Remove
+  // -------------------------------------------------------------------------
+
   async function handleRemove(instanceId: string) {
-    // Optimistic update
-    setPlacedWidgets((prev) => prev.filter((w) => w.instanceId !== instanceId));
+    setPlacedWidgets((prev) => {
+      const next = prev.filter((w) => w.instanceId !== instanceId);
+      widgetsRef.current = next;
+      return next;
+    });
     try {
       await removeDashboardWidget(instanceId);
     } catch {
       toast.error("Failed to remove widget");
-      // Reload from DB to restore
-      fetchDashboardWidgets().then(setPlacedWidgets).catch(() => {});
+      fetchDashboardWidgets()
+        .then((raw) => {
+          const resolved = resolveLayout(raw);
+          setPlacedWidgets(resolved);
+          widgetsRef.current = resolved;
+        })
+        .catch(() => {});
     }
   }
 
-  async function handleReorder(reordered: PlacedWidget[]) {
-    setPlacedWidgets(reordered);
+  // -------------------------------------------------------------------------
+  // Move (drag to new grid cell)
+  // -------------------------------------------------------------------------
+
+  async function handleMove(instanceId: string, x: number, y: number) {
+    setPlacedWidgets((prev) => {
+      const next = prev.map((w) =>
+        w.instanceId === instanceId ? { ...w, gridX: x, gridY: y } : w
+      );
+      widgetsRef.current = next;
+      return next;
+    });
     try {
-      await saveDashboardWidgets(reordered);
+      await saveDashboardWidgets(widgetsRef.current);
     } catch {
       toast.error("Failed to save layout");
     }
   }
+
+  // -------------------------------------------------------------------------
+  // Resize
+  // -------------------------------------------------------------------------
+
+  async function handleResize(instanceId: string, w: number, h: number) {
+    setPlacedWidgets((prev) => {
+      const next = prev.map((pw) =>
+        pw.instanceId === instanceId ? { ...pw, gridW: w, gridH: h } : pw
+      );
+      widgetsRef.current = next;
+      return next;
+    });
+    try {
+      await saveDashboardWidgets(widgetsRef.current);
+    } catch {
+      toast.error("Failed to save layout");
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
 
   if (loading) {
     return (
@@ -120,7 +249,7 @@ export function DashboardShell() {
         <div>
           <h2 className="text-lg font-semibold">Your Dashboard</h2>
           <p className="text-sm text-muted-foreground">
-            Drag to reorder. Open the Widget Store to add more.
+            Drag to move widgets. Resize from the bottom-right corner.
           </p>
         </div>
         <WidgetStoreTrigger
@@ -135,7 +264,8 @@ export function DashboardShell() {
       {/* Widget Grid */}
       <WidgetGrid
         widgets={placedWidgets}
-        onReorder={handleReorder}
+        onMove={handleMove}
+        onResize={handleResize}
         onRemove={handleRemove}
         onOpenStore={() => setStoreOpen(true)}
       />

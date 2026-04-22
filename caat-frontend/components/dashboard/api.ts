@@ -9,8 +9,17 @@ export interface PlacedWidget {
   instanceId: string;
   /** Matches a WidgetDefinition.id in the registry */
   widgetId: string;
-  /** Display order (0-based) */
+  /** Display order (0-based) — kept for backward-compat */
   order: number;
+  /**
+   * Grid position and size (in grid units).
+   * Undefined when the DB columns haven't been migrated yet;
+   * DashboardShell will auto-assign positions in that case.
+   */
+  gridX?: number;
+  gridY?: number;
+  gridW?: number;
+  gridH?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -24,6 +33,27 @@ export async function fetchDashboardWidgets(): Promise<PlacedWidget[]> {
   } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Not authenticated");
 
+  // Try selecting grid columns; fall back gracefully if the DB migration
+  // hasn't been run yet (PostgREST returns an error for unknown columns).
+  const { data: fullData, error: fullError } = await supabase
+    .from("user_dashboard_widgets")
+    .select("id, widget_id, order, grid_x, grid_y, grid_w, grid_h")
+    .eq("user_id", user.id)
+    .order("order", { ascending: true });
+
+  if (!fullError) {
+    return (fullData ?? []).map((row) => ({
+      instanceId: row.id as string,
+      widgetId: row.widget_id as string,
+      order: row.order as number,
+      gridX: row.grid_x != null ? (row.grid_x as number) : undefined,
+      gridY: row.grid_y != null ? (row.grid_y as number) : undefined,
+      gridW: row.grid_w != null ? (row.grid_w as number) : undefined,
+      gridH: row.grid_h != null ? (row.grid_h as number) : undefined,
+    }));
+  }
+
+  // Fallback: DB columns not yet added — return without grid positions.
   const { data, error } = await supabase
     .from("user_dashboard_widgets")
     .select("id, widget_id, order")
@@ -43,7 +73,10 @@ export async function fetchDashboardWidgets(): Promise<PlacedWidget[]> {
 // Add a widget (inserts one row, order = current max + 1)
 // ---------------------------------------------------------------------------
 
-export async function addDashboardWidget(widgetId: string): Promise<PlacedWidget> {
+export async function addDashboardWidget(
+  widgetId: string,
+  gridPos?: { x: number; y: number; w: number; h: number }
+): Promise<PlacedWidget> {
   const {
     data: { user },
     error: authError,
@@ -58,12 +91,25 @@ export async function addDashboardWidget(widgetId: string): Promise<PlacedWidget
     .order("order", { ascending: false })
     .limit(1);
 
-  const nextOrder = existing && existing.length > 0 ? (existing[0].order as number) + 1 : 0;
+  const nextOrder =
+    existing && existing.length > 0 ? (existing[0].order as number) + 1 : 0;
+
+  const insertRow: Record<string, unknown> = {
+    user_id: user.id,
+    widget_id: widgetId,
+    order: nextOrder,
+  };
+  if (gridPos) {
+    insertRow.grid_x = gridPos.x;
+    insertRow.grid_y = gridPos.y;
+    insertRow.grid_w = gridPos.w;
+    insertRow.grid_h = gridPos.h;
+  }
 
   const { data, error } = await supabase
     .from("user_dashboard_widgets")
-    .insert({ user_id: user.id, widget_id: widgetId, order: nextOrder })
-    .select("id, widget_id, order")
+    .insert(insertRow)
+    .select("id, widget_id, order, grid_x, grid_y, grid_w, grid_h")
     .single();
 
   if (error) throw new Error(error.message);
@@ -72,6 +118,10 @@ export async function addDashboardWidget(widgetId: string): Promise<PlacedWidget
     instanceId: data.id as string,
     widgetId: data.widget_id as string,
     order: data.order as number,
+    gridX: data.grid_x != null ? (data.grid_x as number) : undefined,
+    gridY: data.grid_y != null ? (data.grid_y as number) : undefined,
+    gridW: data.grid_w != null ? (data.grid_w as number) : undefined,
+    gridH: data.grid_h != null ? (data.grid_h as number) : undefined,
   };
 }
 
@@ -111,6 +161,12 @@ export async function saveDashboardWidgets(widgets: PlacedWidget[]): Promise<voi
     user_id: user.id,
     widget_id: w.widgetId,
     order: idx,
+    ...(w.gridX !== undefined && {
+      grid_x: w.gridX,
+      grid_y: w.gridY,
+      grid_w: w.gridW,
+      grid_h: w.gridH,
+    }),
   }));
 
   const { error } = await supabase
