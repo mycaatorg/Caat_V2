@@ -123,7 +123,7 @@ export default async function SchoolsPage({
 
           {/* Search + country + sort */}
           <div className="flex flex-col md:flex-row gap-3 mb-6 items-start">
-            <div className="flex-1 w-full max-w-md">
+            <div className="flex-1 w-full">
               <SchoolSearch defaultValue={searchQuery} />
             </div>
             <CountrySelect defaultValue={selectedCountry} />
