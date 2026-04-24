@@ -33,6 +33,17 @@ export interface PostAuthor {
   avatar_url: string | null;
 }
 
+export interface CommunityComment {
+  id: string;
+  post_id: string;
+  user_id: string;
+  parent_comment_id: string | null;
+  content: string;
+  created_at: string;
+  author: PostAuthor | null;
+  replies: CommunityComment[];
+}
+
 export interface CommunityPost {
   id: string;
   user_id: string;

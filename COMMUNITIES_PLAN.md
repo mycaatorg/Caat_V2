@@ -24,11 +24,11 @@
 - [ ] Attach CAAT resume link to post — dropdown from user's saved resumes (deferred to Phase 5)
 
 ## Phase 4 — Engagement
-- [ ] Like button — React Query optimistic mutation, upsert/delete community_likes, Realtime count sync
-- [ ] Comment thread — load on post expand, add comment form, server action insert
-- [ ] Reply to comment — one level deep, inline reply form per comment
-- [ ] Save post — toggle server action on community_saves, saved list on profile
-- [ ] Share post — copy /communities/[postId] to clipboard, single post server-rendered route
+- [x] Like button — useOptimistic toggle, toggleLikeAction server action
+- [x] Comment thread — lazy load on expand, add comment form, server action insert
+- [x] Reply to comment — one level deep, inline reply form per CommentItem
+- [x] Save post — useOptimistic toggle, toggleSaveAction server action
+- [x] Share post — copy /communities/[postId] to clipboard + single post route
 
 ## Phase 5 — Social graph
 - [ ] Follow/unfollow button — server action on community_follows

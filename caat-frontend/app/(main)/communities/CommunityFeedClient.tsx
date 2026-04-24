@@ -12,6 +12,8 @@ interface CommunityFeedClientProps {
   initialPosts: CommunityPost[];
   initialCursor: string | null;
   currentUser: PostAuthor | null;
+  initialLikedIds: string[];
+  initialSavedIds: string[];
 }
 
 function PostSkeleton() {
@@ -35,16 +37,19 @@ export function CommunityFeedClient({
   initialPosts,
   initialCursor,
   currentUser,
+  initialLikedIds,
+  initialSavedIds,
 }: CommunityFeedClientProps) {
   const [posts, setPosts] = useState<CommunityPost[]>(initialPosts);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set(initialLikedIds));
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set(initialSavedIds));
   const [isPending, startTransition] = useTransition();
 
   const { ref, inView } = useInView({ threshold: 0.1 });
 
   useEffect(() => {
     if (!inView || !cursor || isPending) return;
-
     startTransition(async () => {
       const { posts: newPosts, nextCursor } = await fetchPostsAction(cursor);
       setPosts((prev) => [...prev, ...newPosts]);
@@ -66,18 +71,20 @@ export function CommunityFeedClient({
           <p className="text-sm mt-1">Be the first to share your experience.</p>
         </div>
       ) : (
-        posts.map((post) => <PostCard key={post.id} post={post} />)
+        posts.map((post) => (
+          <PostCard
+            key={post.id}
+            post={post}
+            currentUser={currentUser}
+            initialIsLiked={likedIds.has(post.id)}
+            initialIsSaved={savedIds.has(post.id)}
+          />
+        ))
       )}
 
-      {/* Infinite scroll sentinel */}
       {cursor && (
         <div ref={ref} className="space-y-4">
-          {isPending && (
-            <>
-              <PostSkeleton />
-              <PostSkeleton />
-            </>
-          )}
+          {isPending && <><PostSkeleton /><PostSkeleton /></>}
         </div>
       )}
 

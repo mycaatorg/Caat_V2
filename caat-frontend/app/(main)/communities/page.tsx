@@ -5,10 +5,8 @@ import { CommunityFeedClient } from "./CommunityFeedClient";
 
 export default async function CommunitiesPage() {
   const supabase = await createSupabaseServer();
-
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Fetch initial 20 posts
   const { data: rows, error } = await supabase
     .from("community_posts")
     .select("*, likes:community_likes(count), comments:community_comments(count)")
@@ -27,20 +25,29 @@ export default async function CommunitiesPage() {
     );
   }
 
-  // Fetch all author profiles for this batch + current user's profile in one query
+  const postIds = (rows ?? []).map((r) => r.id);
   const postUserIds = [...new Set((rows ?? []).map((r) => r.user_id))];
   const allUserIds = user ? [...new Set([...postUserIds, user.id])] : postUserIds;
 
-  const { data: profiles } = allUserIds.length
-    ? await supabase
-        .from("profiles")
-        .select("id, first_name, last_name, avatar_url")
-        .in("id", allUserIds)
-    : { data: [] };
+  // Fetch profiles, liked post IDs, and saved post IDs in parallel
+  const [profilesResult, likedResult, savedResult] = await Promise.all([
+    allUserIds.length
+      ? supabase.from("profiles").select("id, first_name, last_name, avatar_url").in("id", allUserIds)
+      : Promise.resolve({ data: [] }),
+    user && postIds.length
+      ? supabase.from("community_likes").select("post_id").eq("user_id", user.id).in("post_id", postIds)
+      : Promise.resolve({ data: [] }),
+    user && postIds.length
+      ? supabase.from("community_saves").select("post_id").eq("user_id", user.id).in("post_id", postIds)
+      : Promise.resolve({ data: [] }),
+  ]);
 
   const profileMap = new Map<string, PostAuthor>(
-    (profiles ?? []).map((p) => [p.id, p])
+    ((profilesResult.data ?? []) as PostAuthor[]).map((p) => [p.id, p])
   );
+
+  const likedIds = new Set((likedResult.data ?? []).map((r: { post_id: string }) => r.post_id));
+  const savedIds = new Set((savedResult.data ?? []).map((r: { post_id: string }) => r.post_id));
 
   const posts: CommunityPost[] = (rows ?? []).map((row) => ({
     ...row,
@@ -49,9 +56,7 @@ export default async function CommunitiesPage() {
     author: profileMap.get(row.user_id) ?? null,
   }));
 
-  const initialCursor =
-    posts.length === 20 ? posts[posts.length - 1].created_at : null;
-
+  const initialCursor = posts.length === 20 ? posts[posts.length - 1].created_at : null;
   const currentUser = user ? (profileMap.get(user.id) ?? null) : null;
 
   return (
@@ -63,6 +68,8 @@ export default async function CommunitiesPage() {
             initialPosts={posts}
             initialCursor={initialCursor}
             currentUser={currentUser}
+            initialLikedIds={[...likedIds]}
+            initialSavedIds={[...savedIds]}
           />
         </main>
       </div>
