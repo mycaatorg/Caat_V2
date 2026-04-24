@@ -15,6 +15,7 @@ import {
   GraduationCap,
   FolderOpen,
   ClipboardList,
+  Users,
 } from "lucide-react"
 
 import {
@@ -43,6 +44,7 @@ const apps = [
   { title: "Essays", icon: FileText, url: "/essays" },
   { title: "Scholarships", icon: GraduationCap, url: "/scholarships" },
   { title: "Documents", icon: FolderOpen, url: "/documents" },
+  { title: "Communities", icon: Users, url: "/communities" },
 ]
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
