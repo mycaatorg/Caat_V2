@@ -92,7 +92,8 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
 
   const timestamp = formatDistanceToNow(new Date(post.created_at), { addSuffix: true });
   const isOwnPost = currentUser?.id === post.user_id;
-  const canEdit = isOwnPost && (Date.now() - new Date(post.created_at).getTime()) < 24 * 3_600_000;
+  // Computed once at mount — edit window won't flip mid-session without a refresh
+  const [canEdit] = useState(() => isOwnPost && (Date.now() - new Date(post.created_at).getTime()) < 24 * 3_600_000);
 
   function handleLike() {
     startTransition(async () => {

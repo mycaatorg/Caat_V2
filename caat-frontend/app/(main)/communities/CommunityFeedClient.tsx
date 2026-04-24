@@ -76,16 +76,21 @@ export function CommunityFeedClient({
   // Debounced search (fires on query or topic-only filter change)
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    if (!searchQuery.trim() && topicFilter === "all") { setSearchResults(null); return; }
-    setIsSearching(true);
+    const inactive = !searchQuery.trim() && topicFilter === "all";
     searchDebounceRef.current = setTimeout(async () => {
+      if (inactive) {
+        setSearchResults(null);
+        setIsSearching(false);
+        return;
+      }
+      setIsSearching(true);
       const { posts: results } = await searchPostsAction(
         searchQuery.trim() || "",
         topicFilter !== "all" ? topicFilter : undefined
       );
       setSearchResults(results);
       setIsSearching(false);
-    }, 350);
+    }, inactive ? 0 : 350);
     return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
   }, [searchQuery, topicFilter]);
 
