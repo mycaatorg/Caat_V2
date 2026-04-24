@@ -2,26 +2,172 @@
 
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { containsProfanity } from "@/lib/profanity-filter";
-import type { CommunityPost, CommunityComment, NotificationItem, PostAuthor, TopicTag, ResultCard, ScoreCard, PrivacySettings, CommunityProfileData } from "@/types/community";
+import type {
+  CommunityPost, CommunityComment, NotificationItem, PostAuthor,
+  TopicTag, ResultCard, ScoreCard, PollOption, PrivacySettings, CommunityProfileData,
+} from "@/types/community";
 
 const VALID_TOPICS: TopicTag[] = [
-  "APPLICATION_RESULTS",
-  "ESSAYS",
-  "TEST_SCORES",
-  "EXTRACURRICULARS",
-  "ADVICE",
-  "SCHOLARSHIPS",
+  "APPLICATION_RESULTS", "ESSAYS", "TEST_SCORES",
+  "EXTRACURRICULARS", "ADVICE", "SCHOLARSHIPS",
 ];
+
+// ─── Shared enrichment helper ─────────────────────────────────────────────────
+
+type SupabaseClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
+async function enrichPosts(
+  supabase: SupabaseClient,
+  rows: Record<string, unknown>[],
+  currentUserId?: string
+): Promise<CommunityPost[]> {
+  if (!rows.length) return [];
+
+  const userIds = [...new Set(rows.map((r) => r.user_id as string))];
+  const resumeIds = rows.map((r) => r.resume_link as string | null).filter((id): id is string => !!id);
+  const universityIds = rows.map((r) => r.university_id as number | null).filter((id): id is number => id != null);
+  const pollPostIds = rows.filter((r) => r.poll_options != null).map((r) => r.id as string);
+
+  const postIds = rows.map((r) => r.id as string);
+
+  const [profilesRes, resumesRes, schoolsRes, pollVotesRes, userVotesRes, savesRes] = await Promise.all([
+    supabase.from("profiles").select("id, first_name, last_name, avatar_url, is_verified").in("id", userIds),
+    resumeIds.length
+      ? supabase.from("resumes").select("id, title").in("id", resumeIds)
+      : Promise.resolve({ data: [] as { id: string; title: string }[] }),
+    universityIds.length
+      ? supabase.from("schools").select("id, name").in("id", universityIds)
+      : Promise.resolve({ data: [] as { id: number; name: string }[] }),
+    pollPostIds.length
+      ? supabase.from("community_poll_votes").select("post_id, option_id").in("post_id", pollPostIds)
+      : Promise.resolve({ data: [] as { post_id: string; option_id: string }[] }),
+    currentUserId && pollPostIds.length
+      ? supabase.from("community_poll_votes").select("post_id, option_id").eq("user_id", currentUserId).in("post_id", pollPostIds)
+      : Promise.resolve({ data: [] as { post_id: string; option_id: string }[] }),
+    supabase.from("community_saves").select("post_id").in("post_id", postIds),
+  ]);
+
+  type ProfileRow = { id: string; first_name: string | null; last_name: string | null; avatar_url: string | null; is_verified: boolean };
+  const profileMap = new Map<string, ProfileRow>(
+    ((profilesRes.data ?? []) as ProfileRow[]).map((p) => [p.id, p])
+  );
+  const resumeTitleMap = new Map(
+    ((resumesRes.data ?? []) as { id: string; title: string }[]).map((r) => [r.id, r.title])
+  );
+  const schoolNameMap = new Map(
+    ((schoolsRes.data ?? []) as { id: number; name: string }[]).map((s) => [s.id, s.name])
+  );
+
+  const pollCountMap = new Map<string, Record<string, number>>();
+  for (const v of (pollVotesRes.data ?? []) as { post_id: string; option_id: string }[]) {
+    if (!pollCountMap.has(v.post_id)) pollCountMap.set(v.post_id, {});
+    const m = pollCountMap.get(v.post_id)!;
+    m[v.option_id] = (m[v.option_id] ?? 0) + 1;
+  }
+  const userVoteMap = new Map(
+    ((userVotesRes.data ?? []) as { post_id: string; option_id: string }[]).map((v) => [v.post_id, v.option_id])
+  );
+
+  const savesCountMap = new Map<string, number>();
+  for (const s of (savesRes.data ?? []) as { post_id: string }[]) {
+    savesCountMap.set(s.post_id, (savesCountMap.get(s.post_id) ?? 0) + 1);
+  }
+
+  return rows.map((row) => {
+    const isAnon = (row.is_anonymous as boolean | null) ?? false;
+    const p = profileMap.get(row.user_id as string) ?? null;
+    const author: PostAuthor | null = isAnon ? null : (p ? { id: p.id, first_name: p.first_name, last_name: p.last_name, avatar_url: p.avatar_url, is_verified: p.is_verified ?? false } : null);
+    return {
+      id: row.id as string,
+      user_id: row.user_id as string,
+      content: row.content as string,
+      topic_tag: row.topic_tag as TopicTag,
+      university_id: (row.university_id as number | null) ?? null,
+      school_name: row.university_id ? (schoolNameMap.get(row.university_id as number) ?? null) : null,
+      major_id: (row.major_id as string | null) ?? null,
+      result_card: (row.result_card as ResultCard | null) ?? null,
+      score_card: (row.score_card as ScoreCard | null) ?? null,
+      resume_id: (row.resume_link as string | null) ?? null,
+      resume_title: row.resume_link ? (resumeTitleMap.get(row.resume_link as string) ?? null) : null,
+      is_anonymous: isAnon,
+      is_hidden: (row.is_hidden as boolean) ?? false,
+      edited_at: (row.edited_at as string | null) ?? null,
+      poll_options: (row.poll_options as PollOption[] | null) ?? null,
+      poll_votes: pollCountMap.get(row.id as string) ?? null,
+      user_vote: userVoteMap.get(row.id as string) ?? null,
+      created_at: row.created_at as string,
+      updated_at: row.updated_at as string,
+      likes_count: ((row.likes as { count: number }[] | undefined)?.[0]?.count) ?? 0,
+      comments_count: ((row.comments as { count: number }[] | undefined)?.[0]?.count) ?? 0,
+      saves_count: savesCountMap.get(row.id as string) ?? 0,
+      author,
+    };
+  });
+}
+
+// ─── Resume helpers ───────────────────────────────────────────────────────────
+
+export async function fetchUserResumesAction(): Promise<{ id: string; title: string }[]> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data } = await supabase
+    .from("resumes").select("id, title").eq("user_id", user.id).order("created_at", { ascending: false });
+  return (data ?? []).map((r) => ({ id: r.id, title: r.title ?? "Untitled" }));
+}
+
+export async function fetchResumeForViewAction(resumeId: string): Promise<{
+  title: string | null;
+  sections: { id: string; type: string; label: string; mode: string; contentHtml: string; structuredData?: Record<string, unknown> }[] | null;
+  error: string | null;
+}> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { title: null, sections: null, error: "Not signed in" };
+
+  const { data: resume } = await supabase.from("resumes").select("id, title").eq("id", resumeId).maybeSingle();
+  if (!resume) return { title: null, sections: null, error: "Resume not found" };
+
+  const { data: rows } = await supabase
+    .from("resume_sections").select("*").eq("resume_id", resumeId).order("sort_order", { ascending: true });
+
+  return {
+    title: resume.title,
+    sections: (rows ?? []).map((row) => ({
+      id: row.id as string,
+      type: row.section_key as string,
+      label: row.label as string,
+      mode: row.mode as string,
+      contentHtml: row.content_html as string,
+      structuredData: (row.structured_data as Record<string, unknown>) ?? undefined,
+    })),
+    error: null,
+  };
+}
+
+// ─── School search ────────────────────────────────────────────────────────────
+
+export async function searchSchoolsAction(query: string): Promise<{ id: number; name: string }[]> {
+  if (!query.trim()) return [];
+  const supabase = await createSupabaseServer();
+  const { data } = await supabase
+    .from("schools").select("id, name").ilike("name", `%${query.trim()}%`).limit(8);
+  return (data ?? []) as { id: number; name: string }[];
+}
+
+// ─── Post creation ────────────────────────────────────────────────────────────
 
 export async function createPostAction(input: {
   content: string;
   topic_tag: TopicTag;
   result_card?: ResultCard | null;
   score_card?: ScoreCard | null;
-  resume_link?: string | null;
+  resume_id?: string | null;
+  is_anonymous?: boolean;
+  university_id?: number | null;
+  poll_options?: PollOption[] | null;
 }): Promise<{ post: CommunityPost | null; error: string | null }> {
   const supabase = await createSupabaseServer();
-
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return { post: null, error: "Not signed in" };
 
@@ -31,6 +177,16 @@ export async function createPostAction(input: {
   if (!VALID_TOPICS.includes(input.topic_tag)) return { post: null, error: "Invalid topic" };
   if (containsProfanity(content)) return { post: null, error: "Post contains prohibited language" };
 
+  if (input.resume_id) {
+    const { data: resume } = await supabase.from("resumes").select("id").eq("id", input.resume_id).eq("user_id", user.id).maybeSingle();
+    if (!resume) return { post: null, error: "Resume not found" };
+  }
+
+  if (input.poll_options) {
+    if (input.poll_options.length < 2) return { post: null, error: "Polls need at least 2 options" };
+    if (input.poll_options.some((o) => !o.text.trim())) return { post: null, error: "All poll options must have text" };
+  }
+
   const { data: row, error: insertError } = await supabase
     .from("community_posts")
     .insert({
@@ -39,46 +195,79 @@ export async function createPostAction(input: {
       topic_tag: input.topic_tag,
       result_card: input.result_card ?? null,
       score_card: input.score_card ?? null,
-      resume_link: input.resume_link ?? null,
+      resume_link: input.resume_id ?? null,
+      is_anonymous: input.is_anonymous ?? false,
+      university_id: input.university_id ?? null,
+      poll_options: input.poll_options ?? null,
     })
     .select("*, likes:community_likes(count), comments:community_comments(count)")
     .single();
 
   if (insertError || !row) return { post: null, error: "Failed to create post" };
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, first_name, last_name, avatar_url")
-    .eq("id", user.id)
-    .single();
-
-  const post: CommunityPost = {
-    ...row,
-    likes_count: 0,
-    comments_count: 0,
-    author: profile ?? null,
-  };
-
-  return { post, error: null };
+  const posts = await enrichPosts(supabase, [row as Record<string, unknown>], user.id);
+  return { post: posts[0] ?? null, error: null };
 }
+
+// ─── Post editing ─────────────────────────────────────────────────────────────
+
+export async function updatePostAction(
+  postId: string,
+  content: string
+): Promise<{ error: string | null }> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  const text = content.trim();
+  if (!text) return { error: "Post cannot be empty" };
+  if (text.length > 2000) return { error: "Post exceeds 2000 characters" };
+  if (containsProfanity(text)) return { error: "Post contains prohibited language" };
+
+  const { data: post } = await supabase
+    .from("community_posts").select("user_id, created_at").eq("id", postId).single();
+  if (!post || post.user_id !== user.id) return { error: "Not authorized" };
+
+  const hoursDiff = (Date.now() - new Date(post.created_at as string).getTime()) / 3_600_000;
+  if (hoursDiff > 24) return { error: "Posts can only be edited within 24 hours" };
+
+  const { error } = await supabase
+    .from("community_posts")
+    .update({ content: text, edited_at: new Date().toISOString() })
+    .eq("id", postId).eq("user_id", user.id);
+
+  return { error: error?.message ?? null };
+}
+
+// ─── Feed (all / following) ───────────────────────────────────────────────────
 
 export async function fetchPostsAction(
   cursor?: string,
   followingOnly?: boolean
 ): Promise<{ posts: CommunityPost[]; nextCursor: string | null }> {
   const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  // For the following tab, scope to followee user IDs
   let followeeIds: string[] | null = null;
   if (followingOnly) {
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { posts: [], nextCursor: null };
     const { data: follows } = await supabase
-      .from("community_follows")
-      .select("followee_id")
-      .eq("follower_id", user.id);
-    followeeIds = (follows ?? []).map((f) => f.followee_id);
+      .from("community_follows").select("followee_id").eq("follower_id", user.id);
+    followeeIds = (follows ?? []).map((f) => f.followee_id as string);
     if (followeeIds.length === 0) return { posts: [], nextCursor: null };
+  }
+
+  // Exclude posts from users blocked by or who blocked the viewer
+  let blockedIds: string[] = [];
+  if (user) {
+    const [blockedByMe, blockedMe] = await Promise.all([
+      supabase.from("community_blocks").select("blocked_id").eq("blocker_id", user.id),
+      supabase.from("community_blocks").select("blocker_id").eq("blocked_id", user.id),
+    ]);
+    blockedIds = [
+      ...((blockedByMe.data ?? []).map((r) => r.blocked_id as string)),
+      ...((blockedMe.data ?? []).map((r) => r.blocker_id as string)),
+    ];
   }
 
   let query = supabase
@@ -90,123 +279,161 @@ export async function fetchPostsAction(
 
   if (cursor) query = query.lt("created_at", cursor);
   if (followeeIds) query = query.in("user_id", followeeIds);
+  if (blockedIds.length) query = query.not("user_id", "in", `(${blockedIds.join(",")})`);
 
   const { data: rows, error } = await query;
-
   if (error || !rows) return { posts: [], nextCursor: null };
 
-  // Fetch author profiles for this batch
-  const userIds = [...new Set(rows.map((r) => r.user_id))];
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, first_name, last_name, avatar_url")
-    .in("id", userIds);
-
-  const profileMap = new Map<string, PostAuthor>(
-    (profiles ?? []).map((p) => [p.id, p])
-  );
-
-  const posts: CommunityPost[] = rows.map((row) => ({
-    ...row,
-    likes_count: (row.likes as { count: number }[])[0]?.count ?? 0,
-    comments_count: (row.comments as { count: number }[])[0]?.count ?? 0,
-    author: profileMap.get(row.user_id) ?? null,
-  }));
-
-  const nextCursor =
-    rows.length === 20 ? rows[rows.length - 1].created_at : null;
-
+  const posts = await enrichPosts(supabase, rows as Record<string, unknown>[], user?.id);
+  const nextCursor = rows.length === 20 ? rows[rows.length - 1].created_at as string : null;
   return { posts, nextCursor };
 }
 
-// ─── Feed (with followingOnly support) ───────────────────────────────────────
+// ─── Feed (trending — top 20 by engagement in last 7 days) ───────────────────
+
+export async function fetchTrendingPostsAction(): Promise<{ posts: CommunityPost[] }> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: rows } = await supabase
+    .from("community_posts")
+    .select("*, likes:community_likes(count), comments:community_comments(count)")
+    .eq("is_hidden", false)
+    .gte("created_at", sevenDaysAgo)
+    .limit(50);
+
+  if (!rows?.length) return { posts: [] };
+
+  const sorted = [...rows].sort((a, b) => {
+    const aScore = ((a.likes as { count: number }[])?.[0]?.count ?? 0) + ((a.comments as { count: number }[])?.[0]?.count ?? 0);
+    const bScore = ((b.likes as { count: number }[])?.[0]?.count ?? 0) + ((b.comments as { count: number }[])?.[0]?.count ?? 0);
+    return bScore - aScore;
+  }).slice(0, 20);
+
+  const posts = await enrichPosts(supabase, sorted as Record<string, unknown>[], user?.id);
+  return { posts };
+}
+
+// ─── Feed (user profile) ─────────────────────────────────────────────────────
 
 export async function fetchPostsByUserAction(
   userId: string,
   cursor?: string
 ): Promise<{ posts: CommunityPost[]; nextCursor: string | null }> {
   const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
 
   let query = supabase
     .from("community_posts")
     .select("*, likes:community_likes(count), comments:community_comments(count)")
-    .eq("is_hidden", false)
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(20);
+    .eq("is_hidden", false).eq("user_id", userId)
+    .order("created_at", { ascending: false }).limit(20);
 
   if (cursor) query = query.lt("created_at", cursor);
-
   const { data: rows, error } = await query;
   if (error || !rows) return { posts: [], nextCursor: null };
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, first_name, last_name, avatar_url")
-    .eq("id", userId)
-    .single();
+  const posts = await enrichPosts(supabase, rows as Record<string, unknown>[], user?.id);
+  return { posts, nextCursor: rows.length === 20 ? rows[rows.length - 1].created_at as string : null };
+}
 
-  const posts: CommunityPost[] = rows.map((row) => ({
-    ...row,
-    likes_count: (row.likes as { count: number }[])[0]?.count ?? 0,
-    comments_count: (row.comments as { count: number }[])[0]?.count ?? 0,
-    author: profile ?? null,
-  }));
+// ─── Search ───────────────────────────────────────────────────────────────────
 
-  return {
-    posts,
-    nextCursor: rows.length === 20 ? rows[rows.length - 1].created_at : null,
-  };
+export async function searchPostsAction(
+  query: string,
+  topicFilter?: TopicTag
+): Promise<{ posts: CommunityPost[] }> {
+  if (!query.trim() && !topicFilter) return { posts: [] };
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  let q = supabase
+    .from("community_posts")
+    .select("*, likes:community_likes(count), comments:community_comments(count)")
+    .eq("is_hidden", false)
+    .order("created_at", { ascending: false })
+    .limit(30);
+
+  if (query.trim()) q = q.ilike("content", `%${query.trim()}%`);
+  if (topicFilter) q = q.eq("topic_tag", topicFilter);
+
+  const { data: rows } = await q;
+  if (!rows?.length) return { posts: [] };
+  const posts = await enrichPosts(supabase, rows as Record<string, unknown>[], user?.id);
+  return { posts };
+}
+
+// ─── Saved posts ──────────────────────────────────────────────────────────────
+
+export async function fetchSavedPostsAction(
+  cursor?: string
+): Promise<{ posts: CommunityPost[]; nextCursor: string | null }> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { posts: [], nextCursor: null };
+
+  let savesQuery = supabase
+    .from("community_saves")
+    .select("post_id, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (cursor) savesQuery = savesQuery.lt("created_at", cursor);
+  const { data: saves } = await savesQuery;
+  if (!saves?.length) return { posts: [], nextCursor: null };
+
+  const postIds = saves.map((s) => s.post_id as string);
+  const { data: rows } = await supabase
+    .from("community_posts")
+    .select("*, likes:community_likes(count), comments:community_comments(count)")
+    .eq("is_hidden", false)
+    .in("id", postIds);
+
+  if (!rows?.length) return { posts: [], nextCursor: null };
+
+  const postMap = new Map((rows as Record<string, unknown>[]).map((r) => [r.id as string, r]));
+  const orderedRows = postIds.map((id) => postMap.get(id)).filter(Boolean) as Record<string, unknown>[];
+
+  const posts = await enrichPosts(supabase, orderedRows, user.id);
+  const nextCursor = saves.length === 20 ? saves[saves.length - 1].created_at as string : null;
+  return { posts, nextCursor };
 }
 
 // ─── Follows ─────────────────────────────────────────────────────────────────
 
-export async function followUserAction(
-  targetUserId: string
-): Promise<{ error: string | null }> {
+export async function followUserAction(targetUserId: string): Promise<{ error: string | null }> {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
   if (user.id === targetUserId) return { error: "Cannot follow yourself" };
-
-  await supabase
-    .from("community_follows")
-    .insert({ follower_id: user.id, followee_id: targetUserId });
+  await supabase.from("community_follows").insert({ follower_id: user.id, followee_id: targetUserId });
+  await supabase.from("notifications").insert({ user_id: targetUserId, actor_id: user.id, type: "follow", post_id: null });
   return { error: null };
 }
 
-export async function unfollowUserAction(
-  targetUserId: string
-): Promise<{ error: string | null }> {
+export async function unfollowUserAction(targetUserId: string): Promise<{ error: string | null }> {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
-
-  await supabase
-    .from("community_follows")
-    .delete()
-    .eq("follower_id", user.id)
-    .eq("followee_id", targetUserId);
+  await supabase.from("community_follows").delete().eq("follower_id", user.id).eq("followee_id", targetUserId);
   return { error: null };
 }
 
 // ─── Privacy settings ────────────────────────────────────────────────────────
 
-export async function updatePrivacySettingsAction(
-  settings: PrivacySettings
-): Promise<{ error: string | null }> {
+export async function updatePrivacySettingsAction(settings: PrivacySettings): Promise<{ error: string | null }> {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
-
   const { error } = await supabase
     .from("community_profile_settings")
     .upsert({ user_id: user.id, ...settings, updated_at: new Date().toISOString() });
-
   return { error: error?.message ?? null };
 }
 
-// ─── Community profile data ───────────────────────────────────────────────────
+// ─── Community profile ────────────────────────────────────────────────────────
 
 export async function fetchCommunityProfileAction(
   targetUserId: string
@@ -214,193 +441,149 @@ export async function fetchCommunityProfileAction(
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const [profileResult, settingsResult, followerResult, followingResult, isFollowingResult] =
-    await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id, first_name, last_name, avatar_url, graduation_year, school_name, preferred_countries, target_majors")
-        .eq("id", targetUserId)
-        .single(),
-      supabase
-        .from("community_profile_settings")
-        .select("*")
-        .eq("user_id", targetUserId)
-        .maybeSingle(),
-      supabase
-        .from("community_follows")
-        .select("follower_id", { count: "exact", head: true })
-        .eq("followee_id", targetUserId),
-      supabase
-        .from("community_follows")
-        .select("followee_id", { count: "exact", head: true })
-        .eq("follower_id", targetUserId),
-      user
-        ? supabase
-            .from("community_follows")
-            .select("followee_id")
-            .eq("follower_id", user.id)
-            .eq("followee_id", targetUserId)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
+  const [profileResult, settingsResult, followerResult, followingResult, isFollowingResult] = await Promise.all([
+    supabase.from("profiles").select("id, first_name, last_name, avatar_url, graduation_year, school_name, preferred_countries, target_majors").eq("id", targetUserId).single(),
+    supabase.from("community_profile_settings").select("*").eq("user_id", targetUserId).maybeSingle(),
+    supabase.from("community_follows").select("follower_id", { count: "exact", head: true }).eq("followee_id", targetUserId),
+    supabase.from("community_follows").select("followee_id", { count: "exact", head: true }).eq("follower_id", targetUserId),
+    user
+      ? supabase.from("community_follows").select("followee_id").eq("follower_id", user.id).eq("followee_id", targetUserId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
 
   if (!profileResult.data) return { profile: null, error: "User not found" };
-
   const p = profileResult.data;
-  const s = settingsResult.data ?? {
-    show_graduation_year: true,
-    show_school_name: true,
-    show_preferred_countries: false,
-    show_target_majors: false,
-  };
+  const s = settingsResult.data ?? { show_graduation_year: true, show_school_name: true, show_preferred_countries: false, show_target_majors: false };
 
-  const profile: CommunityProfileData = {
-    id: p.id,
-    first_name: p.first_name,
-    last_name: p.last_name,
-    avatar_url: p.avatar_url,
-    graduation_year: s.show_graduation_year ? p.graduation_year : null,
-    school_name: s.show_school_name ? p.school_name : null,
-    preferred_countries: s.show_preferred_countries ? (p.preferred_countries ?? []) : [],
-    target_majors: s.show_target_majors ? (p.target_majors ?? []) : [],
-    follower_count: followerResult.count ?? 0,
-    following_count: followingResult.count ?? 0,
-    is_following: !!isFollowingResult.data,
-    is_own_profile: user?.id === targetUserId,
-    privacy: {
-      show_graduation_year: s.show_graduation_year,
-      show_school_name: s.show_school_name,
-      show_preferred_countries: s.show_preferred_countries,
-      show_target_majors: s.show_target_majors,
+  return {
+    profile: {
+      id: p.id,
+      first_name: p.first_name,
+      last_name: p.last_name,
+      avatar_url: p.avatar_url,
+      graduation_year: s.show_graduation_year ? p.graduation_year : null,
+      school_name: s.show_school_name ? p.school_name : null,
+      preferred_countries: s.show_preferred_countries ? (p.preferred_countries ?? []) : [],
+      target_majors: s.show_target_majors ? (p.target_majors ?? []) : [],
+      follower_count: followerResult.count ?? 0,
+      following_count: followingResult.count ?? 0,
+      is_following: !!isFollowingResult.data,
+      is_own_profile: user?.id === targetUserId,
+      privacy: { show_graduation_year: s.show_graduation_year, show_school_name: s.show_school_name, show_preferred_countries: s.show_preferred_countries, show_target_majors: s.show_target_majors },
     },
+    error: null,
   };
-
-  return { profile, error: null };
 }
 
 // ─── Likes ───────────────────────────────────────────────────────────────────
 
-export async function toggleLikeAction(
-  postId: string
-): Promise<{ liked: boolean; error: string | null }> {
+export async function toggleLikeAction(postId: string): Promise<{ liked: boolean; error: string | null }> {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { liked: false, error: "Not signed in" };
 
-  const { data: existing } = await supabase
-    .from("community_likes")
-    .select("post_id")
-    .eq("post_id", postId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: existing } = await supabase.from("community_likes").select("post_id").eq("post_id", postId).eq("user_id", user.id).maybeSingle();
 
   if (existing) {
-    await supabase
-      .from("community_likes")
-      .delete()
-      .eq("post_id", postId)
-      .eq("user_id", user.id);
+    await supabase.from("community_likes").delete().eq("post_id", postId).eq("user_id", user.id);
     return { liked: false, error: null };
   }
 
-  await supabase
-    .from("community_likes")
-    .insert({ post_id: postId, user_id: user.id });
+  await supabase.from("community_likes").insert({ post_id: postId, user_id: user.id });
 
-  // Notify post author (not if self-like)
-  const { data: post } = await supabase
-    .from("community_posts")
-    .select("user_id")
-    .eq("id", postId)
-    .single();
+  const { data: post } = await supabase.from("community_posts").select("user_id").eq("id", postId).single();
   if (post && post.user_id !== user.id) {
-    await supabase.from("notifications").insert({
-      user_id: post.user_id,
-      actor_id: user.id,
-      type: "like",
-      post_id: postId,
-    });
+    await supabase.from("notifications").insert({ user_id: post.user_id, actor_id: user.id, type: "like", post_id: postId });
   }
-
   return { liked: true, error: null };
 }
 
 // ─── Saves ───────────────────────────────────────────────────────────────────
 
-export async function toggleSaveAction(
-  postId: string
-): Promise<{ saved: boolean; error: string | null }> {
+export async function toggleSaveAction(postId: string): Promise<{ saved: boolean; error: string | null }> {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { saved: false, error: "Not signed in" };
 
-  const { data: existing } = await supabase
-    .from("community_saves")
-    .select("post_id")
-    .eq("post_id", postId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: existing } = await supabase.from("community_saves").select("post_id").eq("post_id", postId).eq("user_id", user.id).maybeSingle();
 
   if (existing) {
-    await supabase
-      .from("community_saves")
-      .delete()
-      .eq("post_id", postId)
-      .eq("user_id", user.id);
+    await supabase.from("community_saves").delete().eq("post_id", postId).eq("user_id", user.id);
     return { saved: false, error: null };
   }
-
-  await supabase
-    .from("community_saves")
-    .insert({ post_id: postId, user_id: user.id });
+  await supabase.from("community_saves").insert({ post_id: postId, user_id: user.id });
   return { saved: true, error: null };
+}
+
+// ─── Poll voting ──────────────────────────────────────────────────────────────
+
+export async function castPollVoteAction(
+  postId: string,
+  optionId: string | null
+): Promise<{ error: string | null }> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  if (optionId === null) {
+    await supabase.from("community_poll_votes").delete().eq("post_id", postId).eq("user_id", user.id);
+  } else {
+    await supabase.from("community_poll_votes").upsert(
+      { post_id: postId, user_id: user.id, option_id: optionId },
+      { onConflict: "post_id,user_id" }
+    );
+  }
+  return { error: null };
 }
 
 // ─── Comments ────────────────────────────────────────────────────────────────
 
-export async function fetchCommentsAction(
-  postId: string
-): Promise<{ comments: CommunityComment[]; error: string | null }> {
+export async function fetchCommentsAction(postId: string): Promise<{ comments: CommunityComment[]; error: string | null }> {
   const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
 
   const { data: rows, error } = await supabase
-    .from("community_comments")
-    .select("*")
-    .eq("post_id", postId)
-    .order("created_at", { ascending: true });
+    .from("community_comments").select("*").eq("post_id", postId).order("created_at", { ascending: true });
 
   if (error || !rows) return { comments: [], error: error?.message ?? "Failed to load" };
 
-  const userIds = [...new Set(rows.map((r) => r.user_id))];
-  const { data: profiles } = userIds.length
-    ? await supabase
-        .from("profiles")
-        .select("id, first_name, last_name, avatar_url")
-        .in("id", userIds)
-    : { data: [] };
+  const commentIds = rows.map((r) => r.id as string);
+  const userIds = [...new Set(rows.map((r) => r.user_id as string))];
 
-  const profileMap = new Map<string, PostAuthor>(
-    (profiles ?? []).map((p) => [p.id, p])
-  );
+  const [profilesRes, likesRes, userLikesRes] = await Promise.all([
+    userIds.length
+      ? supabase.from("profiles").select("id, first_name, last_name, avatar_url").in("id", userIds)
+      : Promise.resolve({ data: [] }),
+    commentIds.length
+      ? supabase.from("community_comment_likes").select("comment_id").in("comment_id", commentIds)
+      : Promise.resolve({ data: [] }),
+    user && commentIds.length
+      ? supabase.from("community_comment_likes").select("comment_id").eq("user_id", user.id).in("comment_id", commentIds)
+      : Promise.resolve({ data: [] }),
+  ]);
 
-  // Build flat list then nest replies under parents
+  const profileMap = new Map<string, PostAuthor>(((profilesRes.data ?? []) as PostAuthor[]).map((p) => [p.id, p]));
+
+  const likeCountMap = new Map<string, number>();
+  for (const l of (likesRes.data ?? []) as { comment_id: string }[]) {
+    likeCountMap.set(l.comment_id, (likeCountMap.get(l.comment_id) ?? 0) + 1);
+  }
+  const userLikedSet = new Set(((userLikesRes.data ?? []) as { comment_id: string }[]).map((l) => l.comment_id));
+
   const allComments: CommunityComment[] = rows.map((row) => ({
-    ...row,
-    author: profileMap.get(row.user_id) ?? null,
+    ...row as CommunityComment,
+    author: profileMap.get(row.user_id as string) ?? null,
+    likes_count: likeCountMap.get(row.id as string) ?? 0,
+    is_liked_by_user: userLikedSet.has(row.id as string),
     replies: [],
   }));
 
   const topLevel: CommunityComment[] = [];
   const byId = new Map(allComments.map((c) => [c.id, c]));
-
   for (const comment of allComments) {
-    if (comment.parent_comment_id) {
-      byId.get(comment.parent_comment_id)?.replies.push(comment);
-    } else {
-      topLevel.push(comment);
-    }
+    if (comment.parent_comment_id) byId.get(comment.parent_comment_id)?.replies.push(comment);
+    else topLevel.push(comment);
   }
-
   return { comments: topLevel, error: null };
 }
 
@@ -420,174 +603,221 @@ export async function addCommentAction(
 
   const { data: row, error: insertError } = await supabase
     .from("community_comments")
-    .insert({
-      post_id: postId,
-      user_id: user.id,
-      content: text,
-      parent_comment_id: parentCommentId ?? null,
-    })
-    .select("*")
-    .single();
+    .insert({ post_id: postId, user_id: user.id, content: text, parent_comment_id: parentCommentId ?? null })
+    .select("*").single();
 
   if (insertError || !row) return { comment: null, error: "Failed to post comment" };
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, first_name, last_name, avatar_url")
-    .eq("id", user.id)
-    .single();
-
-  // Notify post author if not the commenter
-  const { data: post } = await supabase
-    .from("community_posts")
-    .select("user_id")
-    .eq("id", postId)
-    .single();
+  const { data: profile } = await supabase.from("profiles").select("id, first_name, last_name, avatar_url").eq("id", user.id).single();
+  const { data: post } = await supabase.from("community_posts").select("user_id").eq("id", postId).single();
 
   if (post && post.user_id !== user.id) {
-    await supabase.from("notifications").insert({
-      user_id: post.user_id,
-      actor_id: user.id,
-      type: parentCommentId ? "reply" : "comment",
-      post_id: postId,
-      comment_id: row.id,
-    });
+    await supabase.from("notifications").insert({ user_id: post.user_id, actor_id: user.id, type: parentCommentId ? "reply" : "comment", post_id: postId, comment_id: row.id });
   }
-
-  // For replies: also notify the parent comment author if different from post author and self
   if (parentCommentId) {
-    const { data: parentComment } = await supabase
-      .from("community_comments")
-      .select("user_id")
-      .eq("id", parentCommentId)
-      .single();
-    if (
-      parentComment &&
-      parentComment.user_id !== user.id &&
-      parentComment.user_id !== post?.user_id
-    ) {
-      await supabase.from("notifications").insert({
-        user_id: parentComment.user_id,
-        actor_id: user.id,
-        type: "reply",
-        post_id: postId,
-        comment_id: row.id,
-      });
+    const { data: parentComment } = await supabase.from("community_comments").select("user_id").eq("id", parentCommentId).single();
+    if (parentComment && parentComment.user_id !== user.id && parentComment.user_id !== post?.user_id) {
+      await supabase.from("notifications").insert({ user_id: parentComment.user_id, actor_id: user.id, type: "reply", post_id: postId, comment_id: row.id });
     }
   }
 
-  const comment: CommunityComment = {
-    ...row,
-    author: profile ?? null,
-    replies: [],
-  };
-
-  return { comment, error: null };
+  return { comment: { ...(row as CommunityComment), author: (profile as PostAuthor) ?? null, likes_count: 0, is_liked_by_user: false, replies: [] }, error: null };
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 
-export async function fetchNotificationsAction(): Promise<{
-  notifications: NotificationItem[];
-  unreadCount: number;
-}> {
+export async function fetchNotificationsAction(limit = 20): Promise<{ notifications: NotificationItem[]; unreadCount: number }> {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { notifications: [], unreadCount: 0 };
 
-  const { data: rows } = await supabase
-    .from("notifications")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
+  const { data: rows } = await supabase.from("notifications").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(limit);
   if (!rows?.length) return { notifications: [], unreadCount: 0 };
 
-  const actorIds = [...new Set(rows.map((r) => r.actor_id))];
-  const postIds  = [...new Set(rows.map((r) => r.post_id))];
+  const actorIds = [...new Set(rows.map((r) => r.actor_id as string).filter(Boolean))];
+  const postIds  = [...new Set(rows.map((r) => r.post_id as string).filter(Boolean))];
 
   const [profilesResult, postsResult] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, first_name, last_name, avatar_url")
-      .in("id", actorIds),
-    supabase
-      .from("community_posts")
-      .select("id, content")
-      .in("id", postIds),
+    actorIds.length ? supabase.from("profiles").select("id, first_name, last_name, avatar_url").in("id", actorIds) : Promise.resolve({ data: [] }),
+    postIds.length  ? supabase.from("community_posts").select("id, content").in("id", postIds) : Promise.resolve({ data: [] }),
   ]);
 
-  const actorMap = new Map(
-    (profilesResult.data ?? []).map((p) => [
-      p.id,
-      {
-        name: [p.first_name, p.last_name].filter(Boolean).join(" ") || "Someone",
-        avatar: p.avatar_url as string | null,
-      },
-    ])
-  );
-  const postMap = new Map(
-    (postsResult.data ?? []).map((p) => [p.id, (p.content as string).slice(0, 60)])
-  );
+  const actorMap = new Map(((profilesResult.data ?? []) as { id: string; first_name: string | null; last_name: string | null; avatar_url: string | null }[]).map((p) => [p.id, { name: [p.first_name, p.last_name].filter(Boolean).join(" ") || "Someone", avatar: p.avatar_url }]));
+  const postMap  = new Map(((postsResult.data ?? []) as { id: string; content: string }[]).map((p) => [p.id, p.content.slice(0, 60)]));
 
   const notifications: NotificationItem[] = rows.map((row) => ({
-    id: row.id,
+    id: row.id as string,
     type: row.type as NotificationItem["type"],
-    actor_name: actorMap.get(row.actor_id)?.name ?? "Someone",
-    actor_avatar: actorMap.get(row.actor_id)?.avatar ?? null,
-    post_id: row.post_id,
-    post_snippet: postMap.get(row.post_id) ?? "",
-    is_read: row.is_read,
-    created_at: row.created_at,
+    actor_name: actorMap.get(row.actor_id as string)?.name ?? "Someone",
+    actor_avatar: actorMap.get(row.actor_id as string)?.avatar ?? null,
+    post_id: (row.post_id as string | null) ?? null,
+    post_snippet: postMap.get(row.post_id as string) ?? "",
+    is_read: row.is_read as boolean,
+    created_at: row.created_at as string,
   }));
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
-
-  return { notifications, unreadCount };
+  return { notifications, unreadCount: notifications.filter((n) => !n.is_read).length };
 }
 
 export async function markNotificationsReadAction(): Promise<void> {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
-
-  await supabase
-    .from("notifications")
-    .update({ is_read: true })
-    .eq("user_id", user.id)
-    .eq("is_read", false);
+  await supabase.from("notifications").update({ is_read: true }).eq("user_id", user.id).eq("is_read", false);
 }
 
 // ─── Moderation ───────────────────────────────────────────────────────────────
 
-export async function reportPostAction(
-  postId: string
-): Promise<{ error: string | null }> {
+export async function reportPostAction(postId: string): Promise<{ error: string | null }> {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
-
-  // UNIQUE (post_id, reporter_id) — silently ignore duplicate reports
-  await supabase
-    .from("community_reports")
-    .upsert({ post_id: postId, reporter_id: user.id });
-
+  await supabase.from("community_reports").upsert({ post_id: postId, reporter_id: user.id });
   return { error: null };
 }
 
-export async function deletePostAction(
-  postId: string
-): Promise<{ error: string | null }> {
+export async function deletePostAction(postId: string): Promise<{ error: string | null }> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+  const { error } = await supabase.from("community_posts").delete().eq("id", postId).eq("user_id", user.id);
+  return { error: error?.message ?? null };
+}
+
+// ─── Comment Likes ────────────────────────────────────────────────────────────
+
+export async function toggleCommentLikeAction(commentId: string): Promise<{ liked: boolean; error: string | null }> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { liked: false, error: "Not signed in" };
+
+  const { data: existing } = await supabase
+    .from("community_comment_likes")
+    .select("comment_id")
+    .eq("comment_id", commentId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase.from("community_comment_likes").delete().eq("comment_id", commentId).eq("user_id", user.id);
+    return { liked: false, error: null };
+  }
+  await supabase.from("community_comment_likes").insert({ comment_id: commentId, user_id: user.id });
+  return { liked: true, error: null };
+}
+
+// ─── Blocks ───────────────────────────────────────────────────────────────────
+
+export async function blockUserAction(targetUserId: string): Promise<{ error: string | null }> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+  if (user.id === targetUserId) return { error: "Cannot block yourself" };
+  await supabase.from("community_blocks").upsert({ blocker_id: user.id, blocked_id: targetUserId });
+  // Also unfollow both ways
+  await Promise.all([
+    supabase.from("community_follows").delete().eq("follower_id", user.id).eq("followee_id", targetUserId),
+    supabase.from("community_follows").delete().eq("follower_id", targetUserId).eq("followee_id", user.id),
+  ]);
+  return { error: null };
+}
+
+export async function unblockUserAction(targetUserId: string): Promise<{ error: string | null }> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+  await supabase.from("community_blocks").delete().eq("blocker_id", user.id).eq("blocked_id", targetUserId);
+  return { error: null };
+}
+
+// ─── Followers / Following ────────────────────────────────────────────────────
+
+export async function fetchFollowersAction(userId: string): Promise<{ users: PostAuthor[] }> {
+  const supabase = await createSupabaseServer();
+  const { data: rows } = await supabase
+    .from("community_follows")
+    .select("follower_id")
+    .eq("followee_id", userId)
+    .limit(100);
+
+  if (!rows?.length) return { users: [] };
+  const ids = rows.map((r) => r.follower_id as string);
+  const { data: profiles } = await supabase
+    .from("profiles").select("id, first_name, last_name, avatar_url").in("id", ids);
+  return { users: (profiles ?? []) as PostAuthor[] };
+}
+
+export async function fetchFollowingAction(userId: string): Promise<{ users: PostAuthor[] }> {
+  const supabase = await createSupabaseServer();
+  const { data: rows } = await supabase
+    .from("community_follows")
+    .select("followee_id")
+    .eq("follower_id", userId)
+    .limit(100);
+
+  if (!rows?.length) return { users: [] };
+  const ids = rows.map((r) => r.followee_id as string);
+  const { data: profiles } = await supabase
+    .from("profiles").select("id, first_name, last_name, avatar_url").in("id", ids);
+  return { users: (profiles ?? []) as PostAuthor[] };
+}
+
+// ─── Recommended Users ────────────────────────────────────────────────────────
+
+export async function fetchRecommendedUsersAction(): Promise<{ users: PostAuthor[] }> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { users: [] };
+
+  // Exclude people already followed + blocked
+  const [followingRes, blocksRes] = await Promise.all([
+    supabase.from("community_follows").select("followee_id").eq("follower_id", user.id),
+    supabase.from("community_blocks").select("blocked_id").eq("blocker_id", user.id),
+  ]);
+  const excludeIds = new Set([
+    user.id,
+    ...((followingRes.data ?? []).map((r) => r.followee_id as string)),
+    ...((blocksRes.data ?? []).map((r) => r.blocked_id as string)),
+  ]);
+
+  // Pick most active recent posters
+  const { data: rows } = await supabase
+    .from("community_posts")
+    .select("user_id")
+    .eq("is_hidden", false)
+    .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+    .limit(200);
+
+  if (!rows?.length) return { users: [] };
+
+  const freq = new Map<string, number>();
+  for (const r of rows) {
+    const id = r.user_id as string;
+    if (!excludeIds.has(id)) freq.set(id, (freq.get(id) ?? 0) + 1);
+  }
+
+  const topIds = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id]) => id);
+  if (!topIds.length) return { users: [] };
+
+  const { data: profiles } = await supabase
+    .from("profiles").select("id, first_name, last_name, avatar_url").in("id", topIds);
+  return { users: (profiles ?? []) as PostAuthor[] };
+}
+
+// ─── Pin Post ─────────────────────────────────────────────────────────────────
+
+export async function pinPostAction(postId: string | null): Promise<{ error: string | null }> {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
 
-  const { error } = await supabase
-    .from("community_posts")
-    .delete()
-    .eq("id", postId)
-    .eq("user_id", user.id);
+  if (postId) {
+    const { data: post } = await supabase.from("community_posts").select("user_id").eq("id", postId).single();
+    if (!post || post.user_id !== user.id) return { error: "Not authorized" };
+  }
 
+  const { error } = await supabase
+    .from("community_profile_settings")
+    .upsert({ user_id: user.id, pinned_post_id: postId, updated_at: new Date().toISOString() });
   return { error: error?.message ?? null };
 }

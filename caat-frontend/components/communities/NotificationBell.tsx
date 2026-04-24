@@ -3,7 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { Bell, Heart, MessageCircle, CornerDownRight } from "lucide-react";
+import React from "react";
+import { Bell, Heart, MessageCircle, CornerDownRight, UserPlus } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,10 +19,11 @@ import { supabase } from "@/src/lib/supabaseClient";
 import { fetchNotificationsAction, markNotificationsReadAction } from "@/app/(main)/communities/actions";
 import type { NotificationItem } from "@/types/community";
 
-const TYPE_CONFIG = {
+const TYPE_CONFIG: Record<NotificationItem["type"], { icon: React.ElementType; label: string }> = {
   like:    { icon: Heart,           label: "liked your post" },
   comment: { icon: MessageCircle,   label: "commented on your post" },
   reply:   { icon: CornerDownRight, label: "replied to your comment" },
+  follow:  { icon: UserPlus,        label: "started following you" },
 };
 
 export function NotificationBell() {
@@ -40,32 +42,32 @@ export function NotificationBell() {
 
   // Realtime subscription for new notifications
   useEffect(() => {
-    let userId: string | null = null;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
 
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      userId = user.id;
-
-      const channel = supabase
-        .channel("notifications-bell")
+      if (cancelled || !user) return;
+      channel = supabase
+        .channel(`notifications-bell-${user.id}-${Date.now()}`)
         .on(
           "postgres_changes",
           {
             event: "INSERT",
             schema: "public",
             table: "notifications",
-            filter: `user_id=eq.${userId}`,
+            filter: `user_id=eq.${user.id}`,
           },
           () => {
             setUnreadCount((n) => n + 1);
           }
         )
         .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
     });
+
+    return () => {
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   // Fetch full list when dropdown opens, mark as read
@@ -106,7 +108,7 @@ export function NotificationBell() {
         </div>
         <Separator />
 
-        <div className="max-h-[420px] overflow-y-auto">
+        <div className="max-h-[380px] overflow-y-auto">
           {isLoading ? (
             <div className="space-y-0">
               {[1, 2, 3].map((i) => (
@@ -162,6 +164,16 @@ export function NotificationBell() {
               );
             })
           )}
+        </div>
+        <Separator />
+        <div className="px-3 py-2">
+          <Link
+            href="/communities/notifications"
+            onClick={() => setIsOpen(false)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-center block"
+          >
+            See all notifications
+          </Link>
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { formatDistanceToNow } from "date-fns";
+import { Heart } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { getInitials } from "@/lib/user-utils";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { addCommentAction } from "@/app/(main)/communities/actions";
+import { addCommentAction, toggleCommentLikeAction } from "@/app/(main)/communities/actions";
 import type { CommunityComment, PostAuthor } from "@/types/community";
 
 interface CommentItemProps {
@@ -22,9 +24,23 @@ export function CommentItem({ comment, currentUser, isReply = false, onReplyAdde
   const [replyText, setReplyText] = useState("");
   const [isPending, startTransition] = useTransition();
 
+  const [likeOptimistic, setLikeOptimistic] = useOptimistic(
+    { isLiked: comment.is_liked_by_user, count: comment.likes_count },
+    (state) => ({ isLiked: !state.isLiked, count: state.isLiked ? state.count - 1 : state.count + 1 })
+  );
+
   const authorName = comment.author
     ? [comment.author.first_name, comment.author.last_name].filter(Boolean).join(" ") || "Anonymous"
     : "Anonymous";
+
+  function handleLike() {
+    if (!currentUser) { toast.error("Sign in to like comments"); return; }
+    startTransition(async () => {
+      setLikeOptimistic(undefined);
+      const { error } = await toggleCommentLikeAction(comment.id);
+      if (error) toast.error("Could not update like.");
+    });
+  }
 
   function submitReply() {
     if (!replyText.trim()) return;
@@ -64,14 +80,27 @@ export function CommentItem({ comment, currentUser, isReply = false, onReplyAdde
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{comment.content}</p>
           </div>
 
-          {!isReply && (
+          <div className="flex items-center gap-1 mt-1 ml-1">
             <button
-              className="text-[11px] text-muted-foreground hover:text-foreground mt-1 ml-1 transition-colors"
-              onClick={() => setIsReplying((v) => !v)}
+              className={cn(
+                "flex items-center gap-1 text-[11px] transition-colors",
+                likeOptimistic.isLiked ? "text-red-500 hover:text-red-600" : "text-muted-foreground hover:text-foreground"
+              )}
+              onClick={handleLike}
             >
-              Reply
+              <Heart className={cn("size-3", likeOptimistic.isLiked && "fill-current")} />
+              {likeOptimistic.count > 0 && <span>{likeOptimistic.count}</span>}
             </button>
-          )}
+
+            {!isReply && (
+              <button
+                className="text-[11px] text-muted-foreground hover:text-foreground ml-2 transition-colors"
+                onClick={() => setIsReplying((v) => !v)}
+              >
+                Reply
+              </button>
+            )}
+          </div>
 
           {/* Inline reply form */}
           {isReplying && (

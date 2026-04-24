@@ -41,8 +41,15 @@ export default async function SinglePostPage({ params }: Props) {
       : Promise.resolve({ data: null }),
   ]);
 
+  const resumeId = (row.resume_link as string | null) ?? null;
+  const { data: resumeRow } = resumeId
+    ? await supabase.from("resumes").select("title").eq("id", resumeId).single()
+    : { data: null };
+
   const post: CommunityPost = {
     ...row,
+    resume_id: resumeId,
+    resume_title: (resumeRow as { title: string } | null)?.title ?? null,
     likes_count: (row.likes as { count: number }[])[0]?.count ?? 0,
     comments_count: (row.comments as { count: number }[])[0]?.count ?? 0,
     author: profileMap.get(row.user_id) ?? null,

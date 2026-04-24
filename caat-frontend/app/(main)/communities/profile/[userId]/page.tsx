@@ -1,13 +1,22 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { MapPin, GraduationCap, BookOpen } from "lucide-react";
-import { PageHeader } from "@/components/PageHeader";
+import { MapPin, GraduationCap, BookOpen, Pin } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { NotificationBell } from "@/components/communities/NotificationBell";
 import { PostCard } from "@/components/communities/PostCard";
 import { FollowButton } from "@/components/communities/FollowButton";
 import { PrivacySettingsPanel } from "@/components/communities/PrivacySettingsPanel";
+import { FollowersSheet } from "@/components/communities/FollowersSheet";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { getInitials } from "@/lib/user-utils";
 import { fetchCommunityProfileAction } from "@/app/(main)/communities/actions";
@@ -60,8 +69,26 @@ export default async function CommunityProfilePage({ params }: Props) {
     ? { id: user.id, first_name: null, last_name: null, avatar_url: null }
     : null;
 
+  // Fetch pinned post ID
+  const { data: profileSettings } = await supabase
+    .from("community_profile_settings")
+    .select("pinned_post_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const pinnedPostId = (profileSettings?.pinned_post_id as string | null) ?? null;
+
+  const resumeIds = (rows ?? []).map((r) => r.resume_link).filter((id): id is string => !!id);
+  const { data: resumeRows } = resumeIds.length
+    ? await supabase.from("resumes").select("id, title").in("id", resumeIds)
+    : { data: [] };
+  const resumeTitleMap = new Map<string, string>(
+    ((resumeRows ?? []) as { id: string; title: string }[]).map((r) => [r.id, r.title])
+  );
+
   const posts: CommunityPost[] = (rows ?? []).map((row) => ({
     ...row,
+    resume_id: (row.resume_link as string | null) ?? null,
+    resume_title: row.resume_link ? (resumeTitleMap.get(row.resume_link) ?? null) : null,
     likes_count: (row.likes as { count: number }[])[0]?.count ?? 0,
     comments_count: (row.comments as { count: number }[])[0]?.count ?? 0,
     author,
@@ -71,7 +98,22 @@ export default async function CommunityProfilePage({ params }: Props) {
 
   return (
     <>
-      <PageHeader title="Communities" />
+      <header className="flex h-16 shrink-0 items-center gap-2 px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+        <SidebarTrigger className="-ml-1" />
+        <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+        <Breadcrumb className="flex-1">
+          <BreadcrumbList>
+            <BreadcrumbItem className="hidden md:block">
+              <BreadcrumbLink href="/communities">Communities</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator className="hidden md:block" />
+            <BreadcrumbItem>
+              <BreadcrumbLink>{displayName}</BreadcrumbLink>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+        <NotificationBell />
+      </header>
       <div className="p-6">
         <main className="max-w-2xl mx-auto space-y-6">
 
@@ -126,14 +168,18 @@ export default async function CommunityProfilePage({ params }: Props) {
                 <p className="font-semibold">{posts.length}</p>
                 <p className="text-xs text-muted-foreground">Posts</p>
               </div>
-              <div className="text-center">
-                <p className="font-semibold">{profile.follower_count}</p>
-                <p className="text-xs text-muted-foreground">Followers</p>
-              </div>
-              <div className="text-center">
-                <p className="font-semibold">{profile.following_count}</p>
-                <p className="text-xs text-muted-foreground">Following</p>
-              </div>
+              <FollowersSheet userId={profile.id} count={profile.follower_count} type="followers">
+                <button className="text-center hover:opacity-70 transition-opacity">
+                  <p className="font-semibold">{profile.follower_count}</p>
+                  <p className="text-xs text-muted-foreground">Followers</p>
+                </button>
+              </FollowersSheet>
+              <FollowersSheet userId={profile.id} count={profile.following_count} type="following">
+                <button className="text-center hover:opacity-70 transition-opacity">
+                  <p className="font-semibold">{profile.following_count}</p>
+                  <p className="text-xs text-muted-foreground">Following</p>
+                </button>
+              </FollowersSheet>
             </div>
 
             {/* Action row */}
@@ -163,15 +209,37 @@ export default async function CommunityProfilePage({ params }: Props) {
             </div>
           ) : (
             <div className="space-y-4">
-              {posts.map((post) => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  currentUser={currentUserProfile}
-                  initialIsLiked={likedIds.has(post.id)}
-                  initialIsSaved={savedIds.has(post.id)}
-                />
-              ))}
+              {/* Pinned post first */}
+              {pinnedPostId && (() => {
+                const pinned = posts.find((p) => p.id === pinnedPostId);
+                if (!pinned) return null;
+                return (
+                  <div key="pinned">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                      <Pin className="size-3" />
+                      <span>Pinned post</span>
+                    </div>
+                    <PostCard
+                      post={pinned}
+                      currentUser={currentUserProfile}
+                      initialIsLiked={likedIds.has(pinned.id)}
+                      initialIsSaved={savedIds.has(pinned.id)}
+                      isPinned
+                    />
+                  </div>
+                );
+              })()}
+              {posts
+                .filter((p) => p.id !== pinnedPostId)
+                .map((post) => (
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    currentUser={currentUserProfile}
+                    initialIsLiked={likedIds.has(post.id)}
+                    initialIsSaved={savedIds.has(post.id)}
+                  />
+                ))}
             </div>
           )}
         </main>

@@ -26,19 +26,25 @@ export interface ScoreCard {
   score: string;
 }
 
+export interface PollOption {
+  id: string;
+  text: string;
+}
+
 export interface PostAuthor {
   id: string;
   first_name: string | null;
   last_name: string | null;
   avatar_url: string | null;
+  is_verified?: boolean;
 }
 
 export interface NotificationItem {
   id: string;
-  type: "like" | "comment" | "reply";
+  type: "like" | "comment" | "reply" | "follow";
   actor_name: string;
   actor_avatar: string | null;
-  post_id: string;
+  post_id: string | null;
   post_snippet: string;
   is_read: boolean;
   created_at: string;
@@ -74,6 +80,8 @@ export interface CommunityComment {
   parent_comment_id: string | null;
   content: string;
   created_at: string;
+  likes_count: number;
+  is_liked_by_user: boolean;
   author: PostAuthor | null;
   replies: CommunityComment[];
 }
@@ -84,14 +92,22 @@ export interface CommunityPost {
   content: string;
   topic_tag: TopicTag;
   university_id: number | null;
+  school_name: string | null;
   major_id: string | null;
   result_card: ResultCard | null;
   score_card: ScoreCard | null;
-  resume_link: string | null;
+  resume_id: string | null;
+  resume_title: string | null;
+  is_anonymous: boolean;
   is_hidden: boolean;
+  edited_at: string | null;
+  poll_options: PollOption[] | null;
+  poll_votes: Record<string, number> | null;
+  user_vote: string | null;
   created_at: string;
   updated_at: string;
   likes_count: number;
   comments_count: number;
+  saves_count: number;
   author: PostAuthor | null;
 }
