@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { containsProfanity } from "@/lib/profanity-filter";
 import type {
@@ -871,6 +872,9 @@ export async function createGroupAction(input: {
   // Creator auto-joins as owner
   await supabase.from("community_group_members").insert({ group_id: row.id, user_id: user.id, role: "owner" });
 
+  revalidatePath("/communities/groups");
+  revalidatePath("/communities");
+
   return {
     group: { ...(row as CommunityGroup), member_count: 1, post_count: 0, is_member: true, is_owner: true },
     error: null,
@@ -993,6 +997,8 @@ export async function joinGroupAction(groupId: string): Promise<{ error: string 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
   await supabase.from("community_group_members").upsert({ group_id: groupId, user_id: user.id, role: "member" });
+  revalidatePath("/communities");
+  revalidatePath("/communities/groups");
   return { error: null };
 }
 
@@ -1001,6 +1007,8 @@ export async function leaveGroupAction(groupId: string): Promise<{ error: string
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
   await supabase.from("community_group_members").delete().eq("group_id", groupId).eq("user_id", user.id);
+  revalidatePath("/communities");
+  revalidatePath("/communities/groups");
   return { error: null };
 }
 
