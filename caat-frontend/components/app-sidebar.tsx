@@ -17,7 +17,11 @@ import {
   ClipboardList,
   Users,
   Bookmark,
+  Hash,
+  Plus,
 } from "lucide-react"
+import { fetchMyGroupsAction } from "@/app/(main)/communities/actions"
+import type { CommunityGroup } from "@/types/community"
 
 import {
   Sidebar,
@@ -55,6 +59,7 @@ const community = [
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const [user, setUser] = React.useState<{ name: string; email: string; avatar: string } | null>(null)
+  const [myGroups, setMyGroups] = React.useState<Pick<CommunityGroup, "id" | "slug" | "name">[]>([])
 
   React.useEffect(() => {
     const loadUser = async () => {
@@ -106,6 +111,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     })
 
     return () => subscription.unsubscribe()
+  }, [])
+
+  React.useEffect(() => {
+    fetchMyGroupsAction().then(({ groups }) => setMyGroups(groups))
   }, [])
 
   return (
@@ -178,6 +187,47 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </SidebarMenuItem>
                 )
               })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-2">
+          <SidebarGroupLabel className="text-[#525252] uppercase text-[10px] tracking-[0.15em] font-code px-4 mb-1 flex items-center justify-between">
+            <span>My Communities</span>
+            <Link href="/communities/groups" className="hover:text-black transition-colors">
+              <Plus className="size-3" />
+            </Link>
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {myGroups.length === 0 ? (
+                <SidebarMenuItem>
+                  <Link
+                    href="/communities/groups"
+                    className="flex items-center gap-3 px-4 py-2 text-xs text-muted-foreground hover:text-black transition-colors"
+                  >
+                    Browse communities
+                  </Link>
+                </SidebarMenuItem>
+              ) : (
+                myGroups.map((group) => {
+                  const isActive = pathname === `/communities/c/${group.slug}`
+                  return (
+                    <SidebarMenuItem key={group.id}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        className="gap-3 px-4 py-2.5 rounded-none text-[#525252] hover:text-black hover:bg-[#F5F5F5] data-[active=true]:bg-black data-[active=true]:text-white data-[active=true]:font-medium transition-colors duration-100"
+                      >
+                        <Link href={`/communities/c/${group.slug}`}>
+                          <Hash className="size-4 shrink-0" strokeWidth={1.5} />
+                          <span className="text-sm truncate">{group.name}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

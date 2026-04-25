@@ -86,6 +86,22 @@ export interface CommunityComment {
   replies: CommunityComment[];
 }
 
+export interface CommunityGroup {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  creator_id: string | null;
+  is_private: boolean;
+  icon_url: string | null;
+  banner_url: string | null;
+  member_count: number;
+  post_count: number;
+  is_member: boolean;
+  is_owner: boolean;
+  created_at: string;
+}
+
 export interface CommunityPost {
   id: string;
   user_id: string;
@@ -96,6 +112,7 @@ export interface CommunityPost {
   major_id: string | null;
   result_card: ResultCard | null;
   score_card: ScoreCard | null;
+  group_id: string | null;
   resume_id: string | null;
   resume_title: string | null;
   is_anonymous: boolean;

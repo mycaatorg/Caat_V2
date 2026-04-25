@@ -30,9 +30,10 @@ const OUTCOME_OPTIONS = [
 interface CreatePostFormProps {
   currentUser: PostAuthor | null;
   onPostCreated: (post: CommunityPost) => void;
+  groupId?: string;
 }
 
-export function CreatePostForm({ currentUser, onPostCreated }: CreatePostFormProps) {
+export function CreatePostForm({ currentUser, onPostCreated, groupId }: CreatePostFormProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [content, setContent] = useState("");
   const [topicTag, setTopicTag] = useState<TopicTag | "">("");
@@ -132,6 +133,7 @@ export function CreatePostForm({ currentUser, onPostCreated }: CreatePostFormPro
         is_anonymous: isAnonymous,
         university_id: showSchool && selectedSchool ? selectedSchool.id : null,
         poll_options: pollOptionsFinal,
+        group_id: groupId ?? null,
       });
 
       if (error || !post) { toast.error(error ?? "Failed to create post."); return; }
