@@ -37,7 +37,7 @@ export default function SchoolSearch({ defaultValue }: { defaultValue: string })
   }, [query, pathname, router, searchParams]);
 
   return (
-    <div className="relative max-w-md mb-6">
+    <div className="relative w-full">
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
       <Input
         className="pl-9"
