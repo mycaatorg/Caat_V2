@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { containsProfanity } from "@/lib/profanity-filter";
 import { gate, ratelimits } from "@/lib/rate-limit";
+import { sanitizeError } from "@/lib/safe-error";
 import {
   PostInputSchema,
   CommentInputSchema,
@@ -354,7 +355,7 @@ export async function updatePostAction(
     .update({ content: text, edited_at: new Date().toISOString() })
     .eq("id", postId).eq("user_id", user.id);
 
-  return { error: error?.message ?? null };
+  return { error: error ? sanitizeError(error, "Could not update post.") : null };
 }
 
 // ─── Feed (all / following) ───────────────────────────────────────────────────
@@ -570,7 +571,7 @@ export async function updatePrivacySettingsAction(settings: PrivacySettings): Pr
   const { error } = await supabase
     .from("community_profile_settings")
     .upsert({ user_id: user.id, ...settings, updated_at: new Date().toISOString() });
-  return { error: error?.message ?? null };
+  return { error: error ? sanitizeError(error, "Could not update privacy settings.") : null };
 }
 
 // ─── Community profile ────────────────────────────────────────────────────────
@@ -696,7 +697,7 @@ export async function fetchCommentsAction(postId: string): Promise<{ comments: C
   const { data: rows, error } = await supabase
     .from("community_comments").select("*").eq("post_id", postId).order("created_at", { ascending: true });
 
-  if (error || !rows) return { comments: [], error: error?.message ?? "Failed to load" };
+  if (error || !rows) return { comments: [], error: error ? sanitizeError(error, "Could not load comments.") : "Could not load comments." };
 
   const commentIds = rows.map((r) => r.id as string);
   const userIds = [...new Set(rows.map((r) => r.user_id as string))];
@@ -865,7 +866,7 @@ export async function deletePostAction(postId: string): Promise<{ error: string 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
   const { error } = await supabase.from("community_posts").delete().eq("id", postId).eq("user_id", user.id);
-  return { error: error?.message ?? null };
+  return { error: error ? sanitizeError(error, "Could not delete post.") : null };
 }
 
 // ─── Topic Stats (for sidebar) ───────────────────────────────────────────────
@@ -1392,5 +1393,5 @@ export async function pinPostAction(postId: string | null): Promise<{ error: str
   const { error } = await supabase
     .from("community_profile_settings")
     .upsert({ user_id: user.id, pinned_post_id: postId, updated_at: new Date().toISOString() });
-  return { error: error?.message ?? null };
+  return { error: error ? sanitizeError(error, "Could not pin post.") : null };
 }
