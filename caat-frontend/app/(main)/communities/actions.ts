@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { containsProfanity } from "@/lib/profanity-filter";
+import { gate, ratelimits } from "@/lib/rate-limit";
 import type {
   CommunityPost, CommunityComment, CommunityGroup, NotificationItem, PostAuthor,
   TopicTag, ResultCard, ScoreCard, PollOption, PrivacySettings, CommunityProfileData,
@@ -16,6 +17,56 @@ const VALID_TOPICS: TopicTag[] = [
 // ─── Shared enrichment helper ─────────────────────────────────────────────────
 
 type SupabaseClient = Awaited<ReturnType<typeof createSupabaseServer>>;
+
+/**
+ * Verifies the caller is allowed to read posts/comments in a given group (A1, A3).
+ * Public groups are always readable. Private groups require an active membership
+ * row or the caller being the creator. Returns false for unknown groups.
+ */
+async function canAccessGroup(
+  supabase: SupabaseClient,
+  groupId: string,
+  userId: string | undefined
+): Promise<boolean> {
+  const { data: group } = await supabase
+    .from("community_groups")
+    .select("is_private, creator_id")
+    .eq("id", groupId)
+    .maybeSingle();
+  if (!group) return false;
+  if (!group.is_private) return true;
+  if (!userId) return false;
+  if (userId === group.creator_id) return true;
+
+  const { data: membership } = await supabase
+    .from("community_group_members")
+    .select("user_id")
+    .eq("group_id", groupId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return !!membership;
+}
+
+/**
+ * Verifies the caller can read/comment on a given post (A3).
+ * Posts not in a group are accessible per existing RLS. Posts in a group inherit
+ * that group's privacy gate.
+ */
+async function canAccessPost(
+  supabase: SupabaseClient,
+  postId: string,
+  userId: string | undefined
+): Promise<boolean> {
+  const { data: post } = await supabase
+    .from("community_posts")
+    .select("group_id, is_hidden")
+    .eq("id", postId)
+    .maybeSingle();
+  if (!post) return false;
+  if (post.is_hidden) return false;
+  if (!post.group_id) return true;
+  return canAccessGroup(supabase, post.group_id as string, userId);
+}
 
 async function enrichPosts(
   supabase: SupabaseClient,
@@ -76,11 +127,16 @@ async function enrichPosts(
 
   return rows.map((row) => {
     const isAnon = (row.is_anonymous as boolean | null) ?? false;
-    const p = profileMap.get(row.user_id as string) ?? null;
+    const realUserId = row.user_id as string;
+    const isOwnPost = !!currentUserId && currentUserId === realUserId;
+    const p = profileMap.get(realUserId) ?? null;
     const author: PostAuthor | null = isAnon ? null : (p ? { id: p.id, first_name: p.first_name, last_name: p.last_name, avatar_url: p.avatar_url, is_verified: p.is_verified ?? false } : null);
     return {
       id: row.id as string,
-      user_id: row.user_id as string,
+      // B1 — anonymise user_id in API responses. Owner still sees their real id
+      // so they can edit/delete their own anonymous post; everyone else sees a
+      // stable but non-reversible token derived from the post id.
+      user_id: isAnon && !isOwnPost ? `anon:${row.id as string}` : realUserId,
       content: row.content as string,
       topic_tag: row.topic_tag as TopicTag,
       group_id: (row.group_id as string | null) ?? null,
@@ -174,6 +230,9 @@ export async function createPostAction(input: {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return { post: null, error: "Not signed in" };
 
+  const rl = await gate(ratelimits.postCreate, `post:${user.id}`);
+  if (!rl.ok) return { post: null, error: rl.error };
+
   const content = input.content.trim();
   const hasAttachment = !!(input.resume_id || input.score_card || input.result_card || input.poll_options?.length);
   if (!content && !hasAttachment) return { post: null, error: "Add some text, a score, result, resume, or poll before posting" };
@@ -189,6 +248,12 @@ export async function createPostAction(input: {
   if (input.poll_options) {
     if (input.poll_options.length < 2) return { post: null, error: "Polls need at least 2 options" };
     if (input.poll_options.some((o) => !o.text.trim())) return { post: null, error: "All poll options must have text" };
+  }
+
+  // A2 — verify membership when posting to a group (gates private and public alike).
+  if (input.group_id) {
+    const allowed = await canAccessGroup(supabase, input.group_id, user.id);
+    if (!allowed) return { post: null, error: "Not authorized to post in this community" };
   }
 
   const { data: row, error: insertError } = await supabase
@@ -336,6 +401,12 @@ export async function fetchPostsByUserAction(
     .eq("is_hidden", false).eq("user_id", userId)
     .order("created_at", { ascending: false }).limit(20);
 
+  // B1 — hide anonymous posts on someone else's profile, otherwise the profile
+  // page itself de-anonymises them. Owner still sees their own anonymous posts.
+  if (user?.id !== userId) {
+    query = query.eq("is_anonymous", false);
+  }
+
   if (cursor) query = query.lt("created_at", cursor);
   const { data: rows, error } = await query;
   if (error || !rows) return { posts: [], nextCursor: null };
@@ -414,6 +485,10 @@ export async function followUserAction(targetUserId: string): Promise<{ error: s
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
   if (user.id === targetUserId) return { error: "Cannot follow yourself" };
+
+  const rl = await gate(ratelimits.followAction, `follow:${user.id}`);
+  if (!rl.ok) return { error: rl.error };
+
   await supabase.from("community_follows").insert({ follower_id: user.id, followee_id: targetUserId });
   await supabase.from("notifications").insert({ user_id: targetUserId, actor_id: user.id, type: "follow", post_id: null });
   return { error: null };
@@ -488,6 +563,9 @@ export async function toggleLikeAction(postId: string): Promise<{ liked: boolean
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { liked: false, error: "Not signed in" };
 
+  const rl = await gate(ratelimits.likeAction, `like:${user.id}`);
+  if (!rl.ok) return { liked: false, error: rl.error };
+
   const { data: existing } = await supabase.from("community_likes").select("post_id").eq("post_id", postId).eq("user_id", user.id).maybeSingle();
 
   if (existing) {
@@ -510,6 +588,9 @@ export async function toggleSaveAction(postId: string): Promise<{ saved: boolean
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { saved: false, error: "Not signed in" };
+
+  const rl = await gate(ratelimits.saveAction, `save:${user.id}`);
+  if (!rl.ok) return { saved: false, error: rl.error };
 
   const { data: existing } = await supabase.from("community_saves").select("post_id").eq("post_id", postId).eq("user_id", user.id).maybeSingle();
 
@@ -547,6 +628,11 @@ export async function castPollVoteAction(
 export async function fetchCommentsAction(postId: string): Promise<{ comments: CommunityComment[]; error: string | null }> {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
+
+  // A3 — comments inherit their parent post's privacy gate.
+  if (!(await canAccessPost(supabase, postId, user?.id))) {
+    return { comments: [], error: null };
+  }
 
   const { data: rows, error } = await supabase
     .from("community_comments").select("*").eq("post_id", postId).order("created_at", { ascending: true });
@@ -602,10 +688,18 @@ export async function addCommentAction(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { comment: null, error: "Not signed in" };
 
+  const rl = await gate(ratelimits.commentCreate, `comment:${user.id}`);
+  if (!rl.ok) return { comment: null, error: rl.error };
+
   const text = content.trim();
   if (!text) return { comment: null, error: "Comment cannot be empty" };
   if (text.length > 1000) return { comment: null, error: "Comment too long" };
   if (containsProfanity(text)) return { comment: null, error: "Comment contains prohibited language" };
+
+  // A3 — comments inherit their parent post's privacy gate.
+  if (!(await canAccessPost(supabase, postId, user.id))) {
+    return { comment: null, error: "Not authorized to comment on this post" };
+  }
 
   const { data: row, error: insertError } = await supabase
     .from("community_comments")
@@ -678,6 +772,10 @@ export async function reportPostAction(postId: string): Promise<{ error: string 
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
+
+  const rl = await gate(ratelimits.reportAction, `report:${user.id}`);
+  if (!rl.ok) return { error: rl.error };
+
   await supabase.from("community_reports").upsert({ post_id: postId, reporter_id: user.id });
   return { error: null };
 }
@@ -744,6 +842,10 @@ export async function blockUserAction(targetUserId: string): Promise<{ error: st
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
   if (user.id === targetUserId) return { error: "Cannot block yourself" };
+
+  const rl = await gate(ratelimits.blockAction, `block:${user.id}`);
+  if (!rl.ok) return { error: rl.error };
+
   await supabase.from("community_blocks").upsert({ blocker_id: user.id, blocked_id: targetUserId });
   // Also unfollow both ways
   await Promise.all([
@@ -851,6 +953,9 @@ export async function createGroupAction(input: {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { group: null, error: "Not signed in" };
+
+  const rl = await gate(ratelimits.groupCreate, `groupcreate:${user.id}`);
+  if (!rl.ok) return { group: null, error: rl.error };
 
   const name = input.name.trim();
   if (!name || name.length < 3) return { group: null, error: "Name must be at least 3 characters" };
@@ -1018,6 +1123,10 @@ export async function fetchGroupPostsAction(
 ): Promise<{ posts: CommunityPost[]; nextCursor: string | null }> {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
+
+  // A1 — gate at the action layer; UI cannot be the only privacy boundary.
+  const allowed = await canAccessGroup(supabase, groupId, user?.id);
+  if (!allowed) return { posts: [], nextCursor: null };
 
   let query = supabase
     .from("community_posts")

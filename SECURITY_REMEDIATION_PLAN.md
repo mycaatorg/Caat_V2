@@ -1,322 +1,493 @@
-# `CAAT V2 — Remaining Vulnerabilities: Unified Remediation Plan
+# CAAT V2 — Security Remediation Plan
 
-**Date:** 2026-04-18
-**Scope:** All vulnerabilities skipped across the three fix rounds (High / Medium / Low)
-
----
-
-## Summary of Remaining Vulnerabilities
-
-| ID | Severity | Finding |
-|----|----------|---------|
-| G1 | High | Zero rate limiting anywhere in the application |
-| D2 | Medium | All mutations run client-side, no server-side enforcement layer |
-| E2 | Medium | File size validation is client-side only |
-| E5 | Medium | Storage bucket policies not verifiable from code |
-| F1 | Medium | No input length validation on any form field |
-| F2 | Medium | Zod installed but never used |
-| F3 | Medium | No limit on data record creation |
-| D3 | Low | Browser Supabase client used in server components |
-| H3 | Low | No explicit CSRF protection mechanism |
-| I3 | Low | Overly broad `.select("*")` queries |
+**Plan Date:** 2026-04-26
+**Companion Audit:** [`SECURITY_AUDIT_REPORT.md`](./SECURITY_AUDIT_REPORT.md)
+**Total findings:** 22 · 5 high/critical · 9 medium · 8 low
 
 ---
 
-## Root Cause Analysis
+## How to use this document
 
-Before planning individual fixes, it helps to see why these were all skipped: they share the same underlying gaps.
-
-```
-Gap A — No server-side layer for writes
-  Causes: G1 (can't rate-limit), D2 (no enforcement point), E2 (can't validate
-          server-side), F3 (can't count records server-side)
-
-Gap B — No schema definitions for data models
-  Causes: F1 (no length constraints), F2 (Zod unused), I3 (no column reference)
-
-Gap C — Wrong Supabase client in server-side code
-  Causes: D3 (browser client in server component)
-  Note:   This is also a prerequisite for fixing Gap A correctly.
-
-Dashboard config only (not code):
-  E5 — storage bucket policies
-  H3 — CSRF (SameSite cookies already handles this — no action needed)
-```
-
-Gaps A and B are related: schemas (Gap B) feed directly into the server layer (Gap A) as the validation logic. Gap C is a prerequisite for Gap A. This means all 8 remaining code vulnerabilities can be addressed with **three ordered building blocks**.
+This is the working order to address every finding in the audit. Items are grouped into three execution phases by priority. Each entry includes the audit ID, file paths, a concrete code fix, and a verification step. Tackle Phase 1 in the next sprint, Phase 2 in the following 2-week cycle, Phase 3 as backlog.
 
 ---
 
-## The Unified Approach: Three Building Blocks
+## Phase 1 — Critical / High (next sprint)
 
-### Why Server Actions, not API routes
+These four items together close every remaining critical and high finding. They are ordered by dependency: rate limiting needs CAPTCHA in front of it to be effective, and group membership enforcement is independent and can land in parallel.
 
-The natural fix for Gap A is to introduce a server-side layer. The options are:
+### P1.1 — Enforce private group membership (A1, A2, A3)
 
-- **API Routes** (`app/api/...`): New routing infrastructure, HTTP concerns bleed into business logic, clients need to manage fetch calls.
-- **Server Actions** (`"use server"` functions): Called like regular `async` functions from client components, no new routing, type-safe by default, native to Next.js 15 App Router.
+**Files to change:**
+- `caat-frontend/app/(main)/communities/actions.ts`
+- (optional) `supabase/migrations/communities_v6_group_rls_tightening.sql` (new)
 
-Server Actions are the minimal fit. They slot into the existing call patterns — the client components already call `await uploadDocument(file, category)`. That call site doesn't change; only what runs on the other side of it does.
+**Fix outline:**
 
-**What stays direct browser→Supabase (no change):**
-- All reads (schools, scholarships, majors, resume loading, profile fetching)
-- Mutations with no enforcement requirements (resume content autosave, profile field updates, bookmark toggles — already guarded by RLS + the fixes already applied)
-
-**What moves to Server Actions:**
-- File uploads (validates size server-side, moves storage call server-side)
-- Record creation operations that need count limits
-- Auth form submissions that need rate limiting
-
----
-
-### Building Block 1 — Server Supabase Client Utility
-
-**Fixes: D3**
-**Prerequisite for: Building Block 3 (Server Actions)**
-
-Create one file: `caat-frontend/lib/supabase-server.ts`
+Add a single helper at the top of `actions.ts`:
 
 ```ts
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+async function assertCanReadGroup(
+  supabase: SupabaseClient,
+  groupId: string,
+  userId: string | undefined
+): Promise<{ allowed: boolean; isMember: boolean; isPrivate: boolean }> {
+  const { data: group } = await supabase
+    .from("community_groups")
+    .select("is_private, creator_id")
+    .eq("id", groupId)
+    .maybeSingle();
+  if (!group) return { allowed: false, isMember: false, isPrivate: false };
 
-export function createSupabaseServer() {
-  const cookieStore = cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {
-            // Called from a Server Component — cookies are read-only, ignore.
-          }
-        },
-      },
-    }
-  );
+  if (!group.is_private) return { allowed: true, isMember: false, isPrivate: false };
+
+  if (!userId) return { allowed: false, isMember: false, isPrivate: true };
+  if (userId === group.creator_id) return { allowed: true, isMember: true, isPrivate: true };
+
+  const { data: membership } = await supabase
+    .from("community_group_members")
+    .select("user_id")
+    .eq("group_id", groupId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return { allowed: !!membership, isMember: !!membership, isPrivate: true };
 }
 ```
 
-Then in any server component (e.g. `schools/page.tsx`), replace the browser client import:
+Then call it at the top of:
+- `fetchGroupPostsAction(groupId, …)` — return `{ posts: [], nextCursor: null }` if not allowed
+- `createPostAction({ group_id, … })` — when `group_id` is non-null, return `{ post: null, error: "Not authorized" }` if not allowed (also covers public groups: optionally require membership for public-group posting too — judgment call)
+- `fetchGroupAction(slug)` — already returns minimal data; optionally suppress `member_count` / `post_count` for non-members of private groups
 
-```ts
-// Before
-import { supabase } from "@/src/lib/supabaseClient";
+**Defence-in-depth (recommended):** also tighten RLS so the database itself rejects cross-group reads. New migration:
 
-// After
-import { createSupabaseServer } from "@/lib/supabase-server";
-const supabase = createSupabaseServer();
+```sql
+DROP POLICY IF EXISTS "posts_select" ON community_posts;
+
+CREATE POLICY "posts_select" ON community_posts
+  FOR SELECT TO authenticated
+  USING (
+    is_hidden = FALSE
+    AND (
+      group_id IS NULL
+      OR EXISTS (
+        SELECT 1 FROM community_groups g
+        WHERE g.id = community_posts.group_id
+          AND (g.is_private = FALSE OR g.creator_id = auth.uid()
+               OR EXISTS (
+                 SELECT 1 FROM community_group_members m
+                 WHERE m.group_id = g.id AND m.user_id = auth.uid()
+               ))
+      )
+    )
+  );
 ```
 
-This is a standalone ~20-line change with no side effects on existing functionality.
+Same shape for `community_comments` to address A3.
+
+**Verification:**
+1. Sign in as user A. Create a private group. Get its `id` from network tab.
+2. Sign in as user B (in another browser / private window).
+3. Open DevTools → Network → invoke the action endpoint directly with user A's group id.
+4. Expected: `{ posts: [] }` with no leak.
+5. Expected: `createPostAction` returns `Not authorized` when called with user A's `group_id`.
+6. Repeat after the RLS migration: even with a forged client, the DB rejects.
 
 ---
 
-### Building Block 2 — Zod Schemas for All Data Models
+### P1.2 — Strip `user_id` from anonymous posts (B1)
 
-**Fixes: F1 (length limits), F2 (Zod actually used), I3 (explicit column reference)**
-**Prerequisite for: Building Block 3 (validation inside Server Actions)**
+**File:** `caat-frontend/app/(main)/communities/actions.ts:79-110`
 
-Create a `caat-frontend/lib/schemas/` directory with one schema file per domain. Each schema serves three purposes simultaneously:
-1. **Server-side validation** — parsed inside Server Actions before any DB write
-2. **Client-side `maxLength`** — schema's `.max()` values populate `<Input maxLength={...}>` directly (no separate constants needed)
-3. **Column reference for I3** — each schema's keys list exactly what fields are read from the DB, eliminating guesswork from changing `.select("*")`
+**Fix:**
 
-**Schemas to create:**
-
-| File | Covers |
-|------|--------|
-| `lib/schemas/profile.ts` | ProfileRow fields, lengths for name/phone/URL fields |
-| `lib/schemas/application.ts` | Application status, notes, dates |
-| `lib/schemas/resume-section.ts` | Section content, labels |
-| `lib/schemas/user-scholarship.ts` | Scholarship name, amount, deadline, URL, notes |
-| `lib/schemas/essay.ts` | Essay title and content |
-| `lib/schemas/todo.ts` | Todo title and notes |
-| `lib/schemas/recommender.ts` | Name, subject, notes |
-| `lib/schemas/document.ts` | Category enum, MIME type allowlist, size limit constant |
-
-**Suggested length limits (based on common sense for a college tracking app):**
+In `enrichPosts`, change the return mapping so `user_id` is masked when `is_anonymous`:
 
 ```ts
-// Example: lib/schemas/profile.ts
-import { z } from "zod";
-
-export const ProfileSchema = z.object({
-  first_name:       z.string().max(100).nullable(),
-  last_name:        z.string().max(100).nullable(),
-  email:            z.string().email().max(254).nullable(),
-  birth_date:       z.string().nullable(),
-  phone:            z.string().max(30).nullable(),
-  linkedin:         z.string().max(2048).nullable(),
-  github:           z.string().max(2048).nullable(),
-  nationality:      z.string().max(100).nullable(),
-  current_location: z.string().max(200).nullable(),
-  school_name:      z.string().max(200).nullable(),
-  curriculum:       z.string().max(100).nullable(),
-  graduation_year:  z.number().int().min(2000).max(2040).nullable(),
-  target_majors:    z.array(z.string().max(100)).max(20).nullable(),
-  preferred_countries: z.array(z.string().max(100)).max(20).nullable(),
-  activities:       z.array(z.string().max(500)).max(50).nullable(),
-  default_resume_id: z.string().uuid().nullable(),
+return rows.map((row) => {
+  const isAnon = (row.is_anonymous as boolean | null) ?? false;
+  const p = profileMap.get(row.user_id as string) ?? null;
+  const author: PostAuthor | null = isAnon
+    ? null
+    : (p ? { ... } : null);
+  return {
+    id: row.id as string,
+    user_id: isAnon ? "anonymous" : (row.user_id as string),  // ← was: row.user_id as string
+    // ... rest unchanged
+  };
 });
-
-// Export column list for .select() — fixes I3 automatically
-export const PROFILE_COLUMNS = Object.keys(ProfileSchema.shape).join(", ");
 ```
 
-The `PROFILE_COLUMNS` export is the key I3 fix: instead of `.select("*")`, every query becomes `.select(PROFILE_COLUMNS)`. The schema is the single source of truth — add a field to the schema, it appears in the select automatically.
+If you need consistent same-author grouping under anonymity (e.g. "this is the same anonymous user across replies in a thread"), use a deterministic-but-non-reversible token instead of `"anonymous"`:
+
+```ts
+import { createHash } from "node:crypto";
+const ANON_SALT = process.env.ANON_USER_SALT!; // store in Supabase secrets
+
+function anonId(realId: string, postId: string): string {
+  return createHash("sha256").update(`${ANON_SALT}:${realId}:${postId}`).digest("hex").slice(0, 16);
+}
+```
+
+**Also patch:** any other action that returns `user_id` for posts. Grep:
+```bash
+grep -rn "row.user_id\|user_id: " caat-frontend/app/\(main\)/communities/actions.ts
+```
+
+**Verification:**
+1. Make an anonymous post as user A.
+2. Open the network response in DevTools as user B.
+3. Confirm `user_id` is `"anonymous"` (or a hash) — never user A's real id.
+4. Confirm the UI still functions for anonymous posts.
 
 ---
 
-### Building Block 3 — Server Actions for Enforced Writes
+### P1.3 — Add CAPTCHA to auth forms (D3)
 
-**Fixes: G1 (rate limiting), D2 (server-side enforcement), E2 (server-side file size), F3 (record limits)**
-**Depends on: Building Blocks 1 and 2**
+**Files to change:**
+- `caat-frontend/components/login-form.tsx`
+- `caat-frontend/components/signup-form.tsx`
+- `caat-frontend/app/forgot-password/page.tsx`
+- (optional) Server-side verification action
 
-Create `caat-frontend/app/actions/` with Server Action files. The existing `api.ts` client functions remain unchanged and continue to work — they're called from the same places, just the target changes to the new Server Actions for the specific operations that need enforcement.
+**Fix outline:**
 
-**Rate limiting setup (for G1):**
+Use Cloudflare Turnstile (free, privacy-friendly, no PII):
 
-Use `@upstash/ratelimit` + `@upstash/redis` (serverless-compatible, no always-on server needed). One utility:
+1. Add `<Turnstile siteKey={...} onVerify={setToken} />` (via `@marsidev/react-turnstile` or vanilla script).
+2. Submit the resulting `token` to a new server action `verifyTurnstileAction(token)` that calls Cloudflare's `siteverify` endpoint with the secret key (env var, server-only).
+3. Block the actual `signInWithPassword` / `signUp` / `resetPasswordForEmail` call until the token is verified.
 
 ```ts
-// lib/rate-limit.ts
+// caat-frontend/lib/turnstile.ts
+"use server";
+export async function verifyTurnstile(token: string): Promise<boolean> {
+  const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      secret: process.env.TURNSTILE_SECRET_KEY!,
+      response: token,
+    }),
+  });
+  const data = await res.json();
+  return data.success === true;
+}
+```
+
+**Verification:**
+1. With JS automation (Playwright/curl), attempt 100 logins with random emails.
+2. Confirm Turnstile blocks the requests after the first that lacks a token.
+
+---
+
+### P1.4 — Implement application-level rate limiting (G1)
+
+**Files to add:**
+- `caat-frontend/lib/rate-limit.ts`
+- Wrap critical actions in `caat-frontend/app/(main)/communities/actions.ts`
+
+**Fix outline:**
+
+Use Upstash Ratelimit (works on Vercel Edge & Node):
+
+```ts
+// caat-frontend/lib/rate-limit.ts
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-const redis = Redis.fromEnv(); // Reads UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN
+const redis = Redis.fromEnv();
 
-export const authRateLimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(5, "15 m"), // 5 attempts per 15 minutes
-});
+export const ratelimits = {
+  postCreate:    new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(5,   "1 m") }),
+  commentCreate: new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(30,  "1 m") }),
+  followAction:  new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(60,  "1 m") }),
+  likeAction:    new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(120, "1 m") }),
+  reportAction:  new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(10,  "1 h") }),
+  groupCreate:   new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(2,   "1 h") }),
+  authAttempt:   new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(5,   "1 m") }),
+};
 
-export const uploadRateLimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(20, "1 h"), // 20 uploads per hour
-});
-
-export const createRateLimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(60, "1 h"), // 60 record creations per hour
-});
-```
-
-**Server Actions to create:**
-
-```
-app/actions/
-  auth.ts        — login, signup, password reset (rate limited with authRateLimit)
-  documents.ts   — uploadDocument, reuploadDocument (size check + uploadRateLimit)
-  records.ts     — createResume, addApplication, addBookmark (count check + createRateLimit)
-```
-
-**Structure of each Server Action (pattern):**
-
-```ts
-// app/actions/documents.ts
-"use server";
-
-import { createSupabaseServer } from "@/lib/supabase-server";
-import { authRateLimit, uploadRateLimit } from "@/lib/rate-limit";
-import { DocumentUploadSchema } from "@/lib/schemas/document";
-import { headers } from "next/headers";
-
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
-
-export async function uploadDocumentAction(formData: FormData) {
-  // 1. Rate limit by IP
-  const ip = (await headers()).get("x-forwarded-for") ?? "unknown";
-  const { success } = await uploadRateLimit.limit(ip);
-  if (!success) throw new Error("Too many uploads. Please wait and try again.");
-
-  // 2. Auth check
-  const supabase = createSupabaseServer();
-  const { data: { user }, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !user) throw new Error("Not authenticated");
-
-  // 3. Server-side file size check (E2)
-  const file = formData.get("file") as File;
-  if (file.size > MAX_FILE_SIZE_BYTES) throw new Error("File exceeds 10 MB limit.");
-
-  // 4. Schema validation (F1, F2)
-  const category = DocumentUploadSchema.shape.category.parse(formData.get("category"));
-
-  // 5. Count check (F3 — already in api.ts but now enforced server-side)
-  // ... rest of upload logic
+export async function gate(limiter: Ratelimit, key: string) {
+  const { success, reset } = await limiter.limit(key);
+  if (!success) {
+    const retryIn = Math.ceil((reset - Date.now()) / 1000);
+    throw new Error(`Too many requests. Try again in ${retryIn}s.`);
+  }
 }
 ```
 
-**Per-user record limits for F3:**
+Then in each action:
 
-| Record type | Suggested limit | Rationale |
-|-------------|----------------|-----------|
-| Documents | 50 (already enforced client-side) | Storage cost |
-| Resumes | 10 | Reasonable for a student |
-| Applications | 100 | Can apply to many schools |
-| Bookmarks (per table) | 200 | Discovery feature |
-| Todos | 500 | Task management |
-| Essay drafts | 30 | Multiple versions per app |
-| Recommenders | 15 | Academic context |
+```ts
+import { gate, ratelimits } from "@/lib/rate-limit";
 
-**Env vars needed (add to `.env.local` and production env):**
-```
-UPSTASH_REDIS_REST_URL=...
-UPSTASH_REDIS_REST_TOKEN=...
+export async function createPostAction(input) {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { post: null, error: "Not signed in" };
+
+  await gate(ratelimits.postCreate, `post:${user.id}`); // ← new
+
+  // ... rest unchanged
+}
 ```
 
-Upstash has a free tier covering ~10k requests/day which is more than sufficient for this app's scale.
+For auth flows, gate by IP since the user isn't logged in yet:
+```ts
+// Inside a server action invoked from the form:
+import { headers } from "next/headers";
+const ip = (await headers()).get("x-forwarded-for")?.split(",")[0] ?? "unknown";
+await gate(ratelimits.authAttempt, `auth:${ip}`);
+```
+
+**Env vars:** `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
+
+**Verification:**
+1. Script 10 `createPostAction` calls in 60 seconds.
+2. Expected: first 5 succeed, remaining 5 return `Too many requests…`.
+3. Wait 1 minute; can post again.
 
 ---
 
-## Building Block 4 — Supabase Dashboard (E5)
+## Phase 2 — Medium (next 2 weeks)
 
-Not fixable from code. Manual checklist:
+### P2.1 — Apply block filter consistently (A4)
 
-**`user-documents` bucket:**
-- [ ] RLS enabled
-- [ ] Users can only `SELECT`/`INSERT`/`DELETE` objects where `(storage.foldername(name))[1] = auth.uid()::text`
-- [ ] Max upload size set (e.g. 10 MB) in bucket settings
+**Files:**
+- `caat-frontend/app/(main)/communities/actions.ts:326-345, 349-371, 1015-1037`
 
-**`profile-avatars` bucket:**
-- [ ] Public read is intentional — confirm this is acceptable
-- [ ] Write restricted to authenticated users uploading to their own `{user_id}/` path
-- [ ] Max upload size set (e.g. 5 MB)
+Extract the existing block lookup (currently inline in `fetchPostsAction`) into a helper:
 
-**H3 — CSRF:**
-No action needed. Supabase Auth uses `httpOnly` cookies with `SameSite=Lax`, which is the accepted browser-standard CSRF defence. Modern browsers enforce this by default.
+```ts
+async function fetchBlockedIds(supabase: SupabaseClient, userId: string): Promise<string[]> {
+  const [byMe, blockedMe] = await Promise.all([
+    supabase.from("community_blocks").select("blocked_id").eq("blocker_id", userId),
+    supabase.from("community_blocks").select("blocker_id").eq("blocked_id", userId),
+  ]);
+  return [
+    ...((byMe.data ?? []).map((r) => r.blocked_id as string)),
+    ...((blockedMe.data ?? []).map((r) => r.blocker_id as string)),
+  ];
+}
+```
+
+Call it in `fetchPostsByUserAction`, `fetchGroupPostsAction`, `searchPostsAction` and apply `.not("user_id", "in", \`(${ids.join(",")})\`)` when non-empty. (Watch out for empty array — Supabase rejects `in ()`; skip the filter when empty.)
+
+For `fetchPostsByUserAction(userId)` specifically: if the *target* `userId` is in the viewer's block list (or vice-versa), return `{ posts: [], nextCursor: null }` immediately — the entire profile should be hidden.
 
 ---
 
-## Recommended Implementation Order
+### P2.2 — Finish or revert the join-request flow (A5, J1, J2)
 
-The dependencies flow cleanly from top to bottom:
+**Decision required:** ship the feature or remove it.
 
-```
-Step 1 — lib/supabase-server.ts          (D3, ~20 lines, no risk)
-          ↓
-Step 2 — lib/schemas/*.ts                (F1, F2, ~150 lines total across 8 files)
-          ↓
-Step 3 — Apply maxLength to form inputs  (F1 UX half, mechanical change using schema values)
-          ↓
-Step 4 — Update .select("*") calls       (I3, mechanical, use SCHEMA_COLUMNS exports)
-          ↓
-Step 5 — lib/rate-limit.ts + Upstash     (G1 prerequisite, set up Redis)
-          ↓
-Step 6 — app/actions/ Server Actions     (D2, G1, E2, F3 — the main lift)
-          ↓
-Step 7 — Supabase dashboard bucket       (E5 — independent, do any time)
-          config checklist
+**To ship:** add a migration:
+
+```sql
+-- supabase/migrations/communities_v6_join_request_message.sql
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS message TEXT;
 ```
 
-Steps 1–4 are all low-risk, self-contained, and can be reviewed and merged independently. They also immediately deliver partial value (schemas used client-side for F1 and I3 before Server Actions are wired). Step 6 is the significant effort but is fully de-risked by having the schemas and server client already in place.
+And add two server actions:
 
-**Nothing from the existing codebase needs to be deleted or restructured.** The existing `api.ts` client functions remain as-is. Server Actions are an additive layer that the most sensitive write call sites swap to; the rest continue working unchanged.
+```ts
+export async function approveJoinRequestAction(groupId: string, userId: string) {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  // Verify caller owns the group
+  const { data: group } = await supabase
+    .from("community_groups")
+    .select("creator_id, name")
+    .eq("id", groupId)
+    .single();
+  if (!group || group.creator_id !== user.id) return { error: "Not authorized" };
+
+  await supabase.from("community_group_members").insert({ group_id: groupId, user_id: userId, role: "member" });
+  await supabase.from("community_group_requests").update({ status: "approved" }).eq("group_id", groupId).eq("user_id", userId);
+
+  await supabase.from("notifications").insert({
+    user_id: userId,
+    actor_id: user.id,
+    type: "follow",  // or new "request_approved" type — extend the CHECK constraint if so
+    post_id: null,
+    message: `Your request to join ${group.name} was approved`,
+  });
+  return { error: null };
+}
+
+export async function rejectJoinRequestAction(groupId: string, userId: string) { /* analogous */ }
+```
+
+**To revert:** delete A5/J1 references (lines 977-989 in `actions.ts`) and document private groups as creator-managed only. Cleaner option.
+
+---
+
+### P2.3 — Notification deduplication (C1, C2)
+
+**Schema migration:**
+
+```sql
+-- supabase/migrations/communities_v6_notification_dedup.sql
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_dedup
+  ON public.notifications (user_id, actor_id, type, COALESCE(post_id, '00000000-0000-0000-0000-000000000000'::uuid));
+```
+
+Then change inserts to be tolerant of conflicts:
+
+```ts
+await supabase.from("notifications").upsert({
+  user_id: post.user_id, actor_id: user.id, type: "like", post_id: postId
+}, { onConflict: "user_id,actor_id,type,post_id", ignoreDuplicates: true });
+```
+
+This means likes/follows produce at most one notification per (recipient, actor, post) tuple regardless of how often someone toggles. If you want re-notification after a long gap, soft-delete old notifications periodically or include a date bucket in the constraint.
+
+---
+
+### P2.4 — Better content moderation (C3)
+
+Two layers:
+
+**Layer 1 (quick):** add a per-user-per-post comment cap:
+
+```ts
+const recent = await supabase
+  .from("community_comments")
+  .select("id", { count: "exact", head: true })
+  .eq("user_id", user.id)
+  .eq("post_id", postId)
+  .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString());
+if ((recent.count ?? 0) >= 10) return { comment: null, error: "Comment rate limit reached on this post" };
+```
+
+**Layer 2 (proper):** call OpenAI Moderation API or Perspective API in `addCommentAction` / `createPostAction`. If `flagged === true`, reject. Cache results by content hash so repeated identical content doesn't re-bill.
+
+---
+
+### P2.5 — Tighten auto-hide / report system (C4, C5)
+
+```ts
+// In reportPostAction, before insert:
+const { data: post } = await supabase.from("community_posts").select("user_id").eq("id", postId).single();
+if (post?.user_id === user.id) return { error: "Cannot report your own post" };
+```
+
+For the threshold — change the trigger to require either:
+- 5+ unique reports (instead of 3), OR
+- 3+ reports from accounts older than 7 days
+
+```sql
+CREATE OR REPLACE FUNCTION check_post_reports() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+  recent_count INT;
+  trusted_count INT;
+BEGIN
+  SELECT COUNT(*) INTO recent_count FROM community_reports WHERE post_id = NEW.post_id;
+  SELECT COUNT(*) INTO trusted_count
+    FROM community_reports r
+    JOIN auth.users u ON u.id = r.reporter_id
+    WHERE r.post_id = NEW.post_id AND u.created_at < now() - interval '7 days';
+  IF recent_count >= 5 OR trusted_count >= 3 THEN
+    UPDATE community_posts SET is_hidden = TRUE WHERE id = NEW.post_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+```
+
+Long-term: add an `admin_review` table and a moderator role.
+
+---
+
+### P2.6 — Migrate non-Communities mutations to Server Actions (D2)
+
+Highest-value targets, in this order:
+
+1. **AvatarUpload** — currently uses `supabase.storage.upload` from client. Move to a server action `uploadAvatarAction(formData)` that does magic-byte verification + size check + storage upload + DB update. (Server actions support `FormData` + binary uploads.)
+2. **Documents API** (`app/(main)/documents/api.ts`) — add server-side equivalents; gate with rate limit.
+3. **Profile / Applications / Resume builder / Essays / Scholarships** — each has a 1-2 hour migration. Establish the pattern with #1, then propagate.
+
+After each migration, you can layer in:
+- Zod schema validation (P2.7)
+- Rate limit gates (uses the helper from P1.4)
+- Per-user record caps (P2.8)
+
+---
+
+### P2.7 — Zod schemas (F1, F2)
+
+Create `caat-frontend/lib/schemas/`:
+
+```ts
+// caat-frontend/lib/schemas/community.ts
+import { z } from "zod";
+
+export const PostInputSchema = z.object({
+  content: z.string().trim().max(2000),
+  topic_tag: z.enum(["APPLICATION_RESULTS","ESSAYS","TEST_SCORES","EXTRACURRICULARS","ADVICE","SCHOLARSHIPS"]),
+  result_card: z.object({
+    outcome: z.enum(["accepted","waitlisted","rejected"]),
+    university_name: z.string().max(200),
+    program: z.string().max(200).optional(),
+  }).nullable().optional(),
+  // ...
+});
+
+// in createPostAction:
+const parsed = PostInputSchema.safeParse(input);
+if (!parsed.success) return { post: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+```
+
+Build schemas for: post, comment, group, application, profile update, document upload, resume section, essay draft, scholarship.
+
+---
+
+### P2.8 — Per-user record caps (F3)
+
+Add caps similar to documents (E3, already at 50). Suggested:
+- 100 posts/user/day (enforced by rate-limit) and 5,000 lifetime
+- 10,000 follows
+- 100 saves
+- 20 groups owned
+- 10 resumes
+- 10 custom essay prompts
+
+Each cap is a `count('exact')` check before insert in the corresponding action.
+
+---
+
+## Phase 3 — Low (backlog)
+
+| ID | One-line fix |
+|----|--------------|
+| **C5** | Reject self-reports — see P2.5 above. |
+| **D1** | `caat-frontend/app/reset-password/page.tsx:27` — replace `getSession()` with `getUser()`. |
+| **E2** | In `uploadDocument` / `reuploadDocument` server actions: `if (file.size > MAX) throw new Error(...)`. Set bucket-level limit too. |
+| **E5** | Add `supabase/migrations/storage_policies.sql` capturing the dashboard-configured bucket policies in code. |
+| **E6** | Add a random suffix to avatar storage path: `${userId}/${crypto.randomUUID()}.${ext}` and store the path in `profiles.avatar_path` instead of inferring it. |
+| **H1** | Wrap server actions in a `try { … } catch (e) { logToSentry(e); return { error: "Something went wrong" }; }`. Never return `error.message` from Supabase to the client. |
+| **H2** | Audit `console.error` calls; gate behind `if (process.env.NODE_ENV !== "production")` or replace with Sentry. |
+| **H3** | Replace `.select("*")` with explicit column lists, especially in actions that return data over the wire. |
+| **I1** | Apply `query.replace(/[\\%_]/g, "\\$&")` in `searchSchoolsAction`, `searchPostsAction`, `fetchGroupsAction`. |
+| **J3** | Extend `posts_select` policy: `USING (is_hidden = FALSE OR auth.uid() = user_id)`. Or notify on auto-hide. |
+
+---
+
+## Tracking
+
+When a finding is fixed:
+1. Reference the audit ID in the commit message: e.g. `fix(security/A1): enforce private group membership in fetchGroupPostsAction`
+2. Add a one-line "Fixed in commit `<sha>` on `<date>`" entry to a dated changelog at the bottom of `SECURITY_AUDIT_REPORT.md`
+3. Re-run audit (rebase against develop and re-grep) at the end of each phase
+4. Re-time-stamp both files
+
+---
+
+## Phase tracking — current status
+
+- Phase 1: 0/4 items complete
+- Phase 2: 0/8 items complete
+- Phase 3: 0/10 items complete

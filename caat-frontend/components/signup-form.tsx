@@ -6,6 +6,8 @@ import Link from "next/link"
 import { Eye, EyeOff, ArrowRight, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/src/lib/supabaseClient"
+import { preflightAuthAction } from "@/app/auth-actions"
+import { TurnstileWidget, captchaEnabled } from "@/components/TurnstileWidget"
 
 export function SignupForm({
   className,
@@ -19,6 +21,7 @@ export function SignupForm({
   const [passwordTouched, setPasswordTouched] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
 
   // Strength criteria
   const hasMinLength = password.length >= 8
@@ -56,6 +59,17 @@ export function SignupForm({
     }
 
     try {
+      // G1 + D3 — rate limit + CAPTCHA before invoking Supabase auth.
+      const preflight = await preflightAuthAction({
+        turnstileToken: captchaToken ?? undefined,
+        intent: "signup",
+      })
+      if (!preflight.ok) {
+        setError(preflight.error)
+        setLoading(false)
+        return
+      }
+
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password: pw,
@@ -229,10 +243,12 @@ export function SignupForm({
         </div>
       </div>
 
+      <TurnstileWidget onVerify={setCaptchaToken} onExpire={() => setCaptchaToken(null)} />
+
       {/* Submit */}
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || (captchaEnabled && !captchaToken)}
         className="w-full bg-black text-white text-[11px] tracking-[0.18em] uppercase px-8 py-4 border border-black hover:bg-white hover:text-black transition-colors duration-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-[3px] font-code disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
         {loading ? "Creating account…" : (

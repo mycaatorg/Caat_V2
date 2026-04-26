@@ -1,496 +1,463 @@
-# CAAT V2 — Full Security Audit Report
+# CAAT V2 — Security Audit Report
 
-**Date:** 2026-04-17
-**Scope:** Full codebase — `caat-frontend/` (Next.js 15 + Supabase)
-**Branch:** `main` (latest)
+**Audit Date:** 2026-04-26
+**Audited Branch:** `develop`
+**Scope:** Full codebase (Next.js 15 App Router + Supabase) — frontend, server actions, SQL migrations, RLS policies, middleware, CI/CD
+**Previous Audit:** 2026-04-17
 
 ---
 
 ## Executive Summary
 
-The CAAT V2 application follows a **client-only architecture** — all data mutations go directly from the browser to Supabase via the JS SDK. There are **zero API routes** and **zero server actions**. This means the entire security model rests on Supabase Row Level Security (RLS) policies, with no server-side defence-in-depth layer for input validation, rate limiting, or business logic enforcement.
+Substantial progress has been made since the prior audit. Many of the original 30 findings have been remediated:
 
-The audit identified **28 unique findings**: **8 Critical/High**, **11 Medium**, and **9 Low**.
+- ✅ **Stored XSS in resume preview (A1, A2)** — `escapeHtml()` applied in all guided editors; `RichTextEditor` uses Tiptap which produces only sanitised whitelist HTML
+- ✅ **`javascript:` URLs (A3)** — `safeHref()` helper enforces http/https-only on user-controlled hrefs
+- ✅ **Resume IDOR (B1, B2, B3)** — ownership checks added in `deleteSection`, `deleteResume`, `saveResumeState`
+- ✅ **Document IDOR (B4)** — `getDocumentSignedUrl` rejects paths not prefixed with the user's id
+- ✅ **Storage path trust (B5)** — `deleteDocument` and `reuploadDocument` re-fetch path from DB
+- ✅ **PostgREST filter injection (C1)** — special chars stripped in school search
+- ✅ **File upload validation (E1)** — magic-byte signature checking added to documents and avatars
+- ✅ **Document count limit (E3)** — 50 per user enforced
+- ✅ **Mass assignment (D4)** — explicit allowlist in `updateProfile`
+- ✅ **CSP / HSTS / source maps (H1, H2, H4)** — all three added to `next.config.ts`
+- ✅ **Server-side mutation layer (D2/D3 partial)** — Communities feature was rebuilt around Server Actions with `createSupabaseServer`
+- ✅ **Hardcoded test credentials (J1)** — moved to `E2E_TEST_EMAIL` / `E2E_TEST_PASSWORD` env vars (with safe fallbacks)
+
+However, the new Communities feature (groups, posts, comments, reports, blocks, follows, notifications, join requests — 1,086 lines of server actions, 7 new tables) introduces a fresh set of vulnerabilities that did not exist in the previous audit. The most serious are **privacy bypasses for private community groups** and **anonymity leakage**.
+
+This audit identifies **22 findings**: **5 Critical/High**, **9 Medium**, **8 Low**. Of these, **14 are new** and **8 are pre-existing items not yet remediated**.
 
 ---
 
 ## Table of Contents
 
-1. [Findings by Category](#findings-by-category)
-   - [A. Cross-Site Scripting (XSS)](#a-cross-site-scripting-xss)
-   - [B. Insecure Direct Object References (IDOR)](#b-insecure-direct-object-references-idor)
-   - [C. Query / Filter Injection](#c-query--filter-injection)
+1. [Findings](#findings)
+   - [A. Authorization & Access Control](#a-authorization--access-control)
+   - [B. Anonymity & Privacy Leakage](#b-anonymity--privacy-leakage)
+   - [C. Abuse / Spam / Notification Flooding](#c-abuse--spam--notification-flooding)
    - [D. Authentication & Session Management](#d-authentication--session-management)
    - [E. File Upload & Storage Security](#e-file-upload--storage-security)
    - [F. Input Validation & Data Limits](#f-input-validation--data-limits)
-   - [G. Rate Limiting & Abuse Prevention](#g-rate-limiting--abuse-prevention)
-   - [H. Security Headers & Configuration](#h-security-headers--configuration)
-   - [I. Information Leakage](#i-information-leakage)
-   - [J. Dependency & Secrets Management](#j-dependency--secrets-management)
+   - [G. Rate Limiting & Anti-Automation](#g-rate-limiting--anti-automation)
+   - [H. Information Leakage](#h-information-leakage)
+   - [I. Query / Filter Injection](#i-query--filter-injection)
+   - [J. Bugs With Security Implications](#j-bugs-with-security-implications)
 2. [Summary Matrix](#summary-matrix)
-3. [Recommended Remediation Steps](#recommended-remediation-steps)
+3. [Remediation Plan](#remediation-plan)
 
 ---
 
-## Findings by Category
+## Findings
 
 ---
 
-### A. Cross-Site Scripting (XSS)
+### A. Authorization & Access Control
 
-#### A1 — Stored XSS via `dangerouslySetInnerHTML` in Resume Preview
+#### A1 — Private community group posts readable by non-members (CRITICAL)
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | **CRITICAL** |
+| **Files** | `caat-frontend/app/(main)/communities/actions.ts:1015-1037` (`fetchGroupPostsAction`) |
+| **Description** | The action fetches all posts where `group_id = ?` and `is_hidden = false` — but does **not** verify that the caller is a member of the group, regardless of privacy. The page-level UI in `c/[slug]/page.tsx:33` short-circuits to a "request to join" screen for private non-members, but the server action itself is exposed as a directly-invokable POST endpoint. |
+| **Evidence** | `query = supabase.from("community_posts").select(...).eq("group_id", groupId).eq("is_hidden", false)` — no membership check before the query. RLS on `community_posts` is `USING (is_hidden = FALSE)`, which does not filter by group membership. |
+| **Impact** | Any authenticated user can call `fetchGroupPostsAction(privateGroupId, cursor)` directly (e.g. via DevTools `fetch()` to the action endpoint) and read every post in any private group, including post authorship, content, attached resumes, scores, etc. The privacy guarantee for private communities is purely cosmetic. |
+| **Reproducer** | Open DevTools on `/communities`, find the action's POST endpoint, call it with the UUID of a private group you do not belong to. |
+
+#### A2 — Anyone can post to any community group (HIGH)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **HIGH** |
-| **Files** | `components/resume-builder/ResumePreviewPanel.tsx:257` |
-| **Description** | The `ResumePage` component renders `section.htmlBlocks` directly via `dangerouslySetInnerHTML={{ __html: html }}`. This HTML is built by guided editors (`ExperienceGuided.tsx`, `EducationGuided.tsx`) through **raw string concatenation** of user input — company names, titles, bullet points, institution names — without HTML-escaping. |
-| **Evidence** | `ExperienceGuided.tsx:42` — `lines.push(\`<p><strong>${e.company}</strong>${e.title ? \` — ${e.title}\` : ""}</p>\`);` |
-| **Impact** | A user could inject `<img src=x onerror=alert(document.cookie)>` into a resume field. The payload is stored in the `resume_sections` table and rendered unsanitised. If resumes are ever shared (e.g. with counsellors), this becomes a full stored XSS attack. Even in single-user mode, it could be exploited via CSRF-style content injection. |
+| **Files** | `caat-frontend/app/(main)/communities/actions.ts:158-216` (`createPostAction`) |
+| **Description** | The `group_id` parameter is accepted from the client and inserted into `community_posts` without any check that the user is a member of the group. RLS on `community_posts` only enforces `auth.uid() = user_id`. |
+| **Impact** | A non-member can post to any group — including private ones — by passing the group's UUID. Combined with A1, an attacker can fully participate in a private community without being admitted. |
 
-#### A2 — Additional `innerHTML` Assignments for DOM Measurement
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **HIGH** |
-| **Files** | `ResumePreviewPanel.tsx:60,402` · `ResumePreviewMini.tsx:48,194` |
-| **Description** | The `getTopLevelBlocks` and `createMeasureNode` helper functions set `container.innerHTML = html` for page-break measurement. This parses the same unsanitised user HTML, creating additional XSS execution points beyond the visible preview. |
-
-#### A3 — `javascript:` Protocol URLs in Href Attributes
+#### A3 — Anyone can comment on any post in any private group (MEDIUM)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **MEDIUM** |
-| **Files** | `schools/page.tsx:164` · `schools/[id]/page.tsx:89` · `scholarships/my-scholarships-panel.tsx:631` · `components/profile/PersonalInfoCard.tsx` (LinkedIn/GitHub fields) |
-| **Description** | User-provided or database-sourced URLs are rendered directly in `<a href={...}>` without protocol validation. A `javascript:alert(1)` value would execute on click. The scholarship `external_url` field is fully user-controlled. Profile URL fields use `type="text"` (not `type="url"`), providing no browser-level validation. |
-| **Impact** | Self-XSS for user-created scholarships; broader risk if school data is ever user-contributed or imported without validation. |
+| **Files** | `caat-frontend/app/(main)/communities/actions.ts:596-631` (`addCommentAction`); RLS in `create_communities_tables.sql:172-178` |
+| **Description** | The `comments_select` and `comments_insert` policies are `USING (TRUE)` and `WITH CHECK (auth.uid() = user_id)` — making all comments globally readable and writable by any authenticated user as long as they know the `post_id`. Combined with A1 (post IDs in private groups are leakable), comments on private group posts are likewise leakable and writable. |
+| **Impact** | Comment-level privacy mirrors the broken post-level privacy. |
 
----
-
-### B. Insecure Direct Object References (IDOR)
-
-#### B1 — `deleteSection` Has No User Ownership Check
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **HIGH** |
-| **Files** | `components/resume-builder/api.ts:213-222` |
-| **Description** | Deletes a `resume_sections` row using **only** `.eq("id", sectionId)`. The function calls `requireUserId()` (authentication check) but never uses the returned `userId` to scope the query. |
-| **Evidence** | `await supabase.from("resume_sections").delete().eq("id", sectionId);` |
-| **Impact** | Any authenticated user can delete any other user's resume section by guessing/knowing the UUID. Severity depends on whether RLS on `resume_sections` enforces ownership through the parent `resumes` table — but application code provides zero defence. |
-
-#### B2 — `deleteResume` Deletes Sections Without User Scope
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **HIGH** |
-| **Files** | `components/resume-builder/api.ts:225-240` |
-| **Description** | When deleting a resume, the function first deletes all sections with `.eq("resume_id", resumeId)` — without verifying that `resumeId` belongs to the current user. The resume itself is then deleted with `.eq("user_id", userId)` (correct), but the sections deletion happens **first** and is unguarded. |
-| **Impact** | An attacker could provide another user's `resumeId`. The sections get deleted; the resume delete then fails due to the `user_id` check — leaving the victim's resume empty. |
-
-#### B3 — `saveResumeState` Upserts Sections Without User Ownership Verification
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **HIGH** |
-| **Files** | `components/resume-builder/api.ts:200-206` |
-| **Description** | The section upsert uses `onConflict: "id"` without any user ownership check. An attacker could craft a payload with section IDs belonging to another user's resume. |
-| **Evidence** | `await supabase.from("resume_sections").upsert(rows, { onConflict: "id" });` |
-
-#### B4 — `getDocumentSignedUrl` Has No User Ownership Check
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **HIGH** |
-| **Files** | `app/(main)/documents/api.ts:163-172` |
-| **Description** | Generates a signed URL for **any** storage path without verifying it belongs to the authenticated user. The storage path pattern is predictable: `{user_id}/{category}/{timestamp}_{filename}`. |
-| **Impact** | Any authenticated user who knows or guesses another user's storage path can access their private documents (transcripts, identity documents, letters). |
-
-#### B5 — `deleteDocument` and `reuploadDocument` Use Client-Supplied Storage Path
+#### A4 — Block list not enforced on user profile feed or group feed (MEDIUM)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **MEDIUM** |
-| **Files** | `app/(main)/documents/api.ts:101-117,119-161` |
-| **Description** | Both functions accept a full `DocumentRow` from the client. The storage file removal uses `doc.storage_path` from this client-supplied object — without verifying the path belongs to the current user. The DB operations are properly scoped with `.eq("user_id", ...)`, but the storage removal is not. |
-| **Impact** | An attacker could delete another user's files from Supabase storage while the DB operation harmlessly fails/updates nothing. |
+| **Files** | `actions.ts:326-345` (`fetchPostsByUserAction`), `actions.ts:1015-1037` (`fetchGroupPostsAction`), `actions.ts:349-371` (`searchPostsAction`) |
+| **Description** | Only `fetchPostsAction` (the home feed) filters out blocked users. `fetchPostsByUserAction`, `fetchGroupPostsAction`, and `searchPostsAction` do **not** apply the block list. |
+| **Impact** | A blocked user remains fully visible — and can still be followed, replied to, and reported — on the victim's profile page, in any shared group, and via search. The block feature gives a false sense of safety. |
+
+#### A5 — No approval/rejection action for private group join requests (MEDIUM — broken feature)
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | **MEDIUM** |
+| **Files** | `caat-frontend/app/(main)/communities/actions.ts` (no exports for approve/reject); `supabase/migrations/communities_v5_join_requests.sql:43-49` defines `owner_manage_requests` policy but no client/action consumes it |
+| **Description** | The migration creates the `community_group_requests` table and exposes an "owner manages requests" RLS policy, but no server action implements approval or rejection. Owners cannot admit users to private groups; users cannot be promoted to members from `pending` to `approved`. |
+| **Impact** | The private-group feature is half-implemented. Functionally, no one can ever join a private group through the intended workflow. (Meanwhile A2 lets attackers bypass the workflow entirely.) |
 
 ---
 
-### C. Query / Filter Injection
+### B. Anonymity & Privacy Leakage
 
-#### C1 — PostgREST Filter Injection in School Search
+#### B1 — Anonymous posts leak `user_id` in API response (HIGH)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **HIGH** |
-| **Files** | `app/(main)/schools/page.tsx:73-74` |
-| **Description** | The `searchQuery` from URL params (`?q=`) is interpolated directly into a PostgREST `.or()` filter string without any sanitisation. PostgREST uses `.`, `,`, `(`, `)` as filter syntax delimiters. |
-| **Evidence** | `` const orQuery = `name.ilike.${searchQuery}%,name.ilike.% ${searchQuery}%,name.ilike.%(${searchQuery})%`; `` |
-| **Impact** | A crafted URL like `/schools?q=foo%25,id.gt.0` injects additional filter clauses. While PostgREST prevents true SQL injection, this allows filter manipulation — potentially exposing data columns, bypassing intended filtering, or causing error messages that leak schema information. |
+| **Files** | `caat-frontend/app/(main)/communities/actions.ts:79-110` (`enrichPosts` mapping) |
+| **Description** | When `is_anonymous = true`, the code correctly sets `author = null` (so the UI hides the name). But it still returns `user_id: row.user_id` in the very same object. Any caller of the action receives the de-anonymising id alongside the post. |
+| **Evidence** | Lines 86-89: `const author: PostAuthor | null = isAnon ? null : ...` (good) followed by `user_id: row.user_id as string` (leak). |
+| **Impact** | Any user can map every "anonymous" post back to its author by inspecting the network response. The anonymity feature provides no actual anonymity. This is particularly damaging given the topic tags include sensitive content (TEST_SCORES, APPLICATION_RESULTS — accepted/rejected). |
 
-#### C2 — LIKE Wildcards Not Escaped in Application Search
+#### B2 — Profile lookup-by-id is unauthenticated and unrestricted (LOW)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **LOW** |
-| **Files** | `app/(main)/applications/api.ts:85` |
-| **Description** | The `.ilike("name", \`%${query}%\`)` call is properly parameterised by the Supabase SDK, but `%` and `_` characters in the user's query are not escaped, allowing unintended wildcard matching. |
+| **Files** | Multiple `supabase.from("profiles").select(...).eq("id", X)` calls; profile RLS not visible in code |
+| **Description** | The `profiles` table is queried liberally with `.select("id, first_name, last_name, avatar_url")` without RLS verification at the application layer. If the `profiles` table's RLS policy is `SELECT USING (true)` (consistent with `community_profile_settings`), then anyone can enumerate all users. The code references columns including `birth_date`, `phone`, `linkedin`, `github`, `nationality`, `current_location`, `school_name`, `target_majors` — these must not be in the SELECT-USING-true policy. |
+| **Impact** | Without seeing the actual `profiles` RLS, this is an unverifiable risk. Needs manual confirmation in the Supabase dashboard. |
+
+---
+
+### C. Abuse / Spam / Notification Flooding
+
+#### C1 — Notification flood via like toggling (MEDIUM)
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | **MEDIUM** |
+| **Files** | `actions.ts:486-505` (`toggleLikeAction`) |
+| **Description** | Each transition from "unliked → liked" inserts a fresh row into `notifications` with no deduplication or rate cap. An attacker can scripted-toggle a like on a target post in a tight loop, generating thousands of notification rows for the post owner. |
+| **Impact** | Storage bloat, push-notification flooding (if mobile is added later), and a denial-of-service against the victim's notification UI. |
+
+#### C2 — Notification flood via follow toggling (MEDIUM)
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | **MEDIUM** |
+| **Files** | `actions.ts:412-420` (`followUserAction`) |
+| **Description** | The action inserts a `community_follows` row (idempotent due to PK) **and** a notification row (NOT idempotent). Calling `followUserAction(target)` repeatedly produces duplicate "started following you" notifications even though the follow itself only succeeds once. There is also no check that the follow insert succeeded before sending the notification. |
+| **Impact** | Same notification flood pattern as C1. Also noisy/buggy UX. |
+
+#### C3 — Comment spam: no per-post rate limit, no spam detection beyond a small profanity word list (MEDIUM)
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | **MEDIUM** |
+| **Files** | `actions.ts:596-631` (`addCommentAction`); `caat-frontend/lib/profanity-filter.ts` |
+| **Description** | The profanity filter is a small static list (~20 words), trivially bypassable with leetspeak (`f@ck`, `fuk`, unicode look-alikes), spaces, or any non-English language. There is no per-user-per-post comment rate limit. |
+| **Impact** | A single user can dump thousands of comments on a post, including any non-blocked language including spam, slurs in foreign languages, or repeated harassing content. |
+
+#### C4 — Auto-hide threshold of 3 reports is exploitable (LOW–MEDIUM)
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | **LOW** (mitigated by `UNIQUE(post_id, reporter_id)`, but escalates if signups are unrestricted) |
+| **Files** | `create_communities_tables.sql:121-139` (`check_post_reports` trigger) |
+| **Description** | A post is auto-hidden after 3 unique reporters. Combined with no signup rate limit (G1), an attacker with three sock-puppet accounts can hide any post on the platform. There is no minimum account age, no minimum reporter trust score, no admin review queue. |
+| **Impact** | Any post can be censored by a small Sybil cluster. Note: hidden posts can still be deleted by the original author, but they cannot SELECT them (the policy is `USING (is_hidden = FALSE)`), so they don't even know which of their own posts have been hidden. |
+
+#### C5 — Self-reporting is allowed (LOW)
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | **LOW** |
+| **Files** | `actions.ts:677-683` (`reportPostAction`) |
+| **Description** | No check that `reporter_id != post.user_id`. A user can report their own post, contributing toward the 3-report auto-hide threshold. |
+| **Impact** | Marginal contribution to C4. Trivial to fix. |
 
 ---
 
 ### D. Authentication & Session Management
 
-#### D1 — Bookmark Buttons Use `getSession()` Instead of `getUser()`
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **MEDIUM** |
-| **Files** | `schools/school-bookmark-button.tsx:30` · `scholarships/[id]/bookmark-button.tsx:21` · `majors/[id]/bookmark-button.tsx:19` |
-| **Description** | Per Supabase's own security advisory, `getSession()` reads the JWT from local storage **without server-side verification**. A tampered JWT could return a spoofed `user.id`. The returned `userId` is then used in `.eq("user_id", userId)` and `.upsert()` queries. Should use `getUser()` which validates the token against the Supabase Auth server. |
-
-#### D2 — All Mutations Run Client-Side With No Server-Side Layer
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **MEDIUM** (architectural) |
-| **Files** | `src/lib/supabaseClient.ts` + all `api.ts` files |
-| **Description** | There is only ONE Supabase client (browser, anon key). Zero API routes, zero server actions. All CRUD happens from the browser. The entire security model depends 100% on Supabase RLS. Any user with browser DevTools can craft arbitrary Supabase queries. |
-
-#### D3 — Browser Supabase Client Used in Server Component
+#### D1 — `getSession()` still used in reset-password page (LOW)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **LOW** |
-| **Files** | `app/(main)/schools/page.tsx:1,63` |
-| **Description** | The `SchoolsPage` is a server component that imports `createBrowserClient`. The browser client is designed for client-side use (reads `document.cookie`). This works because the `schools` table is likely public-read, but it's architecturally incorrect and sets a bad precedent. |
+| **Files** | `caat-frontend/app/reset-password/page.tsx:27` |
+| **Description** | Per Supabase's own security advisory, `getSession()` reads JWT from local storage without server validation. The original D1 was for bookmark buttons (now fixed); this single remaining usage is in the reset-password gate. The risk is small because the consequence is only "show or hide the form" — the actual `updateUser({ password })` call is server-validated by Supabase. |
+| **Impact** | Minor UX-level bypass at most. Cosmetic. |
 
-#### D4 — `updateProfile` Accepts Partial Fields — Potential Mass Assignment
+#### D2 — All non-Communities mutations remain client-side (MEDIUM, architectural)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **MEDIUM** |
-| **Files** | `app/(main)/profile/api.ts:59-76` |
-| **Description** | Accepts `Partial<Omit<ProfileRow, "id">>` and passes it directly to `.update(fields)`. Since calls originate from client-side code, an attacker could include fields that should not be user-modifiable (e.g., `role`, `is_admin`, if they exist on the profiles table). |
+| **Files** | `app/(main)/profile/api.ts`, `app/(main)/applications/api.ts`, `app/(main)/documents/api.ts`, `components/dashboard/api.ts`, `components/resume-builder/api.ts`, `components/essays/api.ts`, `components/profile/AvatarUpload.tsx`, `app/(main)/scholarships/*` |
+| **Description** | Communities was migrated to Server Actions, but every other feature (profile, applications, documents, dashboard, resume builder, essays, scholarships) still uses direct browser → Supabase calls. This means: no place to enforce per-action rate limits, no place to validate input lengths server-side, no place to check record-creation caps. The original D2 is partially open. |
+| **Impact** | Defence-in-depth for the rest of the app remains absent. Compromise of the anon key (e.g. via one of the client-side XSS sinks if a new one is introduced) lets the attacker do everything via the JS SDK. |
+
+#### D3 — No CAPTCHA on signup, login, or password reset (HIGH)
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | **HIGH** |
+| **Files** | `caat-frontend/components/login-form.tsx`, `caat-frontend/components/signup-form.tsx`, `caat-frontend/app/forgot-password/page.tsx` |
+| **Description** | None of the three auth-related forms include any anti-bot challenge. Combined with G1 (no rate limiting beyond Supabase defaults), an attacker can: (a) brute-force credentials, (b) flood password-reset emails to harvest valid email addresses, (c) script-create new accounts at scale (which then enables C3, C4, A1/A2 abuse). |
+| **Impact** | Enables every other abuse pattern in this audit. |
 
 ---
 
 ### E. File Upload & Storage Security
 
-#### E1 — File Type Validation is Client-Side Only
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **HIGH** |
-| **Files** | `documents/client.tsx:324-335` · `documents/api.ts:52-55` · `components/profile/AvatarUpload.tsx:41-44` |
-| **Description** | Document uploads validate extensions (`pdf, jpg, jpeg, png`) and MIME types only in client JavaScript. The `uploadDocument` API function passes `file.type` (browser-reported) to Supabase storage without server-side validation. An attacker can bypass client checks via DevTools/curl and upload arbitrary file types (`.html`, `.svg` with embedded scripts, executables). |
-| **Impact** | An attacker could upload a malicious HTML/SVG file. When any user opens the signed URL, the browser renders it — executing embedded JavaScript. This is a **stored XSS vector through file upload**. |
-
-#### E2 — File Size Validation is Client-Side Only
+#### E2 — File size limit only on client (MEDIUM, unchanged from prior audit)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **MEDIUM** |
-| **Files** | Same as E1 |
-| **Description** | The 10MB limit for documents and 5MB limit for avatars are enforced only in client JavaScript. An attacker bypassing the client can upload files of any size (up to Supabase's own limits). |
+| **Files** | `app/(main)/documents/api.ts` (no size check), `components/profile/AvatarUpload.tsx:60` (`MAX_FILE_SIZE = 5MB` only client-side) |
+| **Description** | Magic-byte validation now confirms file *type* server-side, but no equivalent server-side check on file *size*. An attacker bypassing the client can upload up to Supabase's bucket-level limit. |
+| **Impact** | Storage cost / quota abuse. |
 
-#### E3 — No Limit on Total Number of Uploaded Documents
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **MEDIUM** |
-| **Files** | `app/(main)/documents/api.ts` |
-| **Description** | No check on the count of existing documents before allowing another upload. A user could upload thousands of documents, exhausting storage. |
-
-#### E4 — Avatar Upload Publicly Accessible With No Content Validation
+#### E5 — Storage bucket policies still not visible in code (MEDIUM)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **MEDIUM** |
-| **Files** | `components/profile/AvatarUpload.tsx:57` |
-| **Description** | Uses `getPublicUrl()` — meaning the `profile-avatars` bucket is publicly readable. Combined with client-only MIME type validation, an attacker could upload an HTML file as their "avatar" and share the public URL as a phishing/XSS vector. |
+| **Files** | (Configuration, not code) |
+| **Description** | RLS policies for `user-documents` and `profile-avatars` buckets exist (presumably) only in the Supabase dashboard and cannot be audited here. Confirm: (a) `user-documents` is private and scoped to `auth.uid()`-prefixed paths; (b) `profile-avatars` upload is restricted to image MIME types; (c) per-bucket file size limit is set. |
+| **Impact** | Not directly exploitable but unverifiable. |
 
-#### E5 — Supabase Storage Bucket Policies Not Visible in Code
+#### E6 — Avatar and document file paths are predictable (LOW)
 
 | Field | Detail |
 |-------|--------|
-| **Severity** | **MEDIUM** |
-| **Description** | No storage bucket RLS policies exist in the codebase. Security depends entirely on Supabase dashboard configuration, which cannot be audited from code alone. Needs manual verification. |
+| **Severity** | **LOW** |
+| **Files** | `app/(main)/documents/api.ts:89` (`{user.id}/{category}/{Date.now()}_{name}`); `components/profile/AvatarUpload.tsx` (`{userId}/avatar.{ext}`) |
+| **Description** | Storage paths are deterministic given user id + filename. For documents this is mitigated by signed URLs and the `B4` ownership check. For avatars, the bucket is *public* — anyone who can guess a user's id and extension gets their avatar. Not necessarily sensitive. |
+| **Impact** | Marginal fingerprinting / scraping vector. |
 
 ---
 
 ### F. Input Validation & Data Limits
 
-#### F1 — No Input Length Validation on Any Form Field
+#### F1 — Input length validation missing on most fields (MEDIUM, partially unchanged)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **MEDIUM** |
-| **Files** | All form components (see list below) |
-| **Description** | The **only** input constraints in the entire application are `minLength={8}` on the signup password and `min`/`max` on the graduation year number. Every other field — names, notes, descriptions, URLs, phone numbers, activities, essay content, resume content, todo items, application notes — accepts **unlimited-length input**. There is no server-side validation either. |
-| **Affected components** | `PersonalInfoCard.tsx`, `AcademicProfileCard.tsx`, `ExtracurricularsCard.tsx`, `InterestsGoalsCard.tsx`, `RecommendersCard.tsx`, `StandardisedTestingCard.tsx`, `EssaysShell.tsx`, `applications/client.tsx`, `my-scholarships-panel.tsx`, `TodoWidget.tsx`, `ExperienceGuided.tsx`, `EducationGuided.tsx` |
-| **Impact** | A user can submit megabytes of text into any field, causing database bloat, rendering performance issues, and potential denial of service. |
+| **Files** | All form components except community posts/comments and group names |
+| **Description** | The community feature now enforces `content <= 2000` for posts (`actions.ts:172`), `<= 1000` for comments (`actions.ts:607`), and `name 3-50` for groups (`actions.ts:856-857`). DB-level CHECKs back these up (`create_communities_tables.sql:11,28`). However: |
+| | • Group **description** has no length cap (action accepts any size, no DB CHECK) |
+| | • Post field-level: `result_card.program`, `result_card.university_name`, `score_card.score`, `poll_options[].text` have no caps |
+| | • Profile fields: name, phone, LinkedIn, GitHub, school name, etc. — no caps anywhere |
+| | • Resume-builder structured-data fields: `bullets[]`, `company`, `title`, `institution` — no caps |
+| | • Essay drafts: no cap on `content` (already RLS-scoped, but a single user can stuff megabytes per draft × N drafts) |
+| | • Application notes, todo content, scholarship custom fields — no caps |
+| **Impact** | Database bloat, render-perf regressions, and storage cost abuse. Any single user can bloat their row beyond reasonable limits. |
 
-#### F2 — Zod Installed but Never Used
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **MEDIUM** |
-| **Files** | `package.json` |
-| **Description** | Zod v4 is listed as a dependency but is never imported anywhere in the application. All data flows from form state directly to Supabase `.insert()` / `.update()` calls without any schema validation. Invalid data types, excessively long strings, or unexpected formats can be written to the database. |
-
-#### F3 — No Limit on Data Record Creation
+#### F2 — Zod still installed but not used outside of Communities action validation (MEDIUM)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **MEDIUM** |
-| **Files** | All `api.ts` files |
-| **Description** | There are no limits on how many bookmarks, applications, todos, essay drafts, resumes, scholarships, or recommenders a user can create. A malicious user could create thousands of records per table. |
+| **Files** | `caat-frontend/package.json` includes `"zod": "^4.2.1"`; no imports anywhere |
+| **Description** | The Communities server actions validate by hand (length + allow-list checks). Zod schemas would be more robust, prevent regressions, and standardise validation across all server actions. |
+
+#### F3 — No per-user record creation caps for most resources (MEDIUM, mostly unchanged)
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | **MEDIUM** |
+| **Files** | All resource creation endpoints |
+| **Description** | Documents have a 50-cap (good). No caps elsewhere: posts, comments, groups, follows, blocks, bookmarks, applications, scholarships, recommenders, todos, dashboard widgets, resumes, resume sections, essay drafts, custom essay prompts. |
+| **Impact** | A single account can create unlimited rows of any type. |
 
 ---
 
-### G. Rate Limiting & Abuse Prevention
+### G. Rate Limiting & Anti-Automation
 
-#### G1 — Zero Rate Limiting Anywhere in the Application
+#### G1 — Zero application-level rate limiting (HIGH, unchanged)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **HIGH** |
-| **Files** | Entire application |
-| **Description** | There are no API routes, no server-side middleware, and no rate limiting of any kind. All operations go directly to Supabase. There is: |
-| | • No rate limiting on login attempts (`signInWithPassword`) |
-| | • No rate limiting on signup (`signUp`) |
-| | • No rate limiting on password reset (`resetPasswordForEmail`) |
-| | • No rate limiting on data creation operations |
-| | • No CAPTCHA or anti-automation on any form |
-| **Impact** | An attacker could brute-force login credentials (limited only by Supabase GoTrue defaults), spam password reset emails, enumerate valid email addresses, or flood the database with junk data. |
+| **Files** | (Absent application-wide) |
+| **Description** | No rate limiter (Upstash, `next-rate-limit`, Vercel KV, etc.) is used anywhere. Even though Communities went through Server Actions — the natural place to gate by IP/user — none of those actions wrap a rate-limit check. The auth flows still depend entirely on Supabase GoTrue's defaults (which are configurable per project but not visible from the code). |
+| **Impact** | Brute force on login, signup spam, comment/post/follow spam, notification floods (C1, C2), auto-hide abuse (C4) all become trivial at scale. |
 
 ---
 
-### H. Security Headers & Configuration
+### H. Information Leakage
 
-#### H1 — Missing `Content-Security-Policy` Header
+#### H1 — Raw Supabase error messages still bubble up to users (MEDIUM, unchanged)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **MEDIUM** |
-| **Files** | `next.config.ts` |
-| **Description** | The security headers include `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, and `Permissions-Policy` — which is good. But there is **no CSP header**. Given the `dangerouslySetInnerHTML` usage (Finding A1), a CSP would significantly limit the blast radius of any XSS. |
+| **Files** | `caat-frontend/app/(main)/communities/actions.ts:439` (`return { error: error?.message ?? null }` in `updatePrivacySettingsAction`); same pattern in many other actions; `caat-frontend/app/login/page.tsx` and signup form catch and display `err.message`. |
+| **Description** | Postgres / Supabase error messages can include constraint names, column names, schema details, and PostgREST internals. These are returned verbatim to clients. |
+| **Impact** | Schema fingerprinting; assists an attacker mapping the database. |
 
-#### H2 — Missing `Strict-Transport-Security` (HSTS) Header
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **MEDIUM** |
-| **Files** | `next.config.ts` |
-| **Description** | No HSTS header. Users could be vulnerable to SSL stripping attacks on first visit. |
-
-#### H3 — No CSRF Protection Mechanism
+#### H2 — `console.error` still leaks errors in production (LOW, unchanged)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **LOW** |
-| **Description** | Since all mutations go directly to Supabase (not through Next.js), CSRF protection relies on Supabase's `httpOnly` cookies with `SameSite` attributes. This is reasonable in modern browsers but there is no explicit CSRF token mechanism. |
+| **Files** | Multiple (`ResumeBuilderShell.tsx:143,237`, `error.tsx`, `AvatarUpload.tsx`, etc.) |
+| **Description** | Some sites guard with `process.env.NODE_ENV !== "production"` (good), others don't. |
 
-#### H4 — Source Maps Not Explicitly Disabled
+#### H3 — Overly broad `.select("*")` queries (LOW, unchanged)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **LOW** |
-| **Files** | `next.config.ts` |
-| **Description** | `productionBrowserSourceMaps` is not explicitly set to `false`. Next.js defaults to not exposing them, but explicit is better for defence-in-depth. |
+| **Files** | Many — communities actions especially (`actions.ts:134, 552, 613, 868, 928, 1053`); essays, profile, scholarships |
+| **Description** | If new sensitive columns are added later, they will leak by default. Concrete examples that would matter today: `community_posts.user_id` (the B1 anonymity leak is a direct consequence), `community_groups.creator_id`, `community_comments.user_id`. |
 
 ---
 
-### I. Information Leakage
+### I. Query / Filter Injection
 
-#### I1 — Raw Supabase Error Messages Shown to Users
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **MEDIUM** |
-| **Files** | `schools/page.tsx:89` · `scholarships/page.tsx:18` · `majors/page.tsx:21` |
-| **Description** | Multiple pages render `error.message` from Supabase directly in the UI. These messages can leak table names, column names, RLS policy details, and constraint names. |
-
-#### I2 — `console.error` Leaks Full Error Objects in Production
+#### I1 — LIKE wildcard escaping missing in 3 community search functions (LOW)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **LOW** |
-| **Files** | Multiple (`error.tsx`, `ResumeBuilderShell.tsx`, `AvatarUpload.tsx`, `DashboardShell.tsx`, `profile/page.tsx`) |
-| **Description** | `console.error(error)` calls log full error objects (including stack traces and Supabase internal details) to the browser console in production. |
-
-#### I3 — Overly Broad `.select("*")` Queries
-
-| Field | Detail |
-|-------|--------|
-| **Severity** | **LOW** |
-| **Files** | Multiple API files |
-| **Description** | Many queries use `.select("*")` on public tables. If new sensitive columns are added in the future, they would be automatically exposed to the frontend. |
+| **Files** | `actions.ts:156` (`searchSchoolsAction`), `actions.ts:364` (`searchPostsAction`), `actions.ts:889` (`fetchGroupsAction`) |
+| **Description** | All three use `q.ilike("…", \`%${query.trim()}%\`)` without escaping `%` or `_`. The fix already exists in `app/(main)/applications/api.ts:85` (`safeQuery = query.replace(/[\\%_]/g, "\\$&")`) but was not applied to these. |
+| **Impact** | A `%` in user input matches everything; a query of just `_` matches every single-character row. Useful for enumeration but not a true injection. |
 
 ---
 
-### J. Dependency & Secrets Management
+### J. Bugs With Security Implications
 
-#### J1 — Test Credentials Hardcoded in E2E Setup
+#### J1 — `requestJoinGroupAction` writes to a non-existent column (`message`) (LOW — broken feature)
+
+| Field | Detail |
+|-------|--------|
+| **Severity** | **LOW** (functional bug, security implication: silent failure) |
+| **Files** | `caat-frontend/app/(main)/communities/actions.ts:983-989`; migrations show `notifications` table never adds a `message` column |
+| **Description** | The code does `supabase.from("notifications").insert({ … message: \`${requesterName} requested to join ${groupRow.name}\` })` — but no migration creates this column. Either the insert silently drops the field (PostgREST default) or fails. |
+| **Impact** | The owner-notification side of the join-request flow does not work. Combined with A5 (no approval action), the entire private-group flow is non-functional through legitimate means — but A1/A2 means the privacy was never enforced anyway. |
+
+#### J2 — Notifications schema lacks a `message` column for join requests (LOW)
+
+Same root cause as J1; this is the schema-side observation. The `notifications_type_check` constraint was extended to allow `join_request`, but the table has no field to store the request context. Either add a `message TEXT` column or remove the field from the insert.
+
+#### J3 — Hidden posts cannot be seen or managed by their author (LOW)
 
 | Field | Detail |
 |-------|--------|
 | **Severity** | **LOW** |
-| **Files** | `tests/e2e/auth.setup.ts:11-12` |
-| **Evidence** | `const TEST_EMAIL = "test@gmail.com"; const TEST_PASSWORD = "testtest123";` |
-| **Description** | If this test account exists in production Supabase, anyone reading the repo has valid credentials. The `tests/` directory is not excluded from git. |
-
-#### J2 — Environment Files Properly Excluded (Positive Finding)
-
-| **Severity** | **N/A — GOOD** |
-|-------|--------|
-| Both `.gitignore` files exclude `.env*`. Only `NEXT_PUBLIC_` variables (anon key, URL) are exposed — this is correct. No service_role key exists anywhere in the codebase. |
-
-#### J3 — Open Redirect Protection (Positive Finding)
-
-| **Severity** | **N/A — GOOD** |
-|-------|--------|
-| The login form validates the `next` redirect parameter against `window.location.origin`, correctly preventing open redirects. |
+| **Files** | `create_communities_tables.sql:154-156` (`posts_select USING (is_hidden = FALSE)`) |
+| **Description** | When a post is auto-hidden by C4, the original author cannot SELECT it, so they don't know which post was hidden. They can still DELETE it (the DELETE policy is `USING (auth.uid() = user_id)` — no `is_hidden` check) — but only if they happen to know the id. |
+| **Impact** | UX-level transparency issue; users have no recourse. Combined with C4, this enables silent content removal. |
 
 ---
 
 ## Summary Matrix
 
-| ID | Category | Severity | Finding |
-|----|----------|----------|---------|
-| A1 | XSS | **HIGH** | Stored XSS via `dangerouslySetInnerHTML` in resume preview |
-| A2 | XSS | **HIGH** | Additional `innerHTML` assignments for DOM measurement |
-| A3 | XSS | MEDIUM | `javascript:` protocol URLs in href attributes |
-| B1 | IDOR | **HIGH** | `deleteSection` has no user ownership check |
-| B2 | IDOR | **HIGH** | `deleteResume` deletes sections without user scope |
-| B3 | IDOR | **HIGH** | `saveResumeState` upserts sections without ownership check |
-| B4 | IDOR | **HIGH** | `getDocumentSignedUrl` has no user ownership check |
-| B5 | IDOR | MEDIUM | `deleteDocument`/`reuploadDocument` use client-supplied storage path |
-| C1 | Injection | **HIGH** | PostgREST filter injection in school search |
-| C2 | Injection | LOW | LIKE wildcards not escaped in application search |
-| D1 | Auth | MEDIUM | Bookmark buttons use `getSession()` instead of `getUser()` |
-| D2 | Auth | MEDIUM | All mutations run client-side, no server-side layer |
-| D3 | Auth | LOW | Browser Supabase client used in server component |
-| D4 | Auth | MEDIUM | `updateProfile` mass assignment risk |
-| E1 | Upload | **HIGH** | File type validation is client-side only |
-| E2 | Upload | MEDIUM | File size validation is client-side only |
-| E3 | Upload | MEDIUM | No limit on total uploaded documents |
-| E4 | Upload | MEDIUM | Avatar upload publicly accessible, no content validation |
-| E5 | Upload | MEDIUM | Storage bucket policies not verifiable from code |
-| F1 | Validation | MEDIUM | No input length validation on any form field |
-| F2 | Validation | MEDIUM | Zod installed but never used |
-| F3 | Validation | MEDIUM | No limit on data record creation |
-| G1 | Rate Limit | **HIGH** | Zero rate limiting anywhere |
-| H1 | Headers | MEDIUM | Missing Content-Security-Policy |
-| H2 | Headers | MEDIUM | Missing Strict-Transport-Security |
-| H3 | Headers | LOW | No explicit CSRF protection |
-| H4 | Headers | LOW | Source maps not explicitly disabled |
-| I1 | Leakage | MEDIUM | Raw Supabase errors shown to users |
-| I2 | Leakage | LOW | `console.error` leaks details in production |
-| I3 | Leakage | LOW | Overly broad `.select("*")` queries |
-| J1 | Secrets | LOW | Test credentials hardcoded in E2E |
+| ID | Category | Severity | Status | Finding |
+|----|----------|----------|--------|---------|
+| A1 | Authz | **CRITICAL** | NEW | Private group posts readable via `fetchGroupPostsAction` regardless of membership |
+| A2 | Authz | **HIGH** | NEW | `createPostAction` accepts `group_id` without membership check |
+| A3 | Authz | MEDIUM | NEW | All comments globally readable/writable; private group comments leak |
+| A4 | Authz | MEDIUM | NEW | Block list not enforced on profile, group, or search feeds |
+| A5 | Authz | MEDIUM | NEW | No approve/reject action for join requests; flow incomplete |
+| B1 | Privacy | **HIGH** | NEW | Anonymous posts return `user_id` — anonymity is cosmetic only |
+| B2 | Privacy | LOW | NEW | Profile RLS not visible in code; needs manual confirmation |
+| C1 | Abuse | MEDIUM | NEW | Notification flood via like-toggle |
+| C2 | Abuse | MEDIUM | NEW | Notification flood via repeated follow |
+| C3 | Abuse | MEDIUM | NEW | Profanity filter trivially bypassable; no comment rate limit |
+| C4 | Abuse | LOW–MED | NEW | 3-report auto-hide exploitable with sock-puppets |
+| C5 | Abuse | LOW | NEW | Self-reporting allowed |
+| D1 | Auth | LOW | UNCHANGED | `getSession()` in reset-password gate |
+| D2 | Auth | MEDIUM | PARTIAL | Most non-Communities mutations still client-side |
+| D3 | Auth | **HIGH** | UNCHANGED | No CAPTCHA on signup/login/forgot-password |
+| E2 | Upload | MEDIUM | UNCHANGED | File size validated only client-side |
+| E5 | Upload | MEDIUM | UNCHANGED | Storage bucket RLS not in code |
+| E6 | Upload | LOW | NEW | Predictable storage paths for avatars (public bucket) |
+| F1 | Validation | MEDIUM | PARTIAL | Length caps only on community content; rest of app uncapped |
+| F2 | Validation | MEDIUM | UNCHANGED | Zod installed but not used (outside ad-hoc validation in actions) |
+| F3 | Validation | MEDIUM | PARTIAL | Document cap exists; no caps on posts, follows, comments, etc. |
+| G1 | Rate Limit | **HIGH** | UNCHANGED | No application-level rate limiting anywhere |
+| H1 | Leakage | MEDIUM | UNCHANGED | Raw Supabase error messages returned to clients |
+| H2 | Leakage | LOW | UNCHANGED | `console.error` in production |
+| H3 | Leakage | LOW | UNCHANGED | `.select("*")` queries |
+| I1 | Injection | LOW | NEW | LIKE wildcards not escaped in 3 community search functions |
+| J1 | Bug-Security | LOW | NEW | `requestJoinGroupAction` writes to non-existent `message` column |
+| J2 | Bug-Security | LOW | NEW | Notifications schema lacks `message` column for join requests |
+| J3 | Bug-UX | LOW | NEW | Authors cannot see/manage hidden posts |
 
-**Totals: 8 High · 14 Medium · 8 Low**
+**Totals: 5 High/Critical · 9 Medium · 8 Low** (one Low–Medium straddler counted as Low)
 
 ---
 
-## Recommended Remediation Steps
+## Remediation Plan
 
-### Priority 1 — Critical / High (address immediately)
+The detailed, ordered, code-level plan is in [`SECURITY_REMEDIATION_PLAN.md`](./SECURITY_REMEDIATION_PLAN.md). High-level grouping below.
 
-#### 1a. Sanitise all HTML before rendering (A1, A2)
-- Install `DOMPurify` and wrap every `dangerouslySetInnerHTML` and `innerHTML` assignment.
-- In the guided editors (`ExperienceGuided.tsx`, `EducationGuided.tsx`), HTML-escape all user input before embedding in HTML strings. Create a shared `escapeHtml()` utility.
-- Example: `dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}`
+### Immediate (this sprint)
 
-#### 1b. Add user ownership checks to all resume section operations (B1, B2, B3)
-- For `deleteSection`: query the section's parent `resume` first and verify `resume.user_id === userId`, OR add a `user_id` column to `resume_sections` and filter on it.
-- For `deleteResume`: scope the section deletion with a subquery or verify ownership first.
-- For `saveResumeState`: verify each section ID belongs to a resume owned by the current user before upserting.
-- Additionally: **verify that Supabase RLS policies on `resume_sections` enforce ownership** through the parent `resumes` table. Do not rely solely on application code.
+1. **A1, A2, A3 — Enforce group membership in server actions.** Add a membership check at the top of `fetchGroupPostsAction`, `createPostAction` (when `group_id` is provided), and any future per-group action. For private groups, require an active `community_group_members` row. Optionally also tighten RLS policies on `community_posts` to gate by `EXISTS (… community_group_members …)` for posts where `group_id IS NOT NULL AND group.is_private`.
+2. **B1 — Strip `user_id` from anonymous post responses.** In `enrichPosts`, set `user_id` to `null` (or to a stable per-post salted hash if you need same-author thread grouping) when `is_anonymous = true`. Same for any future anonymous comment feature.
+3. **D3 — Add CAPTCHA to login/signup/forgot-password.** Cloudflare Turnstile is the lowest-friction option. Required before G1's rate-limiter to prevent the rate-limiter being trivially bypassed by IP rotation.
+4. **G1 — Implement rate limiting.** Wrap every Server Action with an Upstash Redis rate limiter (or Vercel KV equivalent). Suggested per-user-per-minute caps: post create 5; comment 30; follow 60; like 120; report 10; group create 2; auth attempts 5/IP/minute.
 
-#### 1c. Add user ownership check to `getDocumentSignedUrl` (B4)
-- Before generating a signed URL, verify the storage path starts with `${user.id}/` — or look up the document row first and confirm `user_id` matches.
+### Next sprint (2 weeks)
 
-#### 1d. Sanitise PostgREST filter input (C1)
-- Escape PostgREST special characters (`.`, `,`, `(`, `)`) in `searchQuery` before interpolating, OR rewrite the school search to use multiple `.ilike()` calls instead of raw `.or()` string interpolation.
+5. **A4 — Apply block filter consistently.** Refactor block-list fetch into a shared helper; call it from `fetchPostsByUserAction`, `fetchGroupPostsAction`, `searchPostsAction`. Also exclude blocked-by-target relationships symmetrically.
+6. **A5, J1, J2 — Finish the private-group flow.** Either add `approveJoinRequestAction` / `rejectJoinRequestAction` and `message TEXT` column, or revert the half-built join-request feature and document private groups as invite-only-by-creator.
+7. **C1, C2 — Notification deduplication.** Either store `(user_id, actor_id, type, post_id)` as a unique constraint on `notifications` (with `ON CONFLICT DO NOTHING`), or check for an existing recent notification before inserting.
+8. **C3 — Replace static profanity filter** with a server-side moderation pipeline (Perspective API, OpenAI moderation, etc.) and add per-user-per-post comment rate limit (e.g. 10/hour).
+9. **C4 — Raise auto-hide threshold and add admin review.** Move from naïve count of 3 to a model with reporter trust score, account age check, or an admin queue.
+10. **D2 — Migrate profile, applications, documents, dashboard, resumes, essays, scholarships to Server Actions.** This unlocks proper rate limiting and validation everywhere.
+11. **F1, F2, F3 — Define Zod schemas** for every resource model (or share Postgres CHECKs via a generator). Apply length caps and per-user record limits in the new server-action layer.
 
-#### 1e. Add server-side file upload validation (E1)
-- Create a Next.js API route or Supabase Edge Function that validates file type (by magic bytes, not just extension/MIME), file size, and filename before uploading to storage.
-- Alternatively, configure Supabase Storage bucket policies to restrict allowed MIME types.
-- Set `Content-Disposition: attachment` on document signed URLs to prevent browser rendering of uploaded HTML/SVG.
+### Backlog (low priority)
 
-#### 1f. Implement rate limiting (G1)
-- Add Next.js API route handlers for sensitive operations (login, signup, password reset) and apply rate limiting (e.g., `next-rate-limit`, Vercel Edge Middleware rate limits, or Upstash Redis).
-- Configure Supabase Auth rate limits more aggressively in the Supabase dashboard.
-- Add CAPTCHA (e.g., Cloudflare Turnstile) to login, signup, and password reset forms.
-
-### Priority 2 — Medium (address in next sprint)
-
-#### 2a. Replace `getSession()` with `getUser()` (D1)
-- In all three bookmark button components, switch from `supabase.auth.getSession()` to `supabase.auth.getUser()` for server-validated user identity.
-
-#### 2b. Add input validation with Zod (F1, F2)
-- Create Zod schemas for every data model (profile, application, essay, resume section, scholarship, recommender, todo).
-- Validate all data before database writes. Add `maxLength` constraints to all text inputs (both UI and schema).
-- Suggested limits: names 100 chars, notes/descriptions 5000 chars, essay content 50000 chars, URLs 2048 chars.
-
-#### 2c. Validate URL protocols (A3)
-- Create a `safeHref()` utility that only allows `http:` and `https:` protocols. Apply to all `<a href={...}>` that render user-provided or database-sourced URLs.
-
-#### 2d. Add record count limits (F3, E3)
-- Implement per-user limits for data creation (e.g., max 50 bookmarks, max 20 applications, max 100 documents, max 10 resumes).
-- Enforce in Supabase via RLS policies with row-count subqueries, or in a server-side API layer.
-
-#### 2e. Fix storage path trust issues (B5)
-- In `deleteDocument` and `reuploadDocument`, look up the document's `storage_path` from the database (scoped to `user_id`) rather than trusting the client-supplied object.
-
-#### 2f. Whitelist fields in `updateProfile` (D4)
-- Explicitly pick only allowed fields from the input object before passing to `.update()`. Do not pass arbitrary client-provided fields to the database.
-
-#### 2g. Add security headers (H1, H2)
-- Add `Content-Security-Policy` to `next.config.ts`. Start with: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://<your-supabase-url>.supabase.co data:; connect-src 'self' https://<your-supabase-url>.supabase.co`
-- Add `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
-
-#### 2h. Sanitise error messages (I1)
-- Display a generic "Something went wrong" message to users. Log the full Supabase error server-side or to an error reporting service (Sentry, etc.).
-
-#### 2i. Verify Supabase storage bucket policies (E4, E5)
-- In the Supabase dashboard, verify that `user-documents` bucket has RLS restricting access to the owning user's folder.
-- Confirm that `profile-avatars` being public is intentional and that upload types are restricted.
-- Add server-side file size limits in bucket policies.
-
-### Priority 3 — Low (address when convenient)
-
-#### 3a. Move test credentials to env vars (J1)
-- Replace hardcoded `test@gmail.com` / `testtest123` with `process.env.TEST_EMAIL` / `process.env.TEST_PASSWORD`.
-
-#### 3b. Use a server Supabase client in server components (D3)
-- Create a server-side Supabase client using `createServerClient` for use in server components like `schools/page.tsx`.
-
-#### 3c. Replace `.select("*")` with explicit column lists (I3)
-- Audit all queries and specify only the columns needed by the frontend.
-
-#### 3d. Remove `console.error` in production (I2)
-- Use `process.env.NODE_ENV` guards or replace with a proper error reporting service.
-
-#### 3e. Explicitly disable source maps (H4)
-- Add `productionBrowserSourceMaps: false` to `next.config.ts`.
-
-#### 3f. Escape LIKE wildcards in search (C2)
-- Escape `%` and `_` in user search input before passing to `.ilike()`.
+12. **C5** — Reject `reportPostAction` when `reporter_id == post.user_id`.
+13. **D1** — Replace remaining `getSession()` with `getUser()` in `reset-password/page.tsx`.
+14. **E2** — Add server-side file-size check.
+15. **E5** — Document and version-control storage bucket policies as SQL migrations.
+16. **E6** — Add a random suffix to avatar paths (or move avatars off the public bucket and use signed URLs).
+17. **H1** — Wrap server actions in a generic try/catch that logs to Sentry and returns a sanitised error to the client.
+18. **H2, H3** — Audit `console.error` calls and `.select("*")` queries; replace with explicit column lists where applicable.
+19. **I1** — Apply the existing LIKE escaping helper to the three community search functions.
+20. **J3** — Either let authors see their own hidden posts (extend the SELECT policy with `OR auth.uid() = user_id`), or notify them via the notifications table when a post of theirs is hidden.
 
 ---
 
-### Architectural Recommendation
+## Appendix — Files touched during audit (read-only)
 
-The single most impactful long-term improvement is to **introduce a server-side layer** (Next.js API routes or Server Actions) between the browser and Supabase for all write operations. This would enable:
-
-- Server-side input validation (Zod schemas)
-- Rate limiting per endpoint
-- Business logic enforcement (record limits, field whitelisting)
-- Defence-in-depth beyond RLS alone
-- Proper error sanitisation before returning to the client
-
-This doesn't need to happen all at once — start with the most sensitive operations (auth, document uploads, resume mutations) and expand incrementally.
+```
+caat-frontend/middleware.ts
+caat-frontend/next.config.ts
+caat-frontend/lib/supabase-server.ts
+caat-frontend/lib/safe-href.ts
+caat-frontend/lib/document-utils.ts
+caat-frontend/lib/profanity-filter.ts
+caat-frontend/src/lib/supabaseClient.ts
+caat-frontend/app/(main)/communities/actions.ts
+caat-frontend/app/(main)/communities/c/[slug]/page.tsx
+caat-frontend/app/(main)/documents/api.ts
+caat-frontend/app/(main)/applications/api.ts
+caat-frontend/app/(main)/profile/api.ts
+caat-frontend/app/(main)/schools/page.tsx
+caat-frontend/app/login/page.tsx
+caat-frontend/app/signup/page.tsx
+caat-frontend/app/forgot-password/page.tsx
+caat-frontend/app/reset-password/page.tsx
+caat-frontend/components/login-form.tsx
+caat-frontend/components/signup-form.tsx
+caat-frontend/components/RichTextEditor.tsx
+caat-frontend/components/profile/AvatarUpload.tsx
+caat-frontend/components/communities/PostCard.tsx
+caat-frontend/components/communities/GroupFeedClient.tsx
+caat-frontend/components/communities/CommentItem.tsx
+caat-frontend/components/resume-builder/api.ts
+caat-frontend/components/resume-builder/SectionEditorPanel.tsx
+caat-frontend/components/resume-builder/ResumePreviewPanel.tsx
+caat-frontend/components/resume-builder/editors/ExperienceGuided.tsx
+caat-frontend/components/essays/api.ts
+supabase/migrations/*.sql (all)
+```
