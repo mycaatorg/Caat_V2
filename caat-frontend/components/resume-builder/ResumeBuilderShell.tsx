@@ -70,6 +70,30 @@ export default function ResumeBuilderShell() {
   type MobileTab = "structure" | "editor" | "preview";
   const [mobileTab, setMobileTab] = useState<MobileTab>("editor");
 
+  // Resizable left panel
+  const [leftWidth, setLeftWidth] = useState(360);
+  const LEFT_MIN = 180;
+  const LEFT_MAX = 360;
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+
+  function onDividerMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = leftWidth;
+
+    function onMouseMove(ev: MouseEvent) {
+      const delta = ev.clientX - dragStartX.current;
+      setLeftWidth(Math.min(LEFT_MAX, Math.max(LEFT_MIN, dragStartWidth.current + delta)));
+    }
+    function onMouseUp() {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    }
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }
+
   const activeSection = useMemo(() => {
     if (sections.length === 0) return undefined;
     return sections.find((s) => s.id === activeSectionId) ?? sections[0];
@@ -582,46 +606,96 @@ export default function ResumeBuilderShell() {
         ))}
       </div>
 
-      {/* 3-panel body — desktop grid / mobile single-panel */}
-      <div className="flex-1 min-h-0 md:grid md:grid-cols-[360px_1fr_520px] flex flex-col overflow-hidden">
-        <div className={`${mobileTab === "structure" ? "flex" : "hidden"} flex-col md:flex`}>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-            <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-              <DocumentStructurePanel
-                sections={sections}
-                activeSectionId={activeSectionId}
-                onSelect={(id) => {
-                  setActiveSectionId(id);
-                  setMobileTab("editor");
-                }}
-                onAdd={(type) => addSection(type)}
-                onRename={(id, label) => updateSection(id, { label })}
-                onDelete={deleteSection}
-                renamingSectionId={renamingSectionId}
-                onFinishRenaming={() => setRenamingSectionId(null)}
-              />
-            </SortableContext>
-          </DndContext>
+      {/* 3-panel body */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        {/* Desktop: flex row with draggable divider */}
+        <div className="hidden md:flex flex-1 min-h-0 overflow-hidden">
+          <div
+            className="flex flex-col overflow-hidden shrink-0"
+            style={{ width: leftWidth }}
+          >
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+                <DocumentStructurePanel
+                  sections={sections}
+                  activeSectionId={activeSectionId}
+                  onSelect={(id) => setActiveSectionId(id)}
+                  onAdd={(type) => addSection(type)}
+                  onRename={(id, label) => updateSection(id, { label })}
+                  onDelete={deleteSection}
+                  renamingSectionId={renamingSectionId}
+                  onFinishRenaming={() => setRenamingSectionId(null)}
+                />
+              </SortableContext>
+            </DndContext>
+          </div>
+
+          {/* Drag handle */}
+          <div
+            onMouseDown={onDividerMouseDown}
+            className="w-1 shrink-0 cursor-col-resize bg-border hover:bg-primary/40 transition-colors select-none"
+          />
+
+          <div className="flex flex-col flex-1 min-w-0 overflow-auto">
+            <SectionEditorPanel
+              section={activeSection}
+              onChange={(patch) => {
+                if (!activeSection) return;
+                updateSection(activeSection.id, patch);
+              }}
+            />
+          </div>
+
+          <div className="flex flex-col min-h-0 overflow-hidden border-l shrink-0" style={{ width: 520 }}>
+            <ResumePreviewPanel
+              sections={sections}
+              onPagesComputed={(pages, personal) => {
+                setPrintPages(pages);
+                setPrintPersonal(personal);
+              }}
+            />
+          </div>
         </div>
 
-        <div className={`${mobileTab === "editor" ? "flex" : "hidden"} flex-col md:flex overflow-auto`}>
-          <SectionEditorPanel
-            section={activeSection}
-            onChange={(patch) => {
-              if (!activeSection) return;
-              updateSection(activeSection.id, patch);
-            }}
-          />
-        </div>
-
-        <div className={`${mobileTab === "preview" ? "flex" : "hidden"} flex-col md:flex min-h-0 overflow-hidden`}>
-          <ResumePreviewPanel
-            sections={sections}
-            onPagesComputed={(pages, personal) => {
-              setPrintPages(pages);
-              setPrintPersonal(personal);
-            }}
-          />
+        {/* Mobile: single-panel with tab switching */}
+        <div className="md:hidden flex-1 flex flex-col overflow-hidden">
+          {mobileTab === "structure" && (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+                <DocumentStructurePanel
+                  sections={sections}
+                  activeSectionId={activeSectionId}
+                  onSelect={(id) => {
+                    setActiveSectionId(id);
+                    setMobileTab("editor");
+                  }}
+                  onAdd={(type) => addSection(type)}
+                  onRename={(id, label) => updateSection(id, { label })}
+                  onDelete={deleteSection}
+                  renamingSectionId={renamingSectionId}
+                  onFinishRenaming={() => setRenamingSectionId(null)}
+                />
+              </SortableContext>
+            </DndContext>
+          )}
+          {mobileTab === "editor" && (
+            <SectionEditorPanel
+              section={activeSection}
+              onChange={(patch) => {
+                if (!activeSection) return;
+                updateSection(activeSection.id, patch);
+              }}
+            />
+          )}
+          {mobileTab === "preview" && (
+            <ResumePreviewPanel
+              sections={sections}
+              onPagesComputed={(pages, personal) => {
+                setPrintPages(pages);
+                setPrintPersonal(personal);
+              }}
+            />
+          )}
         </div>
       </div>
 
