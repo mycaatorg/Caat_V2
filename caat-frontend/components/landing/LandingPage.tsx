@@ -10,10 +10,15 @@ import {
   BookOpen,
   FileText,
   Check,
+  CheckCircle2,
+  Circle,
   GraduationCap,
   Award,
   FolderOpen,
   Calendar,
+  Search,
+  Bookmark,
+  ChevronDown,
 } from "lucide-react";
 import Navbar from "./Navbar";
 
@@ -105,9 +110,11 @@ function Hero() {
                 Master Your Path to
               </span>
               <span
-                className="block text-[4.5rem] md:text-[6rem] lg:text-[7.5rem] text-black italic"
+                className="block text-[4.5rem] md:text-[6rem] lg:text-[7.5rem] italic"
                 style={{
+                  color: "#b81f2f",
                   textDecoration: "underline",
+                  textDecorationColor: "#b81f2f",
                   textDecorationThickness: "5px",
                   textUnderlineOffset: "10px",
                 }}
@@ -132,13 +139,13 @@ function Hero() {
                 Get Started for Free
                 <ArrowRight size={14} strokeWidth={1.5} />
               </Link>
-              <button
+              {/* <button
                 type="button"
                 className="inline-flex items-center justify-center gap-2 bg-transparent text-black text-[11px] tracking-[0.18em] uppercase px-8 py-4 border-2 border-black hover:bg-black hover:text-white transition-colors duration-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-[3px] font-code"
               >
                 <Play size={12} strokeWidth={1.5} />
                 Watch Demo
-              </button>
+              </button> */}
             </div>
 
             {/* Early release note */}
@@ -149,12 +156,12 @@ function Hero() {
             </p>
           </div>
 
-          {/* Right: CSS dashboard mockup */}
+          {/* Right: Dashboard preview — mirrors real /dashboard layout */}
           <div className="hidden lg:flex items-center justify-center relative">
             {/* Shadow layer (offset duplicate) */}
             <div
               className="absolute border border-[#E5E5E5] bg-[#F5F5F5] w-full max-w-[400px]"
-              style={{ transform: "rotate(-1deg) translate(10px, 10px)", height: "420px" }}
+              style={{ transform: "rotate(-1deg) translate(10px, 10px)", height: "460px" }}
               aria-hidden
             />
             {/* Main mockup */}
@@ -179,68 +186,140 @@ function Hero() {
               </div>
 
               {/* Mockup body */}
-              <div className="p-5 space-y-3">
-                <div className="text-[10px] tracking-[0.15em] uppercase text-[#525252] pb-3 border-b border-[#E5E5E5] font-code">
-                  Applications — Cycle 2025–26
+              <div className="p-5 space-y-4">
+                {/* Greeting — matches DashboardShell */}
+                <div>
+                  <div className="font-display font-bold text-base text-black">
+                    Good evening, Alex!
+                  </div>
+                  <div className="text-[11px] text-[#525252] mt-0.5 font-serif">
+                    Here&apos;s an overview of your admissions journey.
+                  </div>
                 </div>
 
-                {[
-                  { school: "Stanford University", status: "In Progress", progress: 75 },
-                  { school: "MIT", status: "Complete", progress: 100 },
-                  { school: "Harvard University", status: "Draft", progress: 30 },
-                  { school: "Yale University", status: "In Progress", progress: 55 },
-                  { school: "Princeton University", status: "Not Started", progress: 0 },
-                ].map((item) => (
-                  <div
-                    key={item.school}
-                    className="flex items-center gap-3 py-2 border-b border-[#E5E5E5] last:border-0"
-                  >
-                    <div
-                      className={`w-4 h-4 border flex items-center justify-center flex-shrink-0 ${
-                        item.progress === 100
-                          ? "bg-black border-black"
-                          : "border-black"
-                      }`}
-                    >
-                      {item.progress === 100 && (
-                        <Check size={9} strokeWidth={3} className="text-white" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs truncate font-serif font-medium">
-                        {item.school}
-                      </div>
-                      <div className="h-[3px] bg-[#E5E5E5] mt-1.5">
-                        <div
-                          className="h-full bg-black transition-none"
-                          style={{ width: `${item.progress}%` }}
-                        />
-                      </div>
+                {/* Application Readiness — matches ApplicationReadiness component */}
+                <div className="border border-black p-3.5">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[11px] tracking-[0.12em] uppercase font-code font-bold">
+                      Application Readiness
                     </div>
                     <div
-                      className={`text-[9px] tracking-wide px-2 py-0.5 flex-shrink-0 font-code ${
-                        item.status === "Complete"
-                          ? "bg-black text-white"
-                          : item.status === "In Progress"
-                          ? "border border-black text-black"
-                          : "border border-[#E5E5E5] text-[#525252]"
-                      }`}
+                      className="text-[10px] font-code font-bold px-2 py-0.5 text-white"
+                      style={{ backgroundColor: "#b81f2f" }}
                     >
-                      {item.status}
+                      40%
                     </div>
                   </div>
-                ))}
+                  <div className="text-[10px] text-[#525252] font-serif mb-2.5">
+                    4 of 10 steps completed
+                  </div>
+                  <div className="h-[3px] bg-[#E5E5E5] mb-3">
+                    <div
+                      className="h-full"
+                      style={{ width: "40%", backgroundColor: "#b81f2f" }}
+                    />
+                  </div>
 
-                {/* Alert */}
-                <div className="border border-black p-3 flex items-start gap-2 mt-3 bg-white">
-                  <span className="text-[10px] font-bold flex-shrink-0 font-code">!</span>
-                  <div>
-                    <div className="text-xs font-medium font-serif">
-                      Stanford deadline in 3 days
-                    </div>
-                    <div className="text-[10px] text-[#525252] mt-0.5 font-code">
-                      Essays section incomplete
-                    </div>
+                  {/* Step pills (mirrors real 3-col grid, condensed to 2-col for the mockup) */}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { label: "Profile", done: true },
+                      { label: "Schools", done: true },
+                      { label: "Majors", done: true },
+                      { label: "Applications", done: true },
+                      { label: "Resume", done: false },
+                      { label: "Essays", done: false },
+                    ].map((s) => (
+                      <div
+                        key={s.label}
+                        className={`flex items-center gap-1.5 border px-2 py-1 ${
+                          s.done
+                            ? "border-transparent bg-[#F5F5F5]"
+                            : "border-[#E5E5E5]"
+                        }`}
+                      >
+                        {s.done ? (
+                          <CheckCircle2
+                            size={11}
+                            strokeWidth={2}
+                            className="flex-shrink-0"
+                            style={{ color: "#16a34a" }}
+                          />
+                        ) : (
+                          <Circle
+                            size={11}
+                            strokeWidth={1.5}
+                            className="text-[#888] flex-shrink-0"
+                          />
+                        )}
+                        <span
+                          className={`text-[10px] font-serif font-medium truncate ${
+                            s.done ? "text-[#888] line-through" : "text-black"
+                          }`}
+                        >
+                          {s.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Upcoming Deadlines — matches UpcomingDeadlinesWidget */}
+                <div className="border border-black p-3.5">
+                  <div className="text-[11px] tracking-[0.12em] uppercase font-code font-bold mb-2.5">
+                    Upcoming Deadlines
+                  </div>
+                  <div className="space-y-1.5">
+                    {[
+                      {
+                        label: "Stanford University",
+                        type: "Application",
+                        days: "3d",
+                        dotClass: "",
+                        dotStyle: { backgroundColor: "#b81f2f" },
+                        countdownClass: "",
+                        countdownStyle: { color: "#b81f2f" },
+                      },
+                      {
+                        label: "Gates Scholarship",
+                        type: "Scholarship",
+                        days: "12d",
+                        dotClass: "bg-amber-500",
+                        countdownClass: "text-amber-600",
+                      },
+                      {
+                        label: "Yale University",
+                        type: "Application",
+                        days: "45d",
+                        dotClass: "",
+                        dotStyle: { backgroundColor: "#16a34a" },
+                        countdownClass: "",
+                        countdownStyle: { color: "#16a34a" },
+                      },
+                    ].map((d) => (
+                      <div
+                        key={d.label}
+                        className="flex items-center gap-2.5 py-1"
+                      >
+                        <span
+                          className={`h-2 w-2 flex-shrink-0 ${d.dotClass}`}
+                          style={d.dotStyle}
+                          aria-hidden
+                        />
+                        <span className="flex-1 min-w-0 truncate text-[11px] font-serif font-medium">
+                          {d.label}
+                        </span>
+                        <span className="text-[9px] text-[#888] font-code flex-shrink-0">
+                          {d.type}
+                        </span>
+                        <span
+                          className={`text-[10px] font-code font-bold tabular-nums flex-shrink-0 ${d.countdownClass}`}
+                          style={d.countdownStyle}
+                        >
+                          {d.days}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -248,12 +327,6 @@ function Hero() {
           </div>
         </div>
 
-        {/* Decorative bottom element */}
-        <div className="flex items-center gap-4 mt-16 md:mt-20">
-          <div className="h-[4px] flex-1 bg-black" />
-          <div className="w-5 h-5 border-2 border-black flex-shrink-0" aria-hidden />
-          <div className="w-5 h-5 bg-black flex-shrink-0" aria-hidden />
-        </div>
       </div>
     </section>
   );
@@ -323,7 +396,10 @@ function FeaturesGrid() {
             Platform
           </p>
           <h2 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-none mb-6 font-display">
-            Built Around Your Application
+            Built Around Your{" "}
+            <span className="italic" style={{ color: "#b81f2f" }}>
+              Application
+            </span>
           </h2>
           <p className="text-lg text-[#525252] max-w-xl mx-auto font-serif">
             All the tools you need to actually get through the college
@@ -374,9 +450,12 @@ function ProductShowcase() {
         {/* Header */}
         <div className="mb-12 md:mb-16">
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] mb-5 font-display">
-            Designed to simplify
+            Designed to{" "}
+            <span className="italic" style={{ color: "#b81f2f" }}>
+              simplify
+            </span>
             <br />
-            the complex.
+            the complicated.
           </h2>
           <p className="text-lg text-[#525252] max-w-lg font-serif">
             Powerful tools built around how you actually think: organized,
@@ -402,17 +481,31 @@ function ProductShowcase() {
                     Deadline: Jan 2, 2026
                   </div>
                 </div>
-                <div className="border border-black text-[10px] tracking-wide px-2.5 py-1 flex-shrink-0 font-code">
+                <div
+                  className="text-[10px] tracking-wide px-2.5 py-1 flex-shrink-0 font-code"
+                  style={{
+                    border: "1px solid #16a34a",
+                    color: "#16a34a",
+                  }}
+                >
                   In Progress
                 </div>
               </div>
               <div className="space-y-1.5">
                 <div className="flex justify-between text-xs text-[#525252]">
                   <span className="font-serif">Overall Progress</span>
-                  <span className="font-code">75%</span>
+                  <span
+                    className="font-code font-bold"
+                    style={{ color: "#b81f2f" }}
+                  >
+                    75%
+                  </span>
                 </div>
                 <div className="h-1.5 bg-[#E5E5E5]">
-                  <div className="h-full bg-black" style={{ width: "75%" }} />
+                  <div
+                    className="h-full"
+                    style={{ width: "75%", backgroundColor: "#b81f2f" }}
+                  />
                 </div>
               </div>
             </div>
@@ -447,41 +540,261 @@ function ProductShowcase() {
                 </div>
               ))}
             </div>
-          </div>
 
-          {/* Scholarship Finder — inverted */}
-          <div className="p-8 lg:p-10 bg-black text-white">
-            <p className="text-[10px] tracking-[0.18em] uppercase text-[#888] mb-7 font-code">
-              Scholarship Finder
+            {/* Divider — full-bleed hairline rule between sub-features */}
+            <div
+              className="-mx-8 lg:-mx-10 h-px bg-black my-10"
+              aria-hidden
+            />
+
+            {/* School Search — mirrors /schools page */}
+            <p className="text-[10px] tracking-[0.18em] uppercase text-[#525252] mb-5 font-code">
+              School Search
             </p>
 
-            <p className="text-lg mb-10 leading-relaxed font-serif">
-              AI-powered matching connects you with scholarships tailored to
-              your profile, field of study, and background.
-            </p>
+            {/* Search input + country filter row */}
+            <div className="flex gap-2 mb-4">
+              <div className="flex-1 border border-black flex items-center gap-2 px-3 py-2.5">
+                <Search size={13} strokeWidth={1.5} className="text-[#525252] flex-shrink-0" />
+                <span className="text-xs font-serif">Stanford</span>
+                <span
+                  className="ml-auto w-px h-3 bg-black inline-block"
+                  aria-hidden
+                  style={{
+                    animation: "caret-blink 1s steps(2) infinite",
+                  }}
+                />
+              </div>
+              <div className="border border-black flex items-center gap-2 px-3 py-2.5">
+                <span className="text-[10px] tracking-[0.1em] uppercase font-code">
+                  USA
+                </span>
+                <ChevronDown size={11} strokeWidth={1.5} />
+              </div>
+            </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-4 mb-10">
+            {/* Results count */}
+            <div className="text-[11px] text-[#525252] font-serif mb-3">
+              Showing <span className="font-bold text-black">3 results</span> in{" "}
+              <span className="font-bold text-black">United States</span>
+            </div>
+
+            {/* Result rows */}
+            <div className="border border-black divide-y divide-black">
               {[
-                { amount: "$12k", label: "Average Award" },
-                { amount: "$5k", label: "Minimum Match" },
-              ].map((stat) => (
-                <div key={stat.label} className="border border-white p-5">
-                  <div className="text-4xl font-bold mb-1.5 font-display">
-                    {stat.amount}
+                { name: "Stanford University", country: "United States", bookmarked: true },
+                { name: "Stanford Online High School", country: "United States", bookmarked: false },
+                { name: "Stanford Graduate School", country: "United States", bookmarked: false },
+              ].map((school) => (
+                <div
+                  key={school.name}
+                  className="flex items-center gap-3 px-3 py-2.5"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-serif font-medium truncate">
+                      {school.name}
+                    </div>
+                    <div className="text-[10px] text-[#525252] font-code mt-0.5">
+                      {school.country}
+                    </div>
                   </div>
-                  <div className="text-[10px] text-[#888] tracking-[0.12em] uppercase font-code">
-                    {stat.label}
-                  </div>
+                  <Bookmark
+                    size={14}
+                    strokeWidth={1.5}
+                    className="flex-shrink-0"
+                    fill={school.bookmarked ? "#b81f2f" : "none"}
+                    stroke={school.bookmarked ? "#b81f2f" : "#525252"}
+                  />
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Resume Builder — matches the white card theme of the rest of the section */}
+          <div className="p-8 lg:p-10 bg-white text-black">
+            <p className="text-[10px] tracking-[0.18em] uppercase text-[#525252] mb-7 font-code">
+              Resume Builder
+            </p>
+
+            <p className="text-lg mb-8 leading-relaxed font-serif text-[#525252]">
+              Guided sections walk you through every detail. The live A4
+              preview updates as you type — print-ready, the way admissions
+              offices expect.
+            </p>
+
+            {/* Section nav — mirrors DocumentStructurePanel */}
+            <div className="flex flex-wrap gap-1.5 mb-7">
+              {[
+                { label: "Personal", active: false },
+                { label: "Education", active: true },
+                { label: "Experience", active: false },
+                { label: "Skills & Interests", active: false },
+              ].map((s) => (
+                <span
+                  key={s.label}
+                  className={`text-[10px] tracking-[0.1em] uppercase font-code px-2.5 py-1 border ${
+                    s.active
+                      ? "text-white border-transparent"
+                      : "border-[#E5E5E5] text-[#525252]"
+                  }`}
+                  style={
+                    s.active ? { backgroundColor: "#b81f2f" } : undefined
+                  }
+                >
+                  {s.label}
+                </span>
+              ))}
+            </div>
+
+            {/* Mini A4 preview — sits as white "paper" with a soft offset shadow */}
+            <div className="relative mb-8">
+              {/* Shadow paper */}
+              <div
+                aria-hidden
+                className="absolute bg-[#F5F5F5] border border-[#E5E5E5]"
+                style={{
+                  width: "85%",
+                  height: "100%",
+                  right: 0,
+                  top: 8,
+                  transform: "rotate(2deg)",
+                  zIndex: 0,
+                }}
+              />
+              {/* Front A4 paper */}
+              <div
+                className="relative bg-white text-black mx-auto border border-black"
+                style={{
+                  width: "100%",
+                  maxWidth: "320px",
+                  aspectRatio: "210 / 297",
+                  padding: "22px 24px",
+                  transform: "rotate(-1deg)",
+                  zIndex: 1,
+                }}
+              >
+                {/* Personal header — centered, matches ResumePage */}
+                <div className="text-center">
+                  <div
+                    className="font-bold font-display"
+                    style={{
+                      fontSize: "18px",
+                      letterSpacing: "0.05em",
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    ALEX JOHNSON
+                  </div>
+                  <div
+                    className="font-serif"
+                    style={{
+                      marginTop: 4,
+                      fontSize: "8px",
+                      color: "#666",
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    alex.johnson@email.com · Boston, MA · linkedin.com/in/alex
+                  </div>
+                </div>
+
+                {/* Education */}
+                <div style={{ marginTop: 18 }}>
+                  <div
+                    className="font-bold font-display"
+                    style={{
+                      fontSize: "9px",
+                      letterSpacing: "0.12em",
+                    }}
+                  >
+                    EDUCATION
+                  </div>
+                  <hr
+                    style={{
+                      marginTop: 3,
+                      marginBottom: 6,
+                      border: "none",
+                      borderTop: "2px solid #000",
+                    }}
+                  />
+                  <div className="font-serif" style={{ fontSize: "8.5px", lineHeight: 1.45 }}>
+                    <div className="font-bold">Boston Latin School</div>
+                    <div style={{ color: "#666" }}>
+                      GPA 3.98 / 4.00 · Class of 2026
+                    </div>
+                    <div style={{ color: "#666", marginTop: 2 }}>
+                      AP Capstone · National Merit Finalist
+                    </div>
+                  </div>
+                </div>
+
+                {/* Experience */}
+                <div style={{ marginTop: 14 }}>
+                  <div
+                    className="font-bold font-display"
+                    style={{
+                      fontSize: "9px",
+                      letterSpacing: "0.12em",
+                    }}
+                  >
+                    EXPERIENCE
+                  </div>
+                  <hr
+                    style={{
+                      marginTop: 3,
+                      marginBottom: 6,
+                      border: "none",
+                      borderTop: "2px solid #000",
+                    }}
+                  />
+                  <div className="font-serif" style={{ fontSize: "8.5px", lineHeight: 1.45 }}>
+                    <div className="flex justify-between items-baseline">
+                      <span className="font-bold">Research Intern, MIT Media Lab</span>
+                      <span style={{ color: "#666", fontSize: "7.5px" }}>2025</span>
+                    </div>
+                    <ul style={{ margin: "2px 0 0 12px", padding: 0, color: "#666" }}>
+                      <li style={{ marginBottom: 1 }}>
+                        Built ML pipeline analyzing 50k+ student records
+                      </li>
+                      <li>Co-authored paper accepted at NeurIPS workshop</li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Skills */}
+                <div style={{ marginTop: 14 }}>
+                  <div
+                    className="font-bold font-display"
+                    style={{
+                      fontSize: "9px",
+                      letterSpacing: "0.12em",
+                    }}
+                  >
+                    SKILLS &amp; INTERESTS
+                  </div>
+                  <hr
+                    style={{
+                      marginTop: 3,
+                      marginBottom: 6,
+                      border: "none",
+                      borderTop: "2px solid #000",
+                    }}
+                  />
+                  <div
+                    className="font-serif"
+                    style={{ fontSize: "8.5px", color: "#666", lineHeight: 1.45 }}
+                  >
+                    Python, TypeScript, React · Debate, Robotics, Piano
+                  </div>
+                </div>
+              </div>
             </div>
 
             <Link
               href="/signup"
-              className="inline-flex items-center gap-2 border border-white text-white text-[11px] tracking-[0.18em] uppercase px-6 py-3.5 hover:bg-white hover:text-black transition-colors duration-100 font-code focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-white focus-visible:outline-offset-[3px]"
+              className="inline-flex items-center gap-2 bg-black text-white text-[11px] tracking-[0.18em] uppercase px-6 py-3.5 border border-black hover:bg-white hover:text-black transition-colors duration-100 font-code focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-[3px]"
             >
-              Find Scholarships
+              Build Your Resume
               <ArrowRight size={13} strokeWidth={1.5} />
             </Link>
           </div>
@@ -525,32 +838,32 @@ function MoreFeatures() {
             </div>
           </div>
 
-          {/* Resume Builder */}
+          {/* Scholarship Finder */}
           <div className="p-8 lg:p-10">
             <div className="w-10 h-10 border border-black flex items-center justify-center mb-6">
-              <FileText size={17} strokeWidth={1.5} />
+              <Award size={17} strokeWidth={1.5} />
             </div>
             <h3 className="text-2xl font-bold mb-4 font-display">
-              Resume Builder
+              Scholarship Finder
             </h3>
             <p className="text-[#525252] leading-relaxed mb-6 font-serif">
-              Guided templates help you build a resume that stands out. Highlight
-              achievements, activities, and skills in a format that admissions
-              offices love.
+              AI-powered matching surfaces scholarships tailored to your
+              profile, field of study, and background. Bookmark, track
+              deadlines, and apply — all in one place.
             </p>
             <Link
               href="/signup"
               className="text-sm font-medium hover:underline tracking-wide inline-flex items-center gap-1.5 mb-10 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-2"
             >
-              Explore Templates{" "}
+              Find Scholarships{" "}
               <ArrowRight size={13} strokeWidth={1.5} />
             </Link>
 
-            {/* Resume mockup stack */}
+            {/* Scholarship match cards stack */}
             <div className="relative mt-2 h-28">
               {/* Back layer */}
               <div
-                className="absolute border border-[#E5E5E5] bg-[#F5F5F5] p-4 text-xs"
+                className="absolute border border-[#E5E5E5] bg-[#F5F5F5] p-3 text-xs"
                 style={{
                   width: "82%",
                   right: 0,
@@ -560,16 +873,19 @@ function MoreFeatures() {
                 }}
                 aria-hidden
               >
-                <div className="font-bold font-display text-sm text-[#BFBFBF]">
-                  Alex Johnson
+                <div className="flex items-baseline justify-between">
+                  <div className="font-bold font-display text-sm text-[#BFBFBF]">
+                    Coca-Cola Scholars
+                  </div>
+                  <div className="font-code text-[10px] text-[#BFBFBF]">$20k</div>
                 </div>
                 <div className="text-[#BFBFBF] font-code text-[10px] mt-1">
-                  Template v2
+                  Closes Oct 31
                 </div>
               </div>
               {/* Front layer */}
               <div
-                className="absolute border border-black bg-white p-4 text-xs"
+                className="absolute border border-black bg-white p-3 text-xs"
                 style={{
                   width: "88%",
                   left: 0,
@@ -578,16 +894,28 @@ function MoreFeatures() {
                   zIndex: 1,
                 }}
               >
-                <div className="font-bold font-display text-sm">Alex Johnson</div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="font-bold font-display text-sm">
+                    Gates Scholarship
+                  </div>
+                  <div className="font-code text-[10px] font-bold tabular-nums">
+                    $50k
+                  </div>
+                </div>
                 <div className="text-[#525252] font-code text-[10px] mt-0.5">
-                  alex@email.com · Boston, MA
+                  Full ride · STEM majors
                 </div>
                 <div className="h-px bg-black my-2" />
-                <div className="font-medium font-serif text-[11px] mb-1">
-                  Education
-                </div>
-                <div className="text-[#525252] font-serif text-[10px]">
-                  Boston Latin School, GPA 3.98 / 4.0
+                <div className="flex items-center justify-between">
+                  <span className="font-serif text-[10px] text-[#525252]">
+                    98% match for your profile
+                  </span>
+                  <span
+                    className="font-code text-[9px] tracking-wide px-1.5 py-0.5"
+                    style={{ backgroundColor: "#b81f2f", color: "#fff" }}
+                  >
+                    12d
+                  </span>
                 </div>
               </div>
             </div>
@@ -646,7 +974,10 @@ function ThreeSteps() {
               How It Works
             </p>
             <h2 className="text-4xl md:text-5xl lg:text-[3.25rem] font-bold tracking-tight leading-[1.05] mb-6 font-display">
-              Everything you need, step by step
+              Everything you need,{" "}
+              <span className="italic" style={{ color: "#b81f2f" }}>
+                step by step
+              </span>
             </h2>
             <p className="text-lg text-[#525252] leading-relaxed font-serif mb-8">
               CAAT walks you through every stage of applying to college, from your first school search to hitting submit.
@@ -703,18 +1034,25 @@ function ThreeSteps() {
 
 function SecurityBanner() {
   return (
-    <section className="relative py-24 md:py-32 lg:py-40 bg-black text-white">
+    <section className="relative py-24 md:py-32 lg:py-40 text-white" style={{ backgroundColor: "#1a1a1a" }}>
       <WhiteVerticalTexture />
       <div className="relative max-w-6xl mx-auto px-6 lg:px-12">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
-          {/* Left */}
+          {/* Left: title */}
           <div>
             <p className="text-[11px] tracking-[0.18em] uppercase text-[#888] mb-5 font-code">
               Security
             </p>
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] mb-6 font-display text-white">
-              Your Data Stays Yours
+            <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] font-display text-white">
+              Your Data Stays{" "}
+              <span className="italic" style={{ color: "#b81f2f" }}>
+                Yours
+              </span>
             </h2>
+          </div>
+
+          {/* Right: body */}
+          <div>
             <p className="text-[#999] leading-relaxed mb-10 text-lg font-serif">
               We build on Supabase, so your data sits on infrastructure that
               banks and large companies rely on. You get that same protection,
@@ -736,34 +1074,6 @@ function SecurityBanner() {
                   </span>
                 </div>
               ))}
-            </div>
-          </div>
-
-          {/* Right: testimonial */}
-          <div className="group border border-white p-8 lg:p-10 transition-all duration-100 hover:border-t-[3px]">
-            <div
-              className="text-7xl font-bold leading-none mb-4 font-display opacity-20 group-hover:opacity-30 transition-opacity duration-100"
-              aria-hidden
-            >
-              &ldquo;
-            </div>
-            <blockquote className="text-xl italic leading-relaxed text-white mb-8 font-display">
-              CAAT kept all my application documents organized and secure. I
-              never worried about losing my work, even when applying to 15
-              schools simultaneously.
-            </blockquote>
-            <div className="flex items-center gap-4 pt-6 border-t border-white/20">
-              <div className="w-10 h-10 bg-white text-black flex items-center justify-center text-xs font-bold font-code flex-shrink-0">
-                SM
-              </div>
-              <div>
-                <div className="font-medium text-white text-sm">
-                  Sarah Mitchell
-                </div>
-                <div className="text-[11px] text-[#888] font-code mt-0.5">
-                  Class of 2025 at Harvard University
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -795,7 +1105,9 @@ function FinalCTA() {
         <h2 className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[1.02] mb-6 text-white font-display">
           Ready to start
           <br />
-          your journey?
+          <span className="italic" style={{ color: "#b81f2f" }}>
+            your journey?
+          </span>
         </h2>
         <p className="text-lg text-[#888] mb-12 max-w-md mx-auto font-serif">
           Deadlines wait for no one. Get your plan together before the rush.

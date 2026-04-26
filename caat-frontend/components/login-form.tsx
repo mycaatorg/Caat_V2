@@ -6,6 +6,8 @@ import Link from "next/link"
 import { Eye, EyeOff, ArrowRight } from "lucide-react"
 import { supabase } from "@/src/lib/supabaseClient"
 import { cn } from "@/lib/utils"
+import { preflightAuthAction } from "@/app/auth-actions"
+import { TurnstileWidget, captchaEnabled } from "@/components/TurnstileWidget"
 
 export function LoginForm({
   className,
@@ -16,6 +18,7 @@ export function LoginForm({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -27,6 +30,17 @@ export function LoginForm({
     const password = formData.get("password") as string
 
     try {
+      // G1 + D3 — rate limit + CAPTCHA before invoking Supabase auth.
+      const preflight = await preflightAuthAction({
+        turnstileToken: captchaToken ?? undefined,
+        intent: "login",
+      })
+      if (!preflight.ok) {
+        setError(preflight.error)
+        setLoading(false)
+        return
+      }
+
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -118,7 +132,7 @@ export function LoginForm({
       </div>
 
       {/* Forgot password */}
-      <div className="mb-10 flex justify-end">
+      <div className="mb-6 flex justify-end">
         <Link
           href="/forgot-password"
           className="text-xs text-[#525252] hover:text-black hover:underline underline-offset-4 font-code"
@@ -127,10 +141,12 @@ export function LoginForm({
         </Link>
       </div>
 
+      <TurnstileWidget onVerify={setCaptchaToken} onExpire={() => setCaptchaToken(null)} />
+
       {/* Submit */}
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || (captchaEnabled && !captchaToken)}
         className="w-full bg-black text-white text-[11px] tracking-[0.18em] uppercase px-8 py-4 border border-black hover:bg-white hover:text-black transition-colors duration-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-[3px] font-code disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
         {loading ? "Signing in…" : (

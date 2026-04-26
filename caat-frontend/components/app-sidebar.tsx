@@ -15,6 +15,8 @@ import {
   GraduationCap,
   FolderOpen,
   ClipboardList,
+  Users,
+  Bookmark,
 } from "lucide-react"
 
 import {
@@ -33,7 +35,7 @@ import {
 import { NavUser } from "./nav-user"
 import { supabase } from "@/src/lib/supabaseClient"
 
-const apps = [
+const tools = [
   { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
   { title: "My Profile", icon: User, url: "/profile" },
   { title: "Schools", icon: School, url: "/schools" },
@@ -43,6 +45,11 @@ const apps = [
   { title: "Essays", icon: FileText, url: "/essays" },
   { title: "Scholarships", icon: GraduationCap, url: "/scholarships" },
   { title: "Documents", icon: FolderOpen, url: "/documents" },
+]
+
+const community = [
+  { title: "Community Campus", icon: Users, url: "/communities" },
+  { title: "Saved Posts",  icon: Bookmark, url: "/communities/saved" },
 ]
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -124,11 +131,38 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {apps.map((item) => {
+              {tools.map((item) => {
                 const isActive =
                   item.url === "/dashboard"
                     ? pathname === "/dashboard"
                     : pathname.startsWith(item.url)
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      className="gap-3 px-4 py-2.5 rounded-none text-[#525252] hover:text-black hover:bg-[#F5F5F5] data-[active=true]:bg-black data-[active=true]:text-white data-[active=true]:font-medium transition-colors duration-100"
+                    >
+                      <Link href={item.url}>
+                        <item.icon className="size-4 shrink-0" strokeWidth={1.5} />
+                        <span className="text-sm">{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-2">
+          <SidebarGroupLabel className="text-[#525252] uppercase text-[10px] tracking-[0.15em] font-code px-4 mb-1">
+            Community
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {community.map((item) => {
+                const isActive = pathname.startsWith(item.url)
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton

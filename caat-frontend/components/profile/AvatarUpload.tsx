@@ -34,6 +34,21 @@ async function validateAvatarMagicBytes(file: File): Promise<boolean> {
   return false;
 }
 
+/**
+ * Recover a storage object path from its public URL. Supabase public URLs
+ * follow the pattern `<host>/storage/v1/object/public/<bucket>/<path>`.
+ * Returns null on any URL that doesn't match (older avatars, external URLs).
+ */
+function extractStoragePath(url: string, bucket: string): string | null {
+  const marker = `/storage/v1/object/public/${bucket}/`;
+  const idx = url.indexOf(marker);
+  if (idx === -1) return null;
+  const tail = url.slice(idx + marker.length);
+  // Trim cache-busting query strings — older code appended `?t=...`.
+  const q = tail.indexOf("?");
+  return q === -1 ? tail : tail.slice(0, q);
+}
+
 interface AvatarUploadProps {
   userId: string;
   avatarUrl: string | null;
@@ -73,26 +88,45 @@ export function AvatarUpload({
 
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop() ?? "jpg";
-      const storagePath = `${userId}/avatar.${ext}`;
+      // E6 — random suffix prevents predictable URLs and avoids collisions
+      // when re-uploading. Public bucket means anyone with the URL can view,
+      // so we want the URL itself to be unguessable.
+      const ext = (file.name.split(".").pop() ?? "jpg").toLowerCase();
+      const storagePath = `${userId}/${crypto.randomUUID()}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from(BUCKET)
-        .upload(storagePath, file, { contentType: file.type, upsert: true });
+        .upload(storagePath, file, { contentType: file.type });
 
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
-      const freshUrl = `${publicUrl}?t=${Date.now()}`;
+
+      // Look up the existing avatar so we can clean it up after the profile
+      // row is updated. The avatar_url stored is the full public URL, from
+      // which we recover the storage path.
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("avatar_url")
+        .eq("id", userId)
+        .maybeSingle();
 
       const { error: updateError } = await supabase
         .from("profiles")
-        .update({ avatar_url: freshUrl })
+        .update({ avatar_url: publicUrl })
         .eq("id", userId);
 
       if (updateError) throw updateError;
 
-      onUploaded(freshUrl);
+      // Best-effort cleanup of the previous avatar — failures are non-fatal.
+      if (existing?.avatar_url && typeof existing.avatar_url === "string") {
+        const prevPath = extractStoragePath(existing.avatar_url, BUCKET);
+        if (prevPath && prevPath !== storagePath && prevPath.startsWith(`${userId}/`)) {
+          await supabase.storage.from(BUCKET).remove([prevPath]);
+        }
+      }
+
+      onUploaded(publicUrl);
       toast.success("Avatar updated.");
     } catch (err) {
       if (process.env.NODE_ENV !== "production") console.error(err);
@@ -105,12 +139,27 @@ export function AvatarUpload({
   async function handleRemove() {
     setRemoving(true);
     try {
+      // Look up the existing avatar so we can also remove the storage object.
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("avatar_url")
+        .eq("id", userId)
+        .maybeSingle();
+
       const { error } = await supabase
         .from("profiles")
         .update({ avatar_url: null })
         .eq("id", userId);
 
       if (error) throw error;
+
+      if (existing?.avatar_url && typeof existing.avatar_url === "string") {
+        const prevPath = extractStoragePath(existing.avatar_url, BUCKET);
+        if (prevPath && prevPath.startsWith(`${userId}/`)) {
+          await supabase.storage.from(BUCKET).remove([prevPath]);
+        }
+      }
+
       onUploaded(null);
       toast.success("Avatar removed.");
     } catch (err) {

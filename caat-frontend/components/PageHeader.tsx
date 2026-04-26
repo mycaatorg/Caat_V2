@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { NotificationBell } from "@/components/communities/NotificationBell";
 
 interface PageHeaderProps {
   title: string;
@@ -21,13 +22,14 @@ export function PageHeader({ title, hideOnMobile = false }: PageHeaderProps) {
         orientation="vertical"
         className="mr-2 data-[orientation=vertical]:h-4"
       />
-      <Breadcrumb>
+      <Breadcrumb className="flex-1">
         <BreadcrumbList>
           <BreadcrumbItem className={hideOnMobile ? "hidden md:block" : undefined}>
             <BreadcrumbLink>{title}</BreadcrumbLink>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
+      <NotificationBell />
     </header>
   );
 }

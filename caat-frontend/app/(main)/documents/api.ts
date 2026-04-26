@@ -2,6 +2,7 @@ import { supabase } from "@/src/lib/supabaseClient";
 import { sanitizeFileName } from "@/lib/document-utils";
 
 const ALLOWED_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB — must mirror Supabase bucket limit (E2)
 
 /**
  * Validates a file by checking its magic bytes (file signature) rather than
@@ -78,6 +79,11 @@ export async function uploadDocument(
   // Validate MIME type against allowlist (E1)
   if (!ALLOWED_MIME_TYPES.has(file.type)) {
     throw new Error("File type not allowed. Only PDF, JPG, and PNG are accepted.");
+  }
+
+  // Enforce file size cap (E2). Mirrored at the Supabase storage bucket level.
+  if (file.size > MAX_FILE_SIZE) {
+    throw new Error(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max 10 MB.`);
   }
 
   // Validate actual file content via magic bytes — prevents MIME type spoofing (E1)
@@ -179,6 +185,10 @@ export async function reuploadDocument(
   // Validate MIME type and magic bytes for re-uploads (E1)
   if (!ALLOWED_MIME_TYPES.has(newFile.type)) {
     throw new Error("File type not allowed. Only PDF, JPG, and PNG are accepted.");
+  }
+  // Enforce file size cap (E2).
+  if (newFile.size > MAX_FILE_SIZE) {
+    throw new Error(`File too large (${(newFile.size / 1024 / 1024).toFixed(1)} MB). Max 10 MB.`);
   }
   const validBytes = await validateFileMagicBytes(newFile);
   if (!validBytes) {

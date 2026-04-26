@@ -24,8 +24,10 @@ export default function ResetPasswordPage() {
       setCheckingSession(false);
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setSessionReady(true);
+    // D1 — getUser() validates the JWT against the Supabase Auth server,
+    // unlike getSession() which trusts whatever is in local storage.
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setSessionReady(true);
       setCheckingSession(false);
     });
 

@@ -5,12 +5,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, ArrowLeft, Check } from "lucide-react";
 import { supabase } from "@/src/lib/supabaseClient";
+import { preflightAuthAction } from "@/app/auth-actions";
+import { TurnstileWidget, captchaEnabled } from "@/components/TurnstileWidget";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -18,6 +21,17 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
+      // G1 + D3 — rate limit + CAPTCHA before triggering Supabase reset email.
+      const preflight = await preflightAuthAction({
+        turnstileToken: captchaToken ?? undefined,
+        intent: "forgot-password",
+      });
+      if (!preflight.ok) {
+        setError(preflight.error);
+        setLoading(false);
+        return;
+      }
+
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
         email,
         { redirectTo: `${window.location.origin}/reset-password` }
@@ -109,9 +123,11 @@ export default function ForgotPasswordPage() {
                 />
               </div>
 
+              <TurnstileWidget onVerify={setCaptchaToken} onExpire={() => setCaptchaToken(null)} />
+
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (captchaEnabled && !captchaToken)}
                 className="w-full bg-black text-white text-[11px] tracking-[0.18em] uppercase px-8 py-4 border border-black hover:bg-white hover:text-black transition-colors duration-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-[3px] font-code disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading ? "Sending…" : (

@@ -144,6 +144,12 @@
     display: none;
   }
 
+  /* Blinking caret for landing page demo search inputs */
+  @keyframes caret-blink {
+    0%, 49%   { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+
   /* Shared typography for resume preview content.
      Font sizes are tuned for true A4 rendering (794px = 210mm at 96 CSS-dpi).
      ~21px at 794px ≈ 11pt when printed on A4. */

@@ -10,8 +10,18 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { ChevronLeft, ExternalLink } from "lucide-react";
+import { ChevronLeft, ExternalLink, Clock } from "lucide-react";
 import BookmarkButton from "./bookmark-button";
+
+type CountryDegreeInfo = {
+  degree: string;
+  years: number | string;
+  notes?: string;
+};
+
+type DegreeLengths = {
+  countries: Record<string, CountryDegreeInfo>;
+};
 
 export default async function MajorDetailPage({
   params,
@@ -120,6 +130,40 @@ export default async function MajorDetailPage({
                   {course}
                 </div>
               ))}
+            </div>
+          </section>
+        )}
+
+        {/* Degree Length by Country */}
+        {major.degree_lengths && (
+          <section className="border-b border-border py-6">
+            <h2 className="text-[10px] font-code tracking-[0.18em] uppercase text-muted-foreground mb-4 flex items-center gap-2">
+              <Clock className="h-3.5 w-3.5" />
+              Degree Length by Country
+            </h2>
+            <div className="border border-border divide-y divide-border">
+              {Object.entries((major.degree_lengths as DegreeLengths).countries).map(
+                ([country, info]) => (
+                  <div key={country} className="grid grid-cols-[100px_1fr] md:grid-cols-[120px_1fr] gap-x-4 px-4 py-3">
+                    <span className="text-[11px] font-code tracking-wide text-muted-foreground pt-0.5 uppercase">
+                      {country}
+                    </span>
+                    <div className="space-y-0.5">
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="text-sm font-serif">{info.degree}</span>
+                        <span className="text-xs font-code text-muted-foreground border border-border px-1.5 py-0.5">
+                          {info.years} {typeof info.years === "number" ? (info.years === 1 ? "yr" : "yrs") : "yrs"}
+                        </span>
+                      </div>
+                      {info.notes && (
+                        <p className="text-xs text-muted-foreground font-serif leading-snug">
+                          {info.notes}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
             </div>
           </section>
         )}

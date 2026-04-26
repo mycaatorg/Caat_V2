@@ -50,5 +50,7 @@ export const config = {
     "/applications/:path*",
     "/scholarships/:path*",
     "/resume-builder/:path*",
+    "/communities/:path*",
+    "/communities/profile/:path*",
   ],
 };
