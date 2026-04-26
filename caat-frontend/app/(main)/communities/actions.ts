@@ -4,15 +4,26 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { containsProfanity } from "@/lib/profanity-filter";
 import { gate, ratelimits } from "@/lib/rate-limit";
+import {
+  PostInputSchema,
+  CommentInputSchema,
+  GroupInputSchema,
+} from "@/lib/schemas/community";
 import type {
   CommunityPost, CommunityComment, CommunityGroup, NotificationItem, PostAuthor,
   TopicTag, ResultCard, ScoreCard, PollOption, PrivacySettings, CommunityProfileData,
 } from "@/types/community";
 
-const VALID_TOPICS: TopicTag[] = [
-  "APPLICATION_RESULTS", "ESSAYS", "TEST_SCORES",
-  "EXTRACURRICULARS", "ADVICE", "SCHOLARSHIPS",
-];
+// ─── Per-user record caps (P2.8) ─────────────────────────────────────────────
+// Hard ceilings to prevent a single account from creating unbounded resources.
+// These are deliberately generous — rate limits handle bursts; these handle
+// long-running accumulation.
+const CAPS = {
+  postsLifetime: 5000,
+  postsPerDay: 100,
+  followsLifetime: 10_000,
+  groupsOwned: 20,
+} as const;
 
 // ─── Shared enrichment helper ─────────────────────────────────────────────────
 
@@ -45,6 +56,27 @@ async function canAccessGroup(
     .eq("user_id", userId)
     .maybeSingle();
   return !!membership;
+}
+
+/**
+ * Returns the set of user ids the viewer can no longer interact with — both
+ * users they blocked and users who blocked them. Empty array when not signed in.
+ * Used by every feed/search action so the block list is enforced consistently
+ * (A4).
+ */
+async function fetchBlockedIds(
+  supabase: SupabaseClient,
+  userId: string | undefined
+): Promise<string[]> {
+  if (!userId) return [];
+  const [blockedByMe, blockedMe] = await Promise.all([
+    supabase.from("community_blocks").select("blocked_id").eq("blocker_id", userId),
+    supabase.from("community_blocks").select("blocker_id").eq("blocked_id", userId),
+  ]);
+  return [
+    ...((blockedByMe.data ?? []).map((r) => r.blocked_id as string)),
+    ...((blockedMe.data ?? []).map((r) => r.blocker_id as string)),
+  ];
 }
 
 /**
@@ -207,9 +239,11 @@ export async function fetchResumeForViewAction(resumeId: string): Promise<{
 
 export async function searchSchoolsAction(query: string): Promise<{ id: number; name: string }[]> {
   if (!query.trim()) return [];
+  // I1 — escape PostgREST LIKE wildcards.
+  const safe = query.trim().replace(/[\\%_]/g, "\\$&");
   const supabase = await createSupabaseServer();
   const { data } = await supabase
-    .from("schools").select("id, name").ilike("name", `%${query.trim()}%`).limit(8);
+    .from("schools").select("id, name").ilike("name", `%${safe}%`).limit(8);
   return (data ?? []) as { id: number; name: string }[];
 }
 
@@ -233,26 +267,40 @@ export async function createPostAction(input: {
   const rl = await gate(ratelimits.postCreate, `post:${user.id}`);
   if (!rl.ok) return { post: null, error: rl.error };
 
-  const content = input.content.trim();
-  const hasAttachment = !!(input.resume_id || input.score_card || input.result_card || input.poll_options?.length);
+  // P2.8 — lifetime + daily caps per user.
+  const { count: lifetime } = await supabase
+    .from("community_posts").select("id", { count: "exact", head: true }).eq("user_id", user.id);
+  if ((lifetime ?? 0) >= CAPS.postsLifetime) {
+    return { post: null, error: "You've reached the lifetime post limit." };
+  }
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count: today } = await supabase
+    .from("community_posts").select("id", { count: "exact", head: true })
+    .eq("user_id", user.id).gte("created_at", dayAgo);
+  if ((today ?? 0) >= CAPS.postsPerDay) {
+    return { post: null, error: "Daily post limit reached. Try again tomorrow." };
+  }
+
+  // P2.7 — schema validation runs before any DB writes.
+  const parsed = PostInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { post: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const data = parsed.data;
+
+  const content = data.content.trim();
+  const hasAttachment = !!(data.resume_id || data.score_card || data.result_card || data.poll_options?.length);
   if (!content && !hasAttachment) return { post: null, error: "Add some text, a score, result, resume, or poll before posting" };
-  if (content.length > 2000) return { post: null, error: "Post exceeds 2000 characters" };
-  if (!VALID_TOPICS.includes(input.topic_tag)) return { post: null, error: "Invalid topic" };
   if (containsProfanity(content)) return { post: null, error: "Post contains prohibited language" };
 
-  if (input.resume_id) {
-    const { data: resume } = await supabase.from("resumes").select("id").eq("id", input.resume_id).eq("user_id", user.id).maybeSingle();
+  if (data.resume_id) {
+    const { data: resume } = await supabase.from("resumes").select("id").eq("id", data.resume_id).eq("user_id", user.id).maybeSingle();
     if (!resume) return { post: null, error: "Resume not found" };
   }
 
-  if (input.poll_options) {
-    if (input.poll_options.length < 2) return { post: null, error: "Polls need at least 2 options" };
-    if (input.poll_options.some((o) => !o.text.trim())) return { post: null, error: "All poll options must have text" };
-  }
-
   // A2 — verify membership when posting to a group (gates private and public alike).
-  if (input.group_id) {
-    const allowed = await canAccessGroup(supabase, input.group_id, user.id);
+  if (data.group_id) {
+    const allowed = await canAccessGroup(supabase, data.group_id, user.id);
     if (!allowed) return { post: null, error: "Not authorized to post in this community" };
   }
 
@@ -261,14 +309,14 @@ export async function createPostAction(input: {
     .insert({
       user_id: user.id,
       content,
-      topic_tag: input.topic_tag,
-      result_card: input.result_card ?? null,
-      score_card: input.score_card ?? null,
-      resume_link: input.resume_id ?? null,
-      is_anonymous: input.is_anonymous ?? false,
-      university_id: input.university_id ?? null,
-      poll_options: input.poll_options ?? null,
-      group_id: input.group_id ?? null,
+      topic_tag: data.topic_tag,
+      result_card: data.result_card ?? null,
+      score_card: data.score_card ?? null,
+      resume_link: data.resume_id ?? null,
+      is_anonymous: data.is_anonymous ?? false,
+      university_id: data.university_id ?? null,
+      poll_options: data.poll_options ?? null,
+      group_id: data.group_id ?? null,
     })
     .select("*, likes:community_likes(count), comments:community_comments(count)")
     .single();
@@ -327,18 +375,7 @@ export async function fetchPostsAction(
     if (followeeIds.length === 0) return { posts: [], nextCursor: null };
   }
 
-  // Exclude posts from users blocked by or who blocked the viewer
-  let blockedIds: string[] = [];
-  if (user) {
-    const [blockedByMe, blockedMe] = await Promise.all([
-      supabase.from("community_blocks").select("blocked_id").eq("blocker_id", user.id),
-      supabase.from("community_blocks").select("blocker_id").eq("blocked_id", user.id),
-    ]);
-    blockedIds = [
-      ...((blockedByMe.data ?? []).map((r) => r.blocked_id as string)),
-      ...((blockedMe.data ?? []).map((r) => r.blocker_id as string)),
-    ];
-  }
+  const blockedIds = await fetchBlockedIds(supabase, user?.id);
 
   let query = supabase
     .from("community_posts")
@@ -395,6 +432,12 @@ export async function fetchPostsByUserAction(
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // A4 — if either side has blocked the other, the entire profile is hidden.
+  if (user && user.id !== userId) {
+    const blockedIds = await fetchBlockedIds(supabase, user.id);
+    if (blockedIds.includes(userId)) return { posts: [], nextCursor: null };
+  }
+
   let query = supabase
     .from("community_posts")
     .select("*, likes:community_likes(count), comments:community_comments(count)")
@@ -425,6 +468,8 @@ export async function searchPostsAction(
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
 
+  const blockedIds = await fetchBlockedIds(supabase, user?.id);
+
   let q = supabase
     .from("community_posts")
     .select("*, likes:community_likes(count), comments:community_comments(count)")
@@ -432,8 +477,14 @@ export async function searchPostsAction(
     .order("created_at", { ascending: false })
     .limit(30);
 
-  if (query.trim()) q = q.ilike("content", `%${query.trim()}%`);
+  // I1 — escape PostgREST LIKE wildcards so user input is treated literally.
+  if (query.trim()) {
+    const safe = query.trim().replace(/[\\%_]/g, "\\$&");
+    q = q.ilike("content", `%${safe}%`);
+  }
   if (topicFilter) q = q.eq("topic_tag", topicFilter);
+  // A4 — exclude blocked relationships from search results.
+  if (blockedIds.length) q = q.not("user_id", "in", `(${blockedIds.join(",")})`);
 
   const { data: rows } = await q;
   if (!rows?.length) return { posts: [] };
@@ -488,6 +539,14 @@ export async function followUserAction(targetUserId: string): Promise<{ error: s
 
   const rl = await gate(ratelimits.followAction, `follow:${user.id}`);
   if (!rl.ok) return { error: rl.error };
+
+  // P2.8 — lifetime follow cap.
+  const { count } = await supabase
+    .from("community_follows").select("follower_id", { count: "exact", head: true })
+    .eq("follower_id", user.id);
+  if ((count ?? 0) >= CAPS.followsLifetime) {
+    return { error: "Follow limit reached." };
+  }
 
   await supabase.from("community_follows").insert({ follower_id: user.id, followee_id: targetUserId });
   await supabase.from("notifications").insert({ user_id: targetUserId, actor_id: user.id, type: "follow", post_id: null });
@@ -691,14 +750,29 @@ export async function addCommentAction(
   const rl = await gate(ratelimits.commentCreate, `comment:${user.id}`);
   if (!rl.ok) return { comment: null, error: rl.error };
 
-  const text = content.trim();
-  if (!text) return { comment: null, error: "Comment cannot be empty" };
-  if (text.length > 1000) return { comment: null, error: "Comment too long" };
+  const parsed = CommentInputSchema.safeParse({ postId, content, parentCommentId });
+  if (!parsed.success) {
+    return { comment: null, error: parsed.error.issues[0]?.message ?? "Invalid comment" };
+  }
+  const text = parsed.data.content;
   if (containsProfanity(text)) return { comment: null, error: "Comment contains prohibited language" };
 
   // A3 — comments inherit their parent post's privacy gate.
   if (!(await canAccessPost(supabase, postId, user.id))) {
     return { comment: null, error: "Not authorized to comment on this post" };
+  }
+
+  // P2.4 — per-user-per-post comment cap (10/hour) so a single account can't
+  // dump comments on a target post even within the global rate limit.
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count: recentCommentCount } = await supabase
+    .from("community_comments")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("post_id", postId)
+    .gte("created_at", oneHourAgo);
+  if ((recentCommentCount ?? 0) >= 10) {
+    return { comment: null, error: "You've commented a lot on this post recently. Try again later." };
   }
 
   const { data: row, error: insertError } = await supabase
@@ -775,6 +849,12 @@ export async function reportPostAction(postId: string): Promise<{ error: string 
 
   const rl = await gate(ratelimits.reportAction, `report:${user.id}`);
   if (!rl.ok) return { error: rl.error };
+
+  // C5 — reject self-reports so an author can't push their own post toward auto-hide.
+  const { data: post } = await supabase
+    .from("community_posts").select("user_id").eq("id", postId).maybeSingle();
+  if (!post) return { error: "Post not found" };
+  if (post.user_id === user.id) return { error: "Cannot report your own post" };
 
   await supabase.from("community_reports").upsert({ post_id: postId, reporter_id: user.id });
   return { error: null };
@@ -957,9 +1037,21 @@ export async function createGroupAction(input: {
   const rl = await gate(ratelimits.groupCreate, `groupcreate:${user.id}`);
   if (!rl.ok) return { group: null, error: rl.error };
 
-  const name = input.name.trim();
-  if (!name || name.length < 3) return { group: null, error: "Name must be at least 3 characters" };
-  if (name.length > 50) return { group: null, error: "Name too long" };
+  // P2.8 — lifetime cap on groups owned per user.
+  const { count: ownedGroupCount } = await supabase
+    .from("community_groups").select("id", { count: "exact", head: true })
+    .eq("creator_id", user.id);
+  if ((ownedGroupCount ?? 0) >= CAPS.groupsOwned) {
+    return { group: null, error: `You can own at most ${CAPS.groupsOwned} communities.` };
+  }
+
+  // P2.7 — schema validation (also enforces F1 description max-length).
+  const parsed = GroupInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { group: null, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const data = parsed.data;
+  const name = data.name;
 
   const slug = slugify(name);
   if (slug.length < 3) return { group: null, error: "Name produces an invalid slug" };
@@ -969,7 +1061,7 @@ export async function createGroupAction(input: {
 
   const { data: row, error: insertError } = await supabase
     .from("community_groups")
-    .insert({ name, slug, description: input.description?.trim() || null, creator_id: user.id, is_private: input.is_private })
+    .insert({ name, slug, description: data.description ?? null, creator_id: user.id, is_private: data.is_private })
     .select("*").single();
 
   if (insertError || !row) return { group: null, error: "Failed to create community" };
@@ -991,7 +1083,11 @@ export async function fetchGroupsAction(query?: string): Promise<{ groups: Commu
   const { data: { user } } = await supabase.auth.getUser();
 
   let q = supabase.from("community_groups").select("*").eq("is_private", false).order("created_at", { ascending: false }).limit(50);
-  if (query?.trim()) q = q.ilike("name", `%${query.trim()}%`);
+  if (query?.trim()) {
+    // I1 — escape PostgREST LIKE wildcards.
+    const safe = query.trim().replace(/[\\%_]/g, "\\$&");
+    q = q.ilike("name", `%${safe}%`);
+  }
 
   const { data: rows } = await q;
   if (!rows?.length) return { groups: [] };
@@ -1097,10 +1193,110 @@ export async function requestJoinGroupAction(groupId: string): Promise<{ error: 
   return { error: null };
 }
 
+export async function approveJoinRequestAction(
+  groupId: string,
+  requesterUserId: string
+): Promise<{ error: string | null }> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  // Verify caller owns the group.
+  const { data: group } = await supabase
+    .from("community_groups").select("creator_id, name").eq("id", groupId).maybeSingle();
+  if (!group || group.creator_id !== user.id) return { error: "Not authorized" };
+
+  // Add as member, mark request approved, and notify the requester.
+  await supabase.from("community_group_members").upsert(
+    { group_id: groupId, user_id: requesterUserId, role: "member" },
+    { onConflict: "group_id,user_id", ignoreDuplicates: false }
+  );
+  await supabase.from("community_group_requests")
+    .update({ status: "approved" })
+    .eq("group_id", groupId).eq("user_id", requesterUserId);
+  await supabase.from("notifications").insert({
+    user_id: requesterUserId,
+    actor_id: user.id,
+    type: "request_approved",
+    post_id: null,
+    message: `Your request to join ${group.name as string} was approved`,
+  });
+
+  revalidatePath("/communities");
+  revalidatePath("/communities/groups");
+  return { error: null };
+}
+
+export async function rejectJoinRequestAction(
+  groupId: string,
+  requesterUserId: string
+): Promise<{ error: string | null }> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  const { data: group } = await supabase
+    .from("community_groups").select("creator_id, name").eq("id", groupId).maybeSingle();
+  if (!group || group.creator_id !== user.id) return { error: "Not authorized" };
+
+  await supabase.from("community_group_requests")
+    .update({ status: "rejected" })
+    .eq("group_id", groupId).eq("user_id", requesterUserId);
+  // Intentionally no notification on rejection — avoids confirming the group exists
+  // to a user who attempted to discover private groups by id.
+
+  return { error: null };
+}
+
+export async function fetchPendingJoinRequestsAction(
+  groupId: string
+): Promise<{ requests: { user_id: string; created_at: string; user: PostAuthor | null }[]; error: string | null }> {
+  const supabase = await createSupabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { requests: [], error: "Not signed in" };
+
+  const { data: group } = await supabase
+    .from("community_groups").select("creator_id").eq("id", groupId).maybeSingle();
+  if (!group || group.creator_id !== user.id) return { requests: [], error: "Not authorized" };
+
+  const { data: rows } = await supabase
+    .from("community_group_requests")
+    .select("user_id, created_at")
+    .eq("group_id", groupId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
+
+  if (!rows?.length) return { requests: [], error: null };
+
+  const userIds = rows.map((r) => r.user_id as string);
+  const { data: profiles } = await supabase
+    .from("profiles").select("id, first_name, last_name, avatar_url").in("id", userIds);
+  const profileMap = new Map<string, PostAuthor>(
+    ((profiles ?? []) as PostAuthor[]).map((p) => [p.id, p])
+  );
+
+  return {
+    requests: rows.map((r) => ({
+      user_id: r.user_id as string,
+      created_at: r.created_at as string,
+      user: profileMap.get(r.user_id as string) ?? null,
+    })),
+    error: null,
+  };
+}
+
 export async function joinGroupAction(groupId: string): Promise<{ error: string | null }> {
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
+
+  // Reject self-join on private groups — they must go through the request flow.
+  // (Pre-Phase-2 this was bypassable.)
+  const { data: group } = await supabase
+    .from("community_groups").select("is_private").eq("id", groupId).maybeSingle();
+  if (!group) return { error: "Community not found" };
+  if (group.is_private) return { error: "This community requires an approved join request" };
+
   await supabase.from("community_group_members").upsert({ group_id: groupId, user_id: user.id, role: "member" });
   revalidatePath("/communities");
   revalidatePath("/communities/groups");
@@ -1128,6 +1324,8 @@ export async function fetchGroupPostsAction(
   const allowed = await canAccessGroup(supabase, groupId, user?.id);
   if (!allowed) return { posts: [], nextCursor: null };
 
+  const blockedIds = await fetchBlockedIds(supabase, user?.id);
+
   let query = supabase
     .from("community_posts")
     .select("*, likes:community_likes(count), comments:community_comments(count)")
@@ -1135,6 +1333,9 @@ export async function fetchGroupPostsAction(
     .eq("is_hidden", false)
     .order("created_at", { ascending: false })
     .limit(20);
+
+  // A4 — exclude blocked relationships even within shared groups.
+  if (blockedIds.length) query = query.not("user_id", "in", `(${blockedIds.join(",")})`);
 
   if (cursor) query = query.lt("created_at", cursor);
 

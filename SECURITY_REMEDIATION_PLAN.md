@@ -488,6 +488,6 @@ When a finding is fixed:
 
 ## Phase tracking — current status
 
-- Phase 1: 0/4 items complete
-- Phase 2: 0/8 items complete
-- Phase 3: 0/10 items complete
+- Phase 1: 4/4 items complete (merged into develop 2026-04-26)
+- Phase 2: 6/8 items complete on `security/phase-2-remediation` (P2.1, P2.2, P2.3, P2.4 layer 1, P2.5, P2.7, P2.8 — pending: P2.4 layer 2 (external moderation API), P2.6 (full server-action migration))
+- Phase 3: 1/10 items complete on `security/phase-2-remediation` (I1 — LIKE wildcard escaping in three community search functions, addressed alongside P2.1)
