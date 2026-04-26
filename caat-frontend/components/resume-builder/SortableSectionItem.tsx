@@ -68,7 +68,7 @@ export default function SortableSectionItem({
       </button>
 
       {/* Label + inline actions */}
-      <div className="flex flex-1 items-center gap-2">
+      <div className="flex flex-1 items-center gap-2 min-w-0">
         {isEditing ? (
           <input
             value={draftLabel}
@@ -79,21 +79,21 @@ export default function SortableSectionItem({
             }}
             onBlur={() => onCommit()}
             autoFocus
-            className="flex-1 rounded border bg-background text-foreground px-2 py-1 text-sm"
+            className="flex-1 min-w-0 rounded border bg-background text-foreground px-2 py-1 text-sm"
           />
         ) : (
           <button
             type="button"
             onClick={onClick}
             onDoubleClick={onDoubleClick}
-            className="flex-1 text-left text-sm font-medium"
+            className="flex-1 min-w-0 text-left text-sm font-medium truncate"
           >
             {label}
           </button>
         )}
 
         {!isEditing && (
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
               onClick={onStartEdit}
