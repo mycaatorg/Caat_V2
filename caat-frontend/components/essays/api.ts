@@ -1,5 +1,12 @@
 import { supabase } from "@/src/lib/supabaseClient";
 
+export type CustomEssayPrompt = {
+  id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+};
+
 export type EssayPrompt = {
   id: string;
   slug: string;
@@ -153,6 +160,69 @@ export async function deleteDraft(draftId: string): Promise<void> {
     .from("essay_drafts")
     .delete()
     .eq("id", draftId)
+    .eq("user_id", user.id);
+
+  if (error) throw error;
+}
+
+/* ---------------------------
+   Custom essay prompts
+---------------------------- */
+
+export async function fetchCustomPrompts(): Promise<CustomEssayPrompt[]> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from("custom_essay_prompts")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as CustomEssayPrompt[];
+}
+
+export async function createCustomPrompt(title: string): Promise<CustomEssayPrompt> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error("Not signed in");
+
+  const { data, error } = await supabase
+    .from("custom_essay_prompts")
+    .insert({ user_id: user.id, title })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  if (!data) throw new Error("Failed to create essay");
+  return data as CustomEssayPrompt;
+}
+
+export async function deleteCustomPrompt(id: string): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error("Not signed in");
+
+  const { error } = await supabase
+    .from("custom_essay_prompts")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+
+  if (error) throw error;
+}
+
+export async function renameCustomPrompt(id: string, title: string): Promise<void> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error("Not signed in");
+
+  const { error } = await supabase
+    .from("custom_essay_prompts")
+    .update({ title })
+    .eq("id", id)
     .eq("user_id", user.id);
 
   if (error) throw error;
