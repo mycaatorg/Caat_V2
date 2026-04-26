@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, TrendingUp, Hash, Plus, Lock, Globe } from "lucide-react";
+import { Users, TrendingUp, Plus, Lock, Globe } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -99,10 +99,7 @@ export async function CommunitySidebar({ currentUser }: CommunitySidebarProps) {
       {/* My Communities */}
       <div className="rounded-xl border p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Hash className="size-3.5 text-muted-foreground" />
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">My Communities</p>
-          </div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">My Communities</p>
           <Link href="/communities/groups">
             <Button variant="ghost" size="icon" className="size-5 text-muted-foreground hover:text-foreground">
               <Plus className="size-3.5" />
@@ -111,13 +108,13 @@ export async function CommunitySidebar({ currentUser }: CommunitySidebarProps) {
         </div>
 
         {myGroups.length === 0 ? (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <p className="text-xs text-muted-foreground">You haven&apos;t joined any communities yet.</p>
-            <Link
-              href="/communities/groups"
-              className="text-xs font-medium text-foreground underline-offset-4 hover:underline"
-            >
-              Browse communities →
+            <Link href="/communities/groups">
+              <Button size="sm" className="w-full gap-1.5">
+                <Globe className="size-3.5" />
+                Browse communities
+              </Button>
             </Link>
           </div>
         ) : (
@@ -145,13 +142,12 @@ export async function CommunitySidebar({ currentUser }: CommunitySidebarProps) {
                 +{myGroups.length - 6} more
               </Link>
             )}
-            <Separator className="my-1" />
-            <Link
-              href="/communities/groups"
-              className="flex items-center gap-1.5 px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Globe className="size-3" />
-              Browse all communities
+            <Separator className="my-2" />
+            <Link href="/communities/groups">
+              <Button size="sm" variant="outline" className="w-full gap-1.5">
+                <Globe className="size-3.5" />
+                Browse all communities
+              </Button>
             </Link>
           </div>
         )}

@@ -1,13 +1,14 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { Users, Lock, Globe, CalendarDays, ArrowLeft, Hash } from "lucide-react";
+import { Users, Lock, Globe, CalendarDays, ArrowLeft } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import {
   Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { NotificationBell } from "@/components/communities/NotificationBell";
+import { Button } from "@/components/ui/button";
 import { GroupJoinButton } from "@/components/communities/GroupJoinButton";
 import { GroupFeedClient } from "@/components/communities/GroupFeedClient";
 import { createSupabaseServer } from "@/lib/supabase-server";
@@ -209,13 +210,7 @@ export default async function GroupPage({ params }: Props) {
             {/* My Communities */}
             <div className="rounded-xl border p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Hash className="size-3.5 text-muted-foreground" />
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">My Communities</p>
-                </div>
-                <Link href="/communities/groups" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                  Browse
-                </Link>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">My Communities</p>
               </div>
               <div className="space-y-1">
                 {myGroups.length === 0 ? (
@@ -234,6 +229,13 @@ export default async function GroupPage({ params }: Props) {
                     </Link>
                   ))
                 )}
+                <Separator className="my-2" />
+                <Link href="/communities/groups">
+                  <Button size="sm" variant="outline" className="w-full gap-1.5">
+                    <Globe className="size-3.5" />
+                    Browse all communities
+                  </Button>
+                </Link>
               </div>
             </div>
 
