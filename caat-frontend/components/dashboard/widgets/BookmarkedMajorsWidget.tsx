@@ -7,7 +7,6 @@ import { BookOpen, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/src/lib/supabaseClient";
 import type { Major } from "@/types/majors";
 import { CATEGORY_COLORS } from "@/constants/majors";
@@ -85,39 +84,37 @@ export function BookmarkedMajorsWidget() {
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <ScrollArea className="max-h-56">
-        <ul className="flex flex-col gap-1.5 pr-2">
-          {majors.map((major) => (
-            <li key={major.id}>
-              <Link
-                href={`/majors/${major.id}`}
-                className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-muted/50 group transition-colors"
-              >
-                <span className="text-sm font-medium truncate">{major.name}</span>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Badge
-                    variant="secondary"
-                    className={`text-xs hidden sm:inline-flex ${CATEGORY_COLORS[major.category] ?? ""}`}
-                  >
-                    {major.category}
-                  </Badge>
-                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </ScrollArea>
+    <div className="flex flex-col gap-2 h-full min-h-0">
+      <ul className="flex flex-col gap-1.5 flex-1 min-h-0 overflow-y-auto pr-1">
+        {majors.map((major) => (
+          <li key={major.id}>
+            <Link
+              href={`/majors/${major.id}`}
+              className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-muted/50 group transition-colors"
+            >
+              <span className="text-sm font-medium truncate">{major.name}</span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Badge
+                  variant="secondary"
+                  className={`text-xs hidden sm:inline-flex ${CATEGORY_COLORS[major.category] ?? ""}`}
+                >
+                  {major.category}
+                </Badge>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ul>
       {totalCount > DISPLAY_LIMIT && (
         <Link
           href="/majors"
-          className="text-xs text-muted-foreground hover:text-foreground text-center block"
+          className="text-xs text-muted-foreground hover:text-foreground text-center block shrink-0"
         >
           +{totalCount - DISPLAY_LIMIT} more
         </Link>
       )}
-      <Button asChild variant="ghost" size="sm" className="w-full text-xs">
+      <Button asChild variant="ghost" size="sm" className="w-full text-xs shrink-0">
         <Link href="/majors">View all majors →</Link>
       </Button>
     </div>

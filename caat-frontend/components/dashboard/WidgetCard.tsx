@@ -73,7 +73,7 @@ export function WidgetCard({
           </Button>
         </CardHeader>
 
-        <CardContent className="px-4 pb-4 flex-1 overflow-hidden">
+        <CardContent className="px-4 pb-4 flex-1 min-h-0 overflow-hidden flex flex-col">
           <WidgetComponent />
         </CardContent>
 
