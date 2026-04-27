@@ -2,7 +2,6 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   ArrowRight,
-  Play,
   LayoutGrid,
   Pencil,
   Lock,

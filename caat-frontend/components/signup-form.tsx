@@ -184,7 +184,6 @@ export function SignupForm({
             value={password}
             onChange={handlePasswordChange}
             placeholder="••••••••"
-            placeholder="••••••••"
             className="w-full bg-transparent border-0 border-b-2 border-[#111111] px-0 py-2 pr-10 text-base text-[#111111] placeholder:text-[#999] focus:border-b-[3px] focus:outline-none transition-none font-serif"
           />
           <button
@@ -232,7 +231,6 @@ export function SignupForm({
             id="confirm-password"
             type={showConfirm ? "text" : "password"}
             required
-            placeholder="••••••••"
             placeholder="••••••••"
             className="w-full bg-transparent border-0 border-b-2 border-[#111111] px-0 py-2 pr-10 text-base text-[#111111] placeholder:text-[#999] focus:border-b-[3px] focus:outline-none transition-none font-serif"
           />
