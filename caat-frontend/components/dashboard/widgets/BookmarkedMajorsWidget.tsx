@@ -106,17 +106,14 @@ export function BookmarkedMajorsWidget() {
           </li>
         ))}
       </ul>
-      {totalCount > DISPLAY_LIMIT && (
-        <Link
-          href="/majors"
-          className="text-xs text-muted-foreground hover:text-foreground text-center block shrink-0"
-        >
-          +{totalCount - DISPLAY_LIMIT} more
-        </Link>
-      )}
-      <Button asChild variant="ghost" size="sm" className="w-full text-xs shrink-0">
-        <Link href="/majors">View all majors →</Link>
-      </Button>
+      <Link
+        href="/majors"
+        className="text-xs text-muted-foreground hover:text-foreground text-center block shrink-0"
+      >
+        {totalCount > DISPLAY_LIMIT
+          ? `+${totalCount - DISPLAY_LIMIT} more · View all majors →`
+          : "View all majors →"}
+      </Link>
     </div>
   );
 }

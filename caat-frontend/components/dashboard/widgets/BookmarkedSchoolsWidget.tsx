@@ -104,17 +104,14 @@ export function BookmarkedSchoolsWidget() {
           </Link>
         ))}
       </div>
-      {totalCount > DISPLAY_LIMIT && (
-        <Link
-          href="/schools"
-          className="text-xs text-muted-foreground hover:text-foreground text-center block shrink-0"
-        >
-          +{totalCount - DISPLAY_LIMIT} more
-        </Link>
-      )}
-      <Button asChild variant="ghost" size="sm" className="w-full text-xs shrink-0">
-        <Link href="/schools">View all schools →</Link>
-      </Button>
+      <Link
+        href="/schools"
+        className="text-xs text-muted-foreground hover:text-foreground text-center block shrink-0"
+      >
+        {totalCount > DISPLAY_LIMIT
+          ? `+${totalCount - DISPLAY_LIMIT} more · View all schools →`
+          : "View all schools →"}
+      </Link>
     </div>
   );
 }

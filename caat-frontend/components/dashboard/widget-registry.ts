@@ -71,8 +71,8 @@ export const widgetRegistry: WidgetDefinition[] = [
     icon: BookOpen,
     component: BookmarkedMajorsWidget,
     defaultW: 2,
-    defaultH: 2,
-    // 2 rows = enough for the "View all" button + at least one item.
+    defaultH: 3,
+    // 2 rows still works (inner list scrolls), but 3 looks comfortable by default.
     minW: 1,
     minH: 2,
   },
@@ -83,7 +83,7 @@ export const widgetRegistry: WidgetDefinition[] = [
     icon: School,
     component: BookmarkedSchoolsWidget,
     defaultW: 2,
-    defaultH: 2,
+    defaultH: 3,
     minW: 1,
     minH: 2,
   },
