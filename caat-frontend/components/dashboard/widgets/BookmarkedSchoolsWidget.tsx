@@ -88,8 +88,8 @@ export function BookmarkedSchoolsWidget() {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-col gap-1.5 h-full min-h-0">
+      <div className="flex flex-wrap gap-1 flex-1 min-h-0 overflow-y-auto pr-1 content-start">
         {schools.map((school) => (
           <Link key={school.id} href={`/schools/${school.id}`}>
             <Badge
@@ -104,17 +104,14 @@ export function BookmarkedSchoolsWidget() {
           </Link>
         ))}
       </div>
-      {totalCount > DISPLAY_LIMIT && (
-        <Link
-          href="/schools"
-          className="text-xs text-muted-foreground hover:text-foreground text-center block"
-        >
-          +{totalCount - DISPLAY_LIMIT} more
-        </Link>
-      )}
-      <Button asChild variant="ghost" size="sm" className="w-full text-xs">
-        <Link href="/schools">View all schools →</Link>
-      </Button>
+      <Link
+        href="/schools"
+        className="text-xs text-muted-foreground hover:text-foreground text-center block shrink-0"
+      >
+        {totalCount > DISPLAY_LIMIT
+          ? `+${totalCount - DISPLAY_LIMIT} more · View all schools →`
+          : "View all schools →"}
+      </Link>
     </div>
   );
 }

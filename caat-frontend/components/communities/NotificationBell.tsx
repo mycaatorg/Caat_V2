@@ -34,6 +34,14 @@ export function NotificationBell() {
   const [isLoading, setIsLoading] = useState(false);
   const [, startTransition] = useTransition();
 
+  // Skip SSR for the dropdown to avoid Radix `useId` hydration mismatches.
+  // We render a static placeholder button until the client mounts, then swap
+  // to the live DropdownMenu. The placeholder has identical dimensions so
+  // there's no layout shift.
+  const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setMounted(true); }, []);
+
   // Initial unread count fetch
   useEffect(() => {
     fetchNotificationsAction().then(({ unreadCount: count }) => {
@@ -87,6 +95,17 @@ export function NotificationBell() {
         await markNotificationsReadAction();
       });
     }
+  }
+
+  if (!mounted) {
+    // Static, non-interactive placeholder for SSR + first paint. Same shape
+    // as the Button below so there's no layout shift on hydration.
+    return (
+      <Button variant="ghost" size="icon" className="relative h-8 w-8" aria-hidden>
+        <Bell className="size-4" />
+        <span className="sr-only">Notifications</span>
+      </Button>
+    );
   }
 
   return (

@@ -6,7 +6,6 @@ import { Plus, Trash2, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   fetchTodos,
@@ -125,9 +124,9 @@ export function TodoWidget() {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 h-full min-h-0">
       {/* Input row */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 shrink-0">
         <Input
           placeholder="Add a task..."
           value={input}
@@ -157,7 +156,7 @@ export function TodoWidget() {
 
       {/* Expanded options */}
       {showOptions && (
-        <div className="flex gap-2 items-center flex-wrap">
+        <div className="flex gap-2 items-center flex-wrap shrink-0">
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">Due:</span>
             <Input
@@ -183,18 +182,17 @@ export function TodoWidget() {
       )}
 
       {loading ? (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 shrink-0">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-7 w-full rounded" />
           ))}
         </div>
       ) : todos.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-4">
+        <p className="text-xs text-muted-foreground text-center py-4 shrink-0">
           No tasks yet. Add one above!
         </p>
       ) : (
-        <ScrollArea className="max-h-56">
-          <ul className="flex flex-col gap-1.5 pr-2">
+        <ul className="flex flex-col gap-1.5 flex-1 min-h-0 overflow-y-auto pr-1">
             {todos.map((todo) => {
               const dueLabel = formatDue(todo.due_date);
               const overdue = !todo.done && isDuePast(todo.due_date);
@@ -256,12 +254,11 @@ export function TodoWidget() {
                 </li>
               );
             })}
-          </ul>
-        </ScrollArea>
+        </ul>
       )}
 
       {todos.length > 0 && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground shrink-0">
           {todos.filter((t) => t.done).length}/{todos.length} completed
         </p>
       )}

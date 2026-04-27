@@ -45,7 +45,7 @@ export function WidgetCard({
           isDragging || isResizing ? "ring-2 ring-primary/40 shadow-xl" : ""
         }`}
       >
-        <CardHeader className="flex flex-row items-center gap-2 pb-3 pt-3 px-4 shrink-0">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2 pt-2.5 px-4 shrink-0">
           {/* Drag handle */}
           <button
             onPointerDown={onDragHandlePointerDown}
@@ -73,7 +73,7 @@ export function WidgetCard({
           </Button>
         </CardHeader>
 
-        <CardContent className="px-4 pb-4 flex-1 overflow-hidden">
+        <CardContent className="px-4 pb-3 pt-0 flex-1 min-h-0 overflow-hidden flex flex-col">
           <WidgetComponent />
         </CardContent>
 

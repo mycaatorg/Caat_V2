@@ -72,7 +72,8 @@ export const widgetRegistry: WidgetDefinition[] = [
     component: BookmarkedMajorsWidget,
     defaultW: 2,
     defaultH: 2,
-    // 2 rows = enough for the "View all" button + at least one item.
+    // 2 rows = enough for the "View all" link + at least one item; the inner
+    // list scrolls when content exceeds the available height.
     minW: 1,
     minH: 2,
   },
