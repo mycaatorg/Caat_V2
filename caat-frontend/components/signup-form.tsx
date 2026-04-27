@@ -98,9 +98,9 @@ export function SignupForm({
           <Check size={18} strokeWidth={2} className="text-white" />
         </div>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight font-display mb-2">
-            Check your email
-          </h1>
+        <h1 className="text-3xl font-bold tracking-tight font-display mb-2 text-[#111111]">
+          Check your email
+        </h1>
           <p className="text-sm text-[#525252] font-serif leading-relaxed">
             We&apos;ve sent a confirmation link to your email address. Click it to activate your account, then come back and log in.
           </p>
@@ -124,7 +124,7 @@ export function SignupForm({
     >
       {/* Heading */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight font-display mb-2">
+        <h1 className="text-3xl font-bold tracking-tight font-display mb-2 text-[#111111]">
           Create account
         </h1>
         <p className="text-sm text-[#525252] font-serif">
@@ -150,7 +150,7 @@ export function SignupForm({
           type="text"
           placeholder="Jane Smith"
           required
-          className="w-full bg-transparent border-0 border-b-2 border-black px-0 py-2 text-base text-black placeholder:text-[#BFBFBF] focus:border-b-[3px] focus:outline-none transition-none font-serif"
+          className="w-full bg-transparent border-0 border-b-2 border-[#111111] px-0 py-2 text-base text-[#111111] placeholder:text-[#999] focus:border-b-[3px] focus:outline-none transition-none font-serif"
         />
       </div>
 
@@ -165,7 +165,7 @@ export function SignupForm({
           type="email"
           placeholder="you@example.com"
           required
-          className="w-full bg-transparent border-0 border-b-2 border-black px-0 py-2 text-base text-black placeholder:text-[#BFBFBF] focus:border-b-[3px] focus:outline-none transition-none font-serif"
+          className="w-full bg-transparent border-0 border-b-2 border-[#111111] px-0 py-2 text-base text-[#111111] placeholder:text-[#999] focus:border-b-[3px] focus:outline-none transition-none font-serif"
         />
       </div>
 
@@ -183,7 +183,9 @@ export function SignupForm({
             minLength={8}
             value={password}
             onChange={handlePasswordChange}
-            className="w-full bg-transparent border-0 border-b-2 border-black px-0 py-2 pr-10 text-base text-black placeholder:text-[#BFBFBF] focus:border-b-[3px] focus:outline-none transition-none font-serif"
+            placeholder="••••••••"
+            placeholder="••••••••"
+            className="w-full bg-transparent border-0 border-b-2 border-[#111111] px-0 py-2 pr-10 text-base text-[#111111] placeholder:text-[#999] focus:border-b-[3px] focus:outline-none transition-none font-serif"
           />
           <button
             type="button"
@@ -230,7 +232,9 @@ export function SignupForm({
             id="confirm-password"
             type={showConfirm ? "text" : "password"}
             required
-            className="w-full bg-transparent border-0 border-b-2 border-black px-0 py-2 pr-10 text-base text-black placeholder:text-[#BFBFBF] focus:border-b-[3px] focus:outline-none transition-none font-serif"
+            placeholder="••••••••"
+            placeholder="••••••••"
+            className="w-full bg-transparent border-0 border-b-2 border-[#111111] px-0 py-2 pr-10 text-base text-[#111111] placeholder:text-[#999] focus:border-b-[3px] focus:outline-none transition-none font-serif"
           />
           <button
             type="button"
@@ -249,7 +253,7 @@ export function SignupForm({
       <button
         type="submit"
         disabled={loading || (captchaEnabled && !captchaToken)}
-        className="w-full bg-black text-white text-[11px] tracking-[0.18em] uppercase px-8 py-4 border border-black hover:bg-white hover:text-black transition-colors duration-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-[3px] font-code disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        className="w-full bg-[#9a1a27] text-white text-[11px] tracking-[0.18em] uppercase px-8 py-4 border border-[#9a1a27] hover:bg-white hover:text-[#9a1a27] transition-colors duration-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-[#9a1a27] focus-visible:outline-offset-[3px] font-code disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
         {loading ? "Creating account…" : (
           <>

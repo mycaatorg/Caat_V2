@@ -29,7 +29,7 @@ export default function SignupPage() {
       </div>
 
       {/* Right — editorial statement */}
-      <div className="hidden lg:flex flex-col justify-between bg-black text-white p-12 relative overflow-hidden">
+      <div className="hidden lg:flex flex-col justify-between bg-[#111111] text-white p-12 relative overflow-hidden">
         {/* Texture */}
         <div
           aria-hidden
@@ -53,7 +53,7 @@ export default function SignupPage() {
           <blockquote
             className="text-5xl xl:text-6xl font-bold italic leading-[1.08] tracking-tight font-display"
           >
-            Your journey starts here.
+            Your journey starts <span style={{ color: "#9a1a27" }}>here.</span>
           </blockquote>
           <p className="text-[#888] text-base font-serif leading-relaxed max-w-sm">
             Get organized from day one. CAAT keeps your applications, deadlines, and documents in one place so nothing slips through.

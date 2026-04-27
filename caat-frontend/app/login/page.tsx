@@ -32,7 +32,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right — editorial statement */}
-      <div className="hidden lg:flex flex-col justify-between bg-black text-white p-12 relative overflow-hidden">
+      <div className="hidden lg:flex flex-col justify-between bg-[#111111] text-white p-12 relative overflow-hidden">
         {/* Texture */}
         <div
           aria-hidden
@@ -54,7 +54,7 @@ export default function LoginPage() {
           <blockquote
             className="text-5xl xl:text-6xl font-bold italic leading-[1.08] tracking-tight font-display"
           >
-            Where futures are written.
+            Where <span style={{ color: "#9a1a27" }}>futures</span> are written.
           </blockquote>
           <p className="text-[#888] text-base font-serif leading-relaxed max-w-sm">
             Every great university journey begins with a plan. CAAT gives you the clarity to execute yours.
