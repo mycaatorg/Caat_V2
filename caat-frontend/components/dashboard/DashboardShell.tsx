@@ -43,14 +43,23 @@ function resolveLayout(widgets: PlacedWidget[]): PlacedWidget[] {
       w.gridY !== undefined &&
       w.gridW !== undefined &&
       w.gridH !== undefined;
+
+    // Enforce the registry's current minW/minH against saved layouts. If the
+    // registry tightens minimums later (because a widget needs more room than
+    // before), grow saved instances to match instead of leaving them too small.
+    const minW = def?.minW ?? 1;
+    const minH = def?.minH ?? 1;
+    const savedW = positioned ? w.gridW! : (def?.defaultW ?? defW);
+    const savedH = positioned ? w.gridH! : (def?.defaultH ?? defH);
+
     return {
       id: w.instanceId,
       widgetId: w.widgetId,
       positioned,
       x: positioned ? w.gridX! : 0,
       y: positioned ? w.gridY! : 0,
-      w: positioned ? w.gridW! : (def?.defaultW ?? defW),
-      h: positioned ? w.gridH! : (def?.defaultH ?? defH),
+      w: Math.max(savedW, minW),
+      h: Math.max(savedH, minH),
     };
   });
 

@@ -72,9 +72,10 @@ export const widgetRegistry: WidgetDefinition[] = [
     component: BookmarkedMajorsWidget,
     defaultW: 2,
     defaultH: 4,
-    // Inner list scrolls down to minH=2; default of 4 fits ~4 rows comfortably.
+    // Below 3 rows the list is too cramped — the inner list still scrolls
+    // but two rows + footer leaves no breathing room.
     minW: 1,
-    minH: 2,
+    minH: 3,
   },
   {
     id: "bookmarked-schools",
@@ -85,7 +86,7 @@ export const widgetRegistry: WidgetDefinition[] = [
     defaultW: 2,
     defaultH: 4,
     minW: 1,
-    minH: 2,
+    minH: 3,
   },
   {
     id: "upcoming-deadlines",
