@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ExternalLink } from "lucide-react";
 import SchoolBookmarkButton from "./bookmark-button";
 import ApplicationButton from "./application-button";
+import { SchoolNotesPanel } from "./SchoolNotesPanel";
+import { fetchSchoolNoteAction } from "./notes-actions";
 
 export default async function SchoolDetailPage({
   params,
@@ -32,6 +34,8 @@ export default async function SchoolDetailPage({
   if (error || !school) {
     notFound();
   }
+
+  const { note } = await fetchSchoolNoteAction(school.id);
 
   return (
     <>
@@ -85,7 +89,11 @@ export default async function SchoolDetailPage({
 
         {safeHref(school.website) && (
           <section className="mb-8">
-            <Button asChild variant="default" size="sm" className="gap-1.5">
+            <Button
+              asChild
+              size="sm"
+              className="gap-1.5 bg-[#9a1a27] text-white hover:bg-[#7d1520]"
+            >
               <a
                 href={safeHref(school.website)!}
                 target="_blank"
@@ -97,6 +105,12 @@ export default async function SchoolDetailPage({
             </Button>
           </section>
         )}
+
+        <SchoolNotesPanel
+          schoolId={school.id}
+          initialNotes={note.notes}
+          initialUpdatedAt={note.updated_at}
+        />
       </div>
     </>
   );
