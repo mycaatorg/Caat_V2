@@ -13,10 +13,9 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
-const MyScholarshipsPanel = dynamic(
-  () => import("./my-scholarships-panel"),
-  { ssr: false },
-);
+const MyScholarshipsPanel = dynamic(() => import("./my-scholarships-panel"), {
+  ssr: false,
+});
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -43,11 +42,11 @@ import { useAuth } from "@/src/context/AuthContext";
 import { toast } from "sonner";
 
 const ELIGIBILITY_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
-  "Merit-Based":   (s) => s.merit_based,
-  "Need-Based":    (s) => s.need_based,
-  "Full Ride":     (s) => s.funding_type.includes("full_ride"),
-  "Undergraduate": (s) => s.study_level.includes("undergraduate"),
-  "Postgraduate":  (s) => s.study_level.includes("postgraduate"),
+  "Merit-Based": (s) => s.merit_based,
+  "Need-Based": (s) => s.need_based,
+  "Full Ride": (s) => s.funding_type.includes("full_ride"),
+  Undergraduate: (s) => s.study_level.includes("undergraduate"),
+  Postgraduate: (s) => s.study_level.includes("postgraduate"),
 };
 
 const ITEMS_PER_PAGE = 6;
@@ -65,7 +64,10 @@ function rowToCard(row: ScholarshipRow): Scholarship {
 
 function parseArray(val: string | null): string[] {
   if (!val) return [];
-  return val.split(",").map((s) => s.trim()).filter(Boolean);
+  return val
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 interface Props {
@@ -86,7 +88,9 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     parseArray(sp.get("eligibility")),
   );
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
-  const [showBookmarked, setShowBookmarked] = useState(sp.get("bookmarked") === "1");
+  const [showBookmarked, setShowBookmarked] = useState(
+    sp.get("bookmarked") === "1",
+  );
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const [currentPage, setCurrentPage] = useState(Number(sp.get("page")) || 1);
@@ -95,16 +99,23 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     setView(next);
     const params = new URLSearchParams();
     if (next === "mine") params.set("view", "mine");
-    router.replace(`${pathname}${params.toString() ? `?${params.toString()}` : ""}`, {
-      scroll: false,
-    });
+    router.replace(
+      `${pathname}${params.toString() ? `?${params.toString()}` : ""}`,
+      {
+        scroll: false,
+      },
+    );
   }
 
   const pushParams = useCallback(
     (overrides: Record<string, string | null>) => {
       const params = new URLSearchParams(sp.toString());
       for (const [k, v] of Object.entries(overrides)) {
-        if (v) { params.set(k, v); } else { params.delete(k); }
+        if (v) {
+          params.set(k, v);
+        } else {
+          params.delete(k);
+        }
       }
       params.delete("page");
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
@@ -123,7 +134,10 @@ export default function ScholarshipsClient({ scholarships }: Props) {
       .select("scholarship_id")
       .eq("user_id", userId)
       .then(({ data }) => {
-        if (data) setBookmarkedIds(new Set(data.map((r) => r.scholarship_id as string)));
+        if (data)
+          setBookmarkedIds(
+            new Set(data.map((r) => r.scholarship_id as string)),
+          );
       });
   }, [userId]);
 
@@ -137,7 +151,11 @@ export default function ScholarshipsClient({ scholarships }: Props) {
 
     setBookmarkedIds((prev) => {
       const next = new Set(prev);
-      if (isBookmarked) { next.delete(id); } else { next.add(id); }
+      if (isBookmarked) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
 
@@ -158,7 +176,11 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     } catch {
       setBookmarkedIds((prev) => {
         const next = new Set(prev);
-        if (isBookmarked) { next.add(id); } else { next.delete(id); }
+        if (isBookmarked) {
+          next.add(id);
+        } else {
+          next.delete(id);
+        }
         return next;
       });
       toast.error("Failed to update bookmark. Please try again.");
@@ -226,7 +248,14 @@ export default function ScholarshipsClient({ scholarships }: Props) {
 
       return true;
     });
-  }, [scholarships, searchQuery, locationQuery, selectedEligibility, showBookmarked, bookmarkedIds]);
+  }, [
+    scholarships,
+    searchQuery,
+    locationQuery,
+    selectedEligibility,
+    showBookmarked,
+    bookmarkedIds,
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice(
@@ -254,12 +283,11 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   return (
     <div className="p-6">
       <main className="max-w-5xl mx-auto">
-
         {/* View switcher */}
         <div className="flex items-center border border-black mb-6 w-fit">
           <button
             onClick={() => switchView("browse")}
-            className={`px-5 py-2 text-xs tracking-[0.1em] uppercase font-code transition-colors duration-100 focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-[#9a1a27] focus-visible:outline-offset-[-2px] ${
+            className={`px-5 py-2 text-[11px] tracking-[0.1em] uppercase font-code transition-colors duration-100 focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-[#9a1a27] focus-visible:outline-offset-[-2px] ${
               view === "browse"
                 ? "bg-[#9a1a27] text-white"
                 : "text-[#525252] hover:text-black"
@@ -269,7 +297,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
           </button>
           <button
             onClick={() => switchView("mine")}
-            className={`flex items-center gap-1.5 px-5 py-2 text-xs tracking-[0.1em] uppercase font-code border-l border-black transition-colors duration-100 focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-[#9a1a27] focus-visible:outline-offset-[-2px] ${
+            className={`flex items-center gap-1.5 px-5 py-2 text-[11px] tracking-[0.1em] uppercase font-code border-l border-black transition-colors duration-100 focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-[#9a1a27] focus-visible:outline-offset-[-2px] ${
               view === "mine"
                 ? "bg-[#9a1a27] text-white"
                 : "text-[#525252] hover:text-black"
@@ -286,218 +314,229 @@ export default function ScholarshipsClient({ scholarships }: Props) {
         {view === "mine" && <MyScholarshipsPanel />}
 
         {/* Browse view */}
-        {view === "browse" && <>
-        <div className="mb-6">
-          {/* Search bar */}
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              className="pl-9"
-              placeholder="Search scholarships..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-                pushParams({ q: e.target.value.trim() || null });
-              }}
-            />
-          </div>
+        {view === "browse" && (
+          <>
+            <div className="mb-6">
+              {/* Search bar */}
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  className="pl-9"
+                  placeholder="Search scholarships..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                    pushParams({ q: e.target.value.trim() || null });
+                  }}
+                />
+              </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Location */}
-            <Popover>
-              <PopoverTrigger asChild>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Location */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`gap-1.5 ${locationQuery.trim() ? "border-primary" : ""}`}
+                    >
+                      {locationQuery.trim() ? (
+                        <span className="max-w-24 truncate">
+                          {locationQuery}
+                        </span>
+                      ) : (
+                        "Location"
+                      )}
+                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-56 p-2">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                      <Input
+                        className="pl-8 h-8 text-sm"
+                        placeholder="e.g. aus, canada, uk..."
+                        value={locationQuery}
+                        onChange={(e) => {
+                          setLocationQuery(e.target.value);
+                          setCurrentPage(1);
+                          pushParams({
+                            location: e.target.value.trim() || null,
+                          });
+                        }}
+                        autoFocus
+                      />
+                    </div>
+                    {locationQuery.trim() && (
+                      <button
+                        className="mt-1.5 text-xs text-muted-foreground hover:text-foreground w-full text-right pr-1"
+                        onClick={() => {
+                          setLocationQuery("");
+                          pushParams({ location: null });
+                        }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </PopoverContent>
+                </Popover>
+
+                {/* Eligibility */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`gap-1.5 ${selectedEligibility.length > 0 ? "border-primary" : ""}`}
+                    >
+                      <SlidersHorizontal className="h-3.5 w-3.5 opacity-60" />
+                      Eligibility
+                      {selectedEligibility.length > 0 && (
+                        <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
+                          {selectedEligibility.length}
+                        </span>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52">
+                    {Object.keys(ELIGIBILITY_MAP).map((opt) => (
+                      <DropdownMenuCheckboxItem
+                        key={opt}
+                        checked={selectedEligibility.includes(opt)}
+                        onCheckedChange={() =>
+                          toggleMultiFilter(
+                            opt,
+                            setSelectedEligibility,
+                            "eligibility",
+                            selectedEligibility,
+                          )
+                        }
+                      >
+                        {opt}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Bookmarked pill */}
                 <Button
-                  variant="outline"
                   size="sm"
-                  className={`gap-1.5 ${locationQuery.trim() ? "border-primary" : ""}`}
+                  variant={showBookmarked ? "default" : "outline"}
+                  className="gap-1.5"
+                  onClick={() => {
+                    const next = !showBookmarked;
+                    setShowBookmarked(next);
+                    setCurrentPage(1);
+                    pushParams({ bookmarked: next ? "1" : null });
+                  }}
                 >
-                  {locationQuery.trim() ? (
-                    <span className="max-w-24 truncate">{locationQuery}</span>
-                  ) : (
-                    "Location"
-                  )}
-                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-56 p-2">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                  <Input
-                    className="pl-8 h-8 text-sm"
-                    placeholder="e.g. aus, canada, uk..."
-                    value={locationQuery}
-                    onChange={(e) => {
-                      setLocationQuery(e.target.value);
-                      setCurrentPage(1);
-                      pushParams({ location: e.target.value.trim() || null });
-                    }}
-                    autoFocus
+                  <Bookmark
+                    className={`h-3.5 w-3.5 ${showBookmarked ? "fill-current" : ""}`}
                   />
-                </div>
-                {locationQuery.trim() && (
-                  <button
-                    className="mt-1.5 text-xs text-muted-foreground hover:text-foreground w-full text-right pr-1"
-                    onClick={() => {
-                      setLocationQuery("");
-                      pushParams({ location: null });
-                    }}
-                  >
-                    Clear
-                  </button>
-                )}
-              </PopoverContent>
-            </Popover>
-
-            {/* Eligibility */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={`gap-1.5 ${selectedEligibility.length > 0 ? "border-primary" : ""}`}
-                >
-                  <SlidersHorizontal className="h-3.5 w-3.5 opacity-60" />
-                  Eligibility
-                  {selectedEligibility.length > 0 && (
-                    <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
-                      {selectedEligibility.length}
+                  Bookmarked
+                  {bookmarkedIds.size > 0 && (
+                    <span
+                      className={`text-xs rounded-full px-1.5 py-0.5 font-medium leading-none ${
+                        showBookmarked
+                          ? "bg-primary-foreground/20 text-primary-foreground"
+                          : "bg-secondary text-secondary-foreground"
+                      }`}
+                    >
+                      {bookmarkedIds.size}
                     </span>
                   )}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-52">
-                {Object.keys(ELIGIBILITY_MAP).map((opt) => (
-                  <DropdownMenuCheckboxItem
-                    key={opt}
-                    checked={selectedEligibility.includes(opt)}
-                    onCheckedChange={() =>
-                      toggleMultiFilter(opt, setSelectedEligibility, "eligibility", selectedEligibility)
-                    }
+
+                {/* Clear all */}
+                {hasActiveFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={clearAll}
                   >
-                    {opt}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    Clear all
+                  </Button>
+                )}
+              </div>
+            </div>
 
-            {/* Bookmarked pill */}
-            <Button
-              size="sm"
-              variant={showBookmarked ? "default" : "outline"}
-              className="gap-1.5"
-              onClick={() => {
-                const next = !showBookmarked;
-                setShowBookmarked(next);
-                setCurrentPage(1);
-                pushParams({ bookmarked: next ? "1" : null });
-              }}
-            >
-              <Bookmark
-                className={`h-3.5 w-3.5 ${showBookmarked ? "fill-current" : ""}`}
-              />
-              Bookmarked
-              {bookmarkedIds.size > 0 && (
-                <span
-                  className={`text-xs rounded-full px-1.5 py-0.5 font-medium leading-none ${
-                    showBookmarked
-                      ? "bg-primary-foreground/20 text-primary-foreground"
-                      : "bg-secondary text-secondary-foreground"
-                  }`}
-                >
-                  {bookmarkedIds.size}
-                </span>
-              )}
-            </Button>
-
-            {/* Clear all */}
-            {hasActiveFilters && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground"
-                onClick={clearAll}
-              >
-                Clear all
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Results count */}
-        <p className="text-sm text-muted-foreground mb-6">
-          {filtered.length} scholarship{filtered.length !== 1 ? "s" : ""}
-          {hasActiveFilters ? " matching your filters" : ""}
-        </p>
-
-        {/* Scholarship grid */}
-        {paginated.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-            {paginated.map((row) => (
-              <ScholarshipCard
-                key={row.id}
-                scholarship={rowToCard(row)}
-                isBookmarked={bookmarkedIds.has(row.id)}
-                onToggleBookmark={handleToggleBookmark}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-            <p className="text-lg font-medium">No scholarships found</p>
-            <p className="text-sm mt-1">
-              Try adjusting your search or filters.
+            {/* Results count */}
+            <p className="text-sm text-muted-foreground mb-6">
+              {filtered.length} scholarship{filtered.length !== 1 ? "s" : ""}
+              {hasActiveFilters ? " matching your filters" : ""}
             </p>
-          </div>
-        )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              disabled={currentPage <= 1}
-              onClick={() => goToPage(currentPage - 1)}
-              aria-label="Previous page"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-
-            {pageNumbers.map((p, idx) =>
-              p === "..." ? (
-                <span
-                  key={`ellipsis-${idx}`}
-                  className="px-2 text-sm text-muted-foreground select-none"
-                >
-                  ...
-                </span>
-              ) : (
-                <Button
-                  key={p}
-                  variant={currentPage === p ? "default" : "outline"}
-                  size="icon"
-                  onClick={() => goToPage(p as number)}
-                  aria-label={`Page ${p}`}
-                  aria-current={currentPage === p ? "page" : undefined}
-                >
-                  {p}
-                </Button>
-              )
+            {/* Scholarship grid */}
+            {paginated.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+                {paginated.map((row) => (
+                  <ScholarshipCard
+                    key={row.id}
+                    scholarship={rowToCard(row)}
+                    isBookmarked={bookmarkedIds.has(row.id)}
+                    onToggleBookmark={handleToggleBookmark}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
+                <p className="text-lg font-medium">No scholarships found</p>
+                <p className="text-sm mt-1">
+                  Try adjusting your search or filters.
+                </p>
+              </div>
             )}
 
-            <Button
-              variant="outline"
-              size="icon"
-              disabled={currentPage >= totalPages}
-              onClick={() => goToPage(currentPage + 1)}
-              aria-label="Next page"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  disabled={currentPage <= 1}
+                  onClick={() => goToPage(currentPage - 1)}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                {pageNumbers.map((p, idx) =>
+                  p === "..." ? (
+                    <span
+                      key={`ellipsis-${idx}`}
+                      className="px-2 text-sm text-muted-foreground select-none"
+                    >
+                      ...
+                    </span>
+                  ) : (
+                    <Button
+                      key={p}
+                      variant={currentPage === p ? "default" : "outline"}
+                      size="icon"
+                      onClick={() => goToPage(p as number)}
+                      aria-label={`Page ${p}`}
+                      aria-current={currentPage === p ? "page" : undefined}
+                    >
+                      {p}
+                    </Button>
+                  ),
+                )}
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => goToPage(currentPage + 1)}
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </>
         )}
-        </>}
       </main>
     </div>
   );

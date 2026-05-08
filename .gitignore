@@ -74,3 +74,9 @@ PRD_*.md
 PRD_*.txt
 *_PLAN.md
 *_PRD.md
+
+# Database migrations — schema details, RLS policies, table structure should
+# stay private in the public repo. The team applies these manually against
+# the Supabase project. Files remain on disk for local reference.
+supabase/migrations/
+*.sql
