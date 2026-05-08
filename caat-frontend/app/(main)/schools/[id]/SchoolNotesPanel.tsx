@@ -2,14 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { formatDistanceToNow } from "date-fns";
-import {
-  NotebookPen,
-  Lock,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  Save,
-} from "lucide-react";
+import { NotebookPen, Lock, AlertCircle, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { saveSchoolNoteAction } from "./notes-actions";
@@ -162,10 +155,6 @@ export function SchoolNotesPanel({
           )}
         </Button>
       </div>
-
-      <p className="mt-2 text-[11px] text-muted-foreground">
-        Auto-saves as you type. The Save button forces an immediate save.
-      </p>
     </section>
   );
 }
@@ -195,8 +184,7 @@ function SaveIndicator({
   }
   if (state.kind === "saved") {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-        <CheckCircle2 className="h-3 w-3 text-green-600" aria-hidden />
+      <span className="text-[11px] text-muted-foreground">
         {isDirty
           ? "Unsaved changes"
           : `Last saved ${formatDistanceToNow(state.at, { addSuffix: true })}`}
