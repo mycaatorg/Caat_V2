@@ -14,12 +14,13 @@ import {
   GraduationCap,
   Award,
   FolderOpen,
-  Calendar,
   Search,
   Bookmark,
   ChevronDown,
+  Clock,
 } from "lucide-react";
 import Navbar from "./Navbar";
+import { FeaturePreviewCarousel } from "./FeaturePreviewCarousel";
 
 // ─── Shared texture overlays ─────────────────────────────────────────────────
 
@@ -339,51 +340,59 @@ function FeaturesGrid() {
   const features = [
     {
       icon: <LayoutGrid size={20} strokeWidth={1.5} />,
+      title: "Dashboard",
+      description:
+        "See your application progress, to-do list, bookmarked schools and majors, upcoming deadlines, and calendar at a glance. Drag and resize widgets to lay it out your way.",
+      previewImage: "/feature-previews/dashboard.png",
+    },
+    {
+      icon: <CheckCircle2 size={20} strokeWidth={1.5} />,
       title: "Application Tracker",
       description:
         "Manage every application, deadline, and requirement from a single unified dashboard. Status updates, progress bars, and task checklists in one view.",
+      previewImage: "/feature-previews/application-tracker.png",
     },
     {
       icon: <GraduationCap size={20} strokeWidth={1.5} />,
       title: "School Search",
       description:
         "Browse 10,000+ universities worldwide. Compare acceptance rates, deadlines, tuition, and requirements side by side to build your perfect list.",
+      previewImage: "/feature-previews/school-search.png",
     },
     {
       icon: <Pencil size={20} strokeWidth={1.5} />,
       title: "Essay Workshop",
       description:
         "Interactive prompts guide you from blank page to polished draft. Version history keeps every revision, and built-in feedback helps you refine.",
+      previewImage: "/feature-previews/essay-workshop.png",
     },
     {
       icon: <Award size={20} strokeWidth={1.5} />,
       title: "Scholarship Finder",
       description:
         "AI-powered matching surfaces scholarships tailored to your profile, field of study, and background. Track applications and deadlines in one place.",
+      previewImage: "/feature-previews/scholarship-finder.png",
     },
     {
       icon: <FileText size={20} strokeWidth={1.5} />,
       title: "Resume Builder",
       description:
         "Guided templates walk you through activities, awards, and achievements. Export a polished resume formatted the way admissions offices expect.",
+      previewImage: "/feature-previews/resume-builder.png",
     },
     {
       icon: <FolderOpen size={20} strokeWidth={1.5} />,
       title: "Document Vault",
       description:
         "Upload transcripts, recommendation letters, and test scores to secure encrypted storage. Share access links directly with institutions.",
-    },
-    {
-      icon: <Calendar size={20} strokeWidth={1.5} />,
-      title: "Deadline Dashboard",
-      description:
-        "Every deadline across every school in one calendar view. Smart alerts warn you days in advance so nothing slips through the cracks.",
+      previewImage: "/feature-previews/document-vault.png",
     },
     {
       icon: <Lock size={20} strokeWidth={1.5} />,
       title: "Secure by Default",
       description:
-        "AES-256 encryption and SOC2-compliant infrastructure protect every file and form entry. Your data is yours: always private, always accessible.",
+        "Every file and form is encrypted, and we run on SOC2-certified infrastructure. Only you can see what you put in.",
+      disablePreview: true,
     },
   ];
 
@@ -411,29 +420,10 @@ function FeaturesGrid() {
           </p>
         </div>
 
-        {/* Scrollable cards */}
-        <div className="border border-black overflow-x-auto">
-          <div className="flex min-w-max">
-            {features.map((feature, i) => (
-              <div
-                key={feature.title}
-                className={`group w-72 flex-none p-8 transition-colors duration-100 hover:bg-black hover:text-white cursor-default ${
-                  i < features.length - 1 ? "border-r border-black" : ""
-                }`}
-              >
-                <div className="mb-6 group-hover:text-white transition-colors duration-100">
-                  {feature.icon}
-                </div>
-                <h3 className="text-xl font-bold mb-4 font-display">
-                  {feature.title}
-                </h3>
-                <p className="text-[#525252] group-hover:text-[#BFBFBF] leading-relaxed transition-colors duration-100 font-serif text-sm">
-                  {feature.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* Scrollable cards. Vertical wheel scroll is converted to horizontal
+            scroll while the cursor is over the container. Click any card to
+            open a preview popup of the feature. */}
+        <FeaturePreviewCarousel features={features} />
 
         {/* Scroll hint */}
         <p className="text-[11px] tracking-[0.12em] uppercase font-code text-[#BFBFBF] mt-4 text-right">
@@ -1071,10 +1061,7 @@ function ThreeSteps() {
 
 function SecurityBanner() {
   return (
-    <section
-      className="relative py-24 md:py-32 lg:py-40 text-white"
-      style={{ backgroundColor: "#1a1a1a" }}
-    >
+    <section className="relative py-24 md:py-32 lg:py-40 bg-black text-white">
       <WhiteVerticalTexture />
       <div className="relative max-w-6xl mx-auto px-6 lg:px-12">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
@@ -1094,16 +1081,17 @@ function SecurityBanner() {
           {/* Right: body */}
           <div>
             <p className="text-[#999] leading-relaxed mb-10 text-lg font-serif">
-              We build on Supabase, so your data sits on infrastructure that
-              banks and large companies rely on. You get that same protection,
-              for free.
+              Your essays, scores, and applications are encrypted and only
+              visible to you. We don&apos;t sell your data, share it with
+              advertisers, or use it to train AI. You can delete or export
+              everything in one click.
             </p>
 
             <div className="flex flex-wrap gap-3">
               {[
                 {
                   icon: <Shield size={13} strokeWidth={1.5} />,
-                  label: "SOC2 Compliant",
+                  label: "Runs on SOC2-Certified Infrastructure",
                 },
                 {
                   icon: <Lock size={13} strokeWidth={1.5} />,
@@ -1143,9 +1131,8 @@ function EarlyUserReview() {
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] font-display max-w-3xl">
             What students are{" "}
             <span className="italic" style={{ color: "#9a1a27" }}>
-              saying
+              saying.
             </span>
-            .
           </h2>
         </div>
 
@@ -1243,12 +1230,16 @@ function FinalCTA() {
             Get Started for Free
             <ArrowRight size={14} strokeWidth={1.5} />
           </Link>
-          <Link
-            href="#"
-            className="inline-flex items-center justify-center gap-2 bg-transparent text-white text-[11px] tracking-[0.18em] uppercase px-8 py-4 border border-white hover:bg-white hover:text-black transition-colors duration-100 font-code focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-white focus-visible:outline-offset-[3px]"
+          {/* Talk to an Advisor — coming soon. We'll connect students to
+             signed-up advisors once that programme launches. */}
+          <span
+            aria-disabled="true"
+            title="Coming soon. Advisor matching will go live shortly."
+            className="inline-flex items-center justify-center gap-2 bg-transparent text-white/60 text-[11px] tracking-[0.18em] uppercase px-8 py-4 border border-white/40 cursor-not-allowed select-none font-code"
           >
-            Talk to an Advisor
-          </Link>
+            <Clock size={13} strokeWidth={1.5} />
+            Talk to an Advisor · Coming Soon
+          </span>
         </div>
 
         <p className="text-[11px] text-[#555] tracking-[0.12em] font-code">
