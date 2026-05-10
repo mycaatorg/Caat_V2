@@ -64,6 +64,8 @@ export default async function SchoolsPage({
   let query = supabase
     .from("schools")
     .select("*", { count: "exact" })
+    // Hide rows explicitly tagged as high_school; null + everything else is visible.
+    .or("institution_type.is.null,institution_type.neq.high_school")
     .range(from, to);
 
   if (selectedCountry) {
