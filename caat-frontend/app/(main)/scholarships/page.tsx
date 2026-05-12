@@ -8,7 +8,7 @@ export default async function ScholarshipsPage() {
   const { data, error } = await supabase
     .from("scholarships")
     .select("*")
-    .eq("is_active", true)
+    .order("is_active", { ascending: false })
     .order("is_featured", { ascending: false })
     .order("created_at", { ascending: false });
 
