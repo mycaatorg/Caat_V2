@@ -86,8 +86,26 @@ export function deriveDisplayTags(s: ScholarshipRow): string[] {
  * Prefers the pre-formatted amount_display column; falls back to
  * formatting amount_value + currency.
  */
+// Strings that some scrapers store in amount_display when the source page
+// doesn't quote a real amount. Treated as "no amount" so the card doesn't
+// render them as a headline.
+const NON_INFORMATIVE_AMOUNTS = new Set([
+  "not specified",
+  "n/a",
+  "na",
+  "tba",
+  "to be advised",
+  "to be confirmed",
+  "varies",
+  "refer to handbook",
+  "see details",
+]);
+
 export function formatAmountDisplay(s: ScholarshipRow): string {
-  if (s.amount_display) return s.amount_display;
+  if (s.amount_display) {
+    const norm = s.amount_display.trim().toLowerCase();
+    if (!NON_INFORMATIVE_AMOUNTS.has(norm)) return s.amount_display;
+  }
 
   if (s.amount_value != null) {
     const prefix =
