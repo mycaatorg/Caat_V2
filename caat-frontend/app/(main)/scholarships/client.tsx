@@ -54,6 +54,20 @@ const LEVEL_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
   Postgraduate: (s) => s.study_level.includes("postgraduate"),
 };
 
+// Citizenship eligibility — heuristic. The scrapers infer AU / AU-PR /
+// INTERNATIONAL into a `citizenships` array, but that column was stripped
+// from the DB schema (see scholarship-scraper/CLAUDE.md). For now we use
+// tags + eligible_countries as a proxy. A migration adding `citizenships`
+// to public.scholarships would let this be exact.
+const CITIZENSHIP_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
+  Domestic: (s) =>
+    s.tags.some((t) => /domestic|australian/i.test(t)) ||
+    s.eligible_countries.some((c) => /australia/i.test(c)),
+  International: (s) =>
+    s.tags.some((t) => /international/i.test(t)) ||
+    s.eligible_countries.some((c) => !/australia/i.test(c)),
+};
+
 const ITEMS_PER_PAGE = 6;
 
 function rowToCard(row: ScholarshipRow): Scholarship {
@@ -94,6 +108,9 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   );
   const [selectedLevels, setSelectedLevels] = useState<string[]>(
     parseArray(sp.get("level")),
+  );
+  const [selectedCitizenships, setSelectedCitizenships] = useState<string[]>(
+    parseArray(sp.get("citizenship")),
   );
   const [selectedUniversities, setSelectedUniversities] = useState<string[]>(
     parseArray(sp.get("university")),
@@ -227,6 +244,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     setLocationQuery("");
     setSelectedFunding([]);
     setSelectedLevels([]);
+    setSelectedCitizenships([]);
     setSelectedUniversities([]);
     setShowBookmarked(false);
     setSearchQuery("");
@@ -238,6 +256,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     locationQuery.trim().length > 0 ||
     selectedFunding.length > 0 ||
     selectedLevels.length > 0 ||
+    selectedCitizenships.length > 0 ||
     selectedUniversities.length > 0 ||
     showBookmarked ||
     searchQuery.trim().length > 0;
@@ -279,6 +298,13 @@ export default function ScholarshipsClient({ scholarships }: Props) {
         return false;
       }
 
+      if (
+        selectedCitizenships.length > 0 &&
+        !selectedCitizenships.some((opt) => CITIZENSHIP_MAP[opt]?.(s))
+      ) {
+        return false;
+      }
+
       if (selectedUniversities.length > 0) {
         const uni = (s.school_name || s.provider_name || "").trim();
         if (!selectedUniversities.includes(uni)) return false;
@@ -292,6 +318,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     locationQuery,
     selectedFunding,
     selectedLevels,
+    selectedCitizenships,
     selectedUniversities,
     showBookmarked,
     bookmarkedIds,
@@ -487,6 +514,43 @@ export default function ScholarshipsClient({ scholarships }: Props) {
                             setSelectedFunding,
                             "funding",
                             selectedFunding,
+                          )
+                        }
+                      >
+                        {opt}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Citizenship */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`gap-1.5 ${selectedCitizenships.length > 0 ? "border-primary" : ""}`}
+                    >
+                      Citizenship
+                      {selectedCitizenships.length > 0 && (
+                        <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
+                          {selectedCitizenships.length}
+                        </span>
+                      )}
+                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52">
+                    {Object.keys(CITIZENSHIP_MAP).map((opt) => (
+                      <DropdownMenuCheckboxItem
+                        key={opt}
+                        checked={selectedCitizenships.includes(opt)}
+                        onCheckedChange={() =>
+                          toggleMultiFilter(
+                            opt,
+                            setSelectedCitizenships,
+                            "citizenship",
+                            selectedCitizenships,
                           )
                         }
                       >
