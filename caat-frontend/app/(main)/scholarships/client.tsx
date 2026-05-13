@@ -41,10 +41,15 @@ import { supabase } from "@/src/lib/supabaseClient";
 import { useAuth } from "@/src/context/AuthContext";
 import { toast } from "sonner";
 
-const ELIGIBILITY_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
+// Funding criteria — how the scholarship picks recipients / what it covers.
+const FUNDING_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
   "Merit-Based": (s) => s.merit_based,
   "Need-Based": (s) => s.need_based,
   "Full Ride": (s) => s.funding_type.includes("full_ride"),
+};
+
+// Study level — which academic stage the scholarship is for.
+const LEVEL_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
   Undergraduate: (s) => s.study_level.includes("undergraduate"),
   Postgraduate: (s) => s.study_level.includes("postgraduate"),
 };
@@ -84,8 +89,11 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   );
   const [searchQuery, setSearchQuery] = useState(sp.get("q") ?? "");
   const [locationQuery, setLocationQuery] = useState(sp.get("location") ?? "");
-  const [selectedEligibility, setSelectedEligibility] = useState<string[]>(
-    parseArray(sp.get("eligibility")),
+  const [selectedFunding, setSelectedFunding] = useState<string[]>(
+    parseArray(sp.get("funding")),
+  );
+  const [selectedLevels, setSelectedLevels] = useState<string[]>(
+    parseArray(sp.get("level")),
   );
   const [selectedUniversities, setSelectedUniversities] = useState<string[]>(
     parseArray(sp.get("university")),
@@ -217,7 +225,8 @@ export default function ScholarshipsClient({ scholarships }: Props) {
 
   function clearAll() {
     setLocationQuery("");
-    setSelectedEligibility([]);
+    setSelectedFunding([]);
+    setSelectedLevels([]);
     setSelectedUniversities([]);
     setShowBookmarked(false);
     setSearchQuery("");
@@ -227,7 +236,8 @@ export default function ScholarshipsClient({ scholarships }: Props) {
 
   const hasActiveFilters =
     locationQuery.trim().length > 0 ||
-    selectedEligibility.length > 0 ||
+    selectedFunding.length > 0 ||
+    selectedLevels.length > 0 ||
     selectedUniversities.length > 0 ||
     showBookmarked ||
     searchQuery.trim().length > 0;
@@ -256,8 +266,15 @@ export default function ScholarshipsClient({ scholarships }: Props) {
       }
 
       if (
-        selectedEligibility.length > 0 &&
-        !selectedEligibility.every((opt) => ELIGIBILITY_MAP[opt]?.(s))
+        selectedFunding.length > 0 &&
+        !selectedFunding.every((opt) => FUNDING_MAP[opt]?.(s))
+      ) {
+        return false;
+      }
+
+      if (
+        selectedLevels.length > 0 &&
+        !selectedLevels.some((opt) => LEVEL_MAP[opt]?.(s))
       ) {
         return false;
       }
@@ -273,7 +290,8 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     scholarships,
     searchQuery,
     locationQuery,
-    selectedEligibility,
+    selectedFunding,
+    selectedLevels,
     selectedUniversities,
     showBookmarked,
     bookmarkedIds,
@@ -404,34 +422,71 @@ export default function ScholarshipsClient({ scholarships }: Props) {
                   </PopoverContent>
                 </Popover>
 
-                {/* Eligibility */}
+                {/* Level */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="outline"
                       size="sm"
-                      className={`gap-1.5 ${selectedEligibility.length > 0 ? "border-primary" : ""}`}
+                      className={`gap-1.5 ${selectedLevels.length > 0 ? "border-primary" : ""}`}
+                    >
+                      Level
+                      {selectedLevels.length > 0 && (
+                        <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
+                          {selectedLevels.length}
+                        </span>
+                      )}
+                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-44">
+                    {Object.keys(LEVEL_MAP).map((opt) => (
+                      <DropdownMenuCheckboxItem
+                        key={opt}
+                        checked={selectedLevels.includes(opt)}
+                        onCheckedChange={() =>
+                          toggleMultiFilter(
+                            opt,
+                            setSelectedLevels,
+                            "level",
+                            selectedLevels,
+                          )
+                        }
+                      >
+                        {opt}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Funding criteria */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`gap-1.5 ${selectedFunding.length > 0 ? "border-primary" : ""}`}
                     >
                       <SlidersHorizontal className="h-3.5 w-3.5 opacity-60" />
-                      Eligibility
-                      {selectedEligibility.length > 0 && (
+                      Funding
+                      {selectedFunding.length > 0 && (
                         <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
-                          {selectedEligibility.length}
+                          {selectedFunding.length}
                         </span>
                       )}
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-52">
-                    {Object.keys(ELIGIBILITY_MAP).map((opt) => (
+                  <DropdownMenuContent align="start" className="w-44">
+                    {Object.keys(FUNDING_MAP).map((opt) => (
                       <DropdownMenuCheckboxItem
                         key={opt}
-                        checked={selectedEligibility.includes(opt)}
+                        checked={selectedFunding.includes(opt)}
                         onCheckedChange={() =>
                           toggleMultiFilter(
                             opt,
-                            setSelectedEligibility,
-                            "eligibility",
-                            selectedEligibility,
+                            setSelectedFunding,
+                            "funding",
+                            selectedFunding,
                           )
                         }
                       >
