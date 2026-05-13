@@ -87,6 +87,20 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   const [selectedEligibility, setSelectedEligibility] = useState<string[]>(
     parseArray(sp.get("eligibility")),
   );
+  const [selectedUniversities, setSelectedUniversities] = useState<string[]>(
+    parseArray(sp.get("university")),
+  );
+
+  // Derive the universe of universities present in the data so the filter
+  // dropdown only shows options that would actually match something.
+  const availableUniversities = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of scholarships) {
+      const name = (s.school_name || s.provider_name || "").trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [scholarships]);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
   const [showBookmarked, setShowBookmarked] = useState(
     sp.get("bookmarked") === "1",
@@ -204,6 +218,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   function clearAll() {
     setLocationQuery("");
     setSelectedEligibility([]);
+    setSelectedUniversities([]);
     setShowBookmarked(false);
     setSearchQuery("");
     setCurrentPage(1);
@@ -213,6 +228,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   const hasActiveFilters =
     locationQuery.trim().length > 0 ||
     selectedEligibility.length > 0 ||
+    selectedUniversities.length > 0 ||
     showBookmarked ||
     searchQuery.trim().length > 0;
 
@@ -246,6 +262,11 @@ export default function ScholarshipsClient({ scholarships }: Props) {
         return false;
       }
 
+      if (selectedUniversities.length > 0) {
+        const uni = (s.school_name || s.provider_name || "").trim();
+        if (!selectedUniversities.includes(uni)) return false;
+      }
+
       return true;
     });
   }, [
@@ -253,6 +274,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     searchQuery,
     locationQuery,
     selectedEligibility,
+    selectedUniversities,
     showBookmarked,
     bookmarkedIds,
   ]);
@@ -414,6 +436,51 @@ export default function ScholarshipsClient({ scholarships }: Props) {
                         }
                       >
                         {opt}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* University */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`gap-1.5 ${selectedUniversities.length > 0 ? "border-primary" : ""}`}
+                    >
+                      University
+                      {selectedUniversities.length > 0 && (
+                        <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
+                          {selectedUniversities.length}
+                        </span>
+                      )}
+                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="w-72 max-h-72 overflow-y-auto"
+                  >
+                    {availableUniversities.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                        No universities available
+                      </div>
+                    )}
+                    {availableUniversities.map((uni) => (
+                      <DropdownMenuCheckboxItem
+                        key={uni}
+                        checked={selectedUniversities.includes(uni)}
+                        onCheckedChange={() =>
+                          toggleMultiFilter(
+                            uni,
+                            setSelectedUniversities,
+                            "university",
+                            selectedUniversities,
+                          )
+                        }
+                      >
+                        {uni}
                       </DropdownMenuCheckboxItem>
                     ))}
                   </DropdownMenuContent>
