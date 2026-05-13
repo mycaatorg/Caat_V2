@@ -37,10 +37,16 @@ export async function SchoolScholarshipsSection({ schoolId, schoolName }: Props)
     );
   }
 
-  // Supabase nests the joined row under .scholarships
+  // Supabase nests the joined row under .scholarships. We show inactive
+  // scholarships too (sorted to the bottom) so a school whose scholarships
+  // are all currently between terms doesn't render as if it had none.
   const scholarships = (data ?? [])
     .map((row) => row.scholarships as unknown as ScholarshipRow | null)
-    .filter((s): s is ScholarshipRow => s !== null && s.is_active);
+    .filter((s): s is ScholarshipRow => s !== null)
+    .sort((a, b) => {
+      if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
+      return a.title.localeCompare(b.title);
+    });
 
   if (scholarships.length === 0) return null;
 
