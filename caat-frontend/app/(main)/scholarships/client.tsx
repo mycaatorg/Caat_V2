@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Bookmark,
   Star,
+  CircleDot,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
@@ -173,6 +174,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   const [showBookmarked, setShowBookmarked] = useState(
     sp.get("bookmarked") === "1",
   );
+  const [showOpenOnly, setShowOpenOnly] = useState(sp.get("open") === "1");
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const [currentPage, setCurrentPage] = useState(Number(sp.get("page")) || 1);
@@ -291,6 +293,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     setSelectedFields([]);
     setSelectedUniversities([]);
     setShowBookmarked(false);
+    setShowOpenOnly(false);
     setSearchQuery("");
     setCurrentPage(1);
     router.replace(pathname, { scroll: false });
@@ -304,6 +307,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     selectedFields.length > 0 ||
     selectedUniversities.length > 0 ||
     showBookmarked ||
+    showOpenOnly ||
     searchQuery.trim().length > 0;
 
   const filtered = useMemo(() => {
@@ -311,6 +315,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
 
     return scholarships.filter((s) => {
       if (showBookmarked && !bookmarkedIds.has(s.id)) return false;
+      if (showOpenOnly && !s.is_active) return false;
 
       if (
         q &&
@@ -373,6 +378,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     fieldsByRow,
     selectedUniversities,
     showBookmarked,
+    showOpenOnly,
     bookmarkedIds,
   ]);
 
@@ -701,6 +707,24 @@ export default function ScholarshipsClient({ scholarships }: Props) {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
+
+                {/* Currently Open pill */}
+                <Button
+                  size="sm"
+                  variant={showOpenOnly ? "default" : "outline"}
+                  className="gap-1.5"
+                  onClick={() => {
+                    const next = !showOpenOnly;
+                    setShowOpenOnly(next);
+                    setCurrentPage(1);
+                    pushParams({ open: next ? "1" : null });
+                  }}
+                >
+                  <CircleDot
+                    className={`h-3.5 w-3.5 ${showOpenOnly ? "fill-current" : ""}`}
+                  />
+                  Open
+                </Button>
 
                 {/* Bookmarked pill */}
                 <Button
