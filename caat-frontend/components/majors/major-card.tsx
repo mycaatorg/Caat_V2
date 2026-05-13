@@ -39,12 +39,25 @@ export default function MajorCard({
         isSelected ? "ring-2 ring-primary" : ""
       }`}
     >
-      <CardHeader>
-        <span
-          className={`inline-block self-start text-xs font-medium px-2 py-0.5 rounded-full ${categoryColor}`}
-        >
-          {major.category}
-        </span>
+      <CardHeader className="gap-2">
+        {/* Category + bookmark (top right, matches scholarship card) */}
+        <div className="flex items-start justify-between gap-2">
+          <span
+            className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${categoryColor}`}
+          >
+            {major.category}
+          </span>
+          <Button
+            size="icon-sm"
+            variant={isBookmarked ? "default" : "outline"}
+            className="shrink-0"
+            onClick={() => onToggleBookmark(major.id)}
+            aria-label={isBookmarked ? "Remove bookmark" : "Bookmark major"}
+          >
+            <Bookmark className={isBookmarked ? "fill-current" : ""} />
+          </Button>
+        </div>
+
         <CardTitle className="text-lg leading-tight">
           <Link
             href={`/majors/${major.id}`}
@@ -62,10 +75,11 @@ export default function MajorCard({
 
       <CardContent className="flex-grow" />
 
-      <CardFooter className="justify-end gap-2">
+      <CardFooter className="pt-0">
+        {/* Full-width primary CTA — matches scholarship card. Stays red
+            even when selected; the icon + label switches to indicate state. */}
         <Button
-          size="sm"
-          variant={isSelected ? "default" : "outline"}
+          className="w-full"
           disabled={!canSelect && !isSelected}
           onClick={() => onToggleSelect(major.id)}
         >
@@ -80,15 +94,6 @@ export default function MajorCard({
               Compare
             </>
           )}
-        </Button>
-
-        <Button
-          size="icon-sm"
-          variant={isBookmarked ? "default" : "outline"}
-          onClick={() => onToggleBookmark(major.id)}
-          aria-label={isBookmarked ? "Remove bookmark" : "Bookmark major"}
-        >
-          <Bookmark className={isBookmarked ? "fill-current" : ""} />
         </Button>
       </CardFooter>
     </Card>
