@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { ArrowRight, ExternalLink } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -50,6 +50,11 @@ export async function SchoolScholarshipsSection({ schoolId, schoolName }: Props)
 
   if (scholarships.length === 0) return null;
 
+  const PREVIEW_LIMIT = 6;
+  const previewing = scholarships.slice(0, PREVIEW_LIMIT);
+  const hiddenCount = scholarships.length - previewing.length;
+  const viewAllHref = `/scholarships?university=${encodeURIComponent(schoolName)}`;
+
   return (
     <section className="mt-10">
       <div className="mb-4 flex items-baseline justify-between gap-3">
@@ -62,7 +67,7 @@ export async function SchoolScholarshipsSection({ schoolId, schoolName }: Props)
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {scholarships.map((s) => (
+        {previewing.map((s) => (
           <Card
             key={s.id}
             className="flex flex-col h-full hover:shadow-md transition-shadow"
@@ -104,6 +109,17 @@ export async function SchoolScholarshipsSection({ schoolId, schoolName }: Props)
           </Card>
         ))}
       </div>
+
+      {hiddenCount > 0 && (
+        <div className="mt-6 flex justify-center">
+          <Button asChild variant="outline" size="lg" className="gap-2">
+            <Link href={viewAllHref}>
+              View all {scholarships.length} scholarships at {schoolName}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      )}
     </section>
   );
 }
