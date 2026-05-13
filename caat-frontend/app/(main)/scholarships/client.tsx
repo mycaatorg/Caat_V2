@@ -68,6 +68,29 @@ const CITIZENSHIP_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
     s.eligible_countries.some((c) => !/australia/i.test(c)),
 };
 
+// Field of study — uni faculties don't share a clean taxonomy in the DB,
+// so we infer from title + description + tags using broad keyword regexes.
+// Pre-computed per scholarship to keep the filter hot path O(1).
+const FIELD_PATTERNS: { label: string; re: RegExp }[] = [
+  { label: "Engineering", re: /\bengineer/i },
+  { label: "Business", re: /\bbusiness|commerce|management|finance|accounting|marketing/i },
+  { label: "Law", re: /\blaw\b|legal\b/i },
+  { label: "Medicine & Health", re: /\bmedicin|medical|health|nursing|pharmacy|dentist|optometry|physiotherapy/i },
+  { label: "Science", re: /\bscience\b|physics|chemistry|biology|biotech|veterinary/i },
+  { label: "Arts & Humanities", re: /\barts\b|humanities|languages|culture|history|philosophy/i },
+  { label: "Architecture & Design", re: /\barchitec|\bdesign\b|planning|urban/i },
+  { label: "Education & Social Work", re: /\beducation|teaching|social work|psychology/i },
+  { label: "Economics", re: /\beconomic/i },
+  { label: "IT & Computing", re: /computer|computing|information technology|\bIT\b|software|data science/i },
+  { label: "Music & Performing Arts", re: /\bmusic|conservatorium|performing arts|theatre|drama/i },
+  { label: "Indigenous Studies", re: /indigenous|aboriginal|torres strait/i },
+];
+
+function matchFieldsForRow(s: ScholarshipRow): string[] {
+  const haystack = [s.title, s.description ?? "", ...s.tags].join(" ");
+  return FIELD_PATTERNS.filter((p) => p.re.test(haystack)).map((p) => p.label);
+}
+
 const ITEMS_PER_PAGE = 6;
 
 function rowToCard(row: ScholarshipRow): Scholarship {
@@ -112,6 +135,9 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   const [selectedCitizenships, setSelectedCitizenships] = useState<string[]>(
     parseArray(sp.get("citizenship")),
   );
+  const [selectedFields, setSelectedFields] = useState<string[]>(
+    parseArray(sp.get("field")),
+  );
   const [selectedUniversities, setSelectedUniversities] = useState<string[]>(
     parseArray(sp.get("university")),
   );
@@ -126,6 +152,23 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [scholarships]);
+
+  // Pre-compute field-of-study sets per scholarship and the universe of
+  // fields that appear at least once. O(n*patterns) once, instead of on
+  // every filter recompute.
+  const fieldsByRow = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const s of scholarships) {
+      map.set(s.id, new Set(matchFieldsForRow(s)));
+    }
+    return map;
+  }, [scholarships]);
+
+  const availableFields = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of fieldsByRow.values()) for (const v of f) set.add(v);
+    return FIELD_PATTERNS.map((p) => p.label).filter((l) => set.has(l));
+  }, [fieldsByRow]);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
   const [showBookmarked, setShowBookmarked] = useState(
     sp.get("bookmarked") === "1",
@@ -245,6 +288,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     setSelectedFunding([]);
     setSelectedLevels([]);
     setSelectedCitizenships([]);
+    setSelectedFields([]);
     setSelectedUniversities([]);
     setShowBookmarked(false);
     setSearchQuery("");
@@ -257,6 +301,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     selectedFunding.length > 0 ||
     selectedLevels.length > 0 ||
     selectedCitizenships.length > 0 ||
+    selectedFields.length > 0 ||
     selectedUniversities.length > 0 ||
     showBookmarked ||
     searchQuery.trim().length > 0;
@@ -305,6 +350,11 @@ export default function ScholarshipsClient({ scholarships }: Props) {
         return false;
       }
 
+      if (selectedFields.length > 0) {
+        const rowFields = fieldsByRow.get(s.id) ?? new Set();
+        if (!selectedFields.some((f) => rowFields.has(f))) return false;
+      }
+
       if (selectedUniversities.length > 0) {
         const uni = (s.school_name || s.provider_name || "").trim();
         if (!selectedUniversities.includes(uni)) return false;
@@ -319,6 +369,8 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     selectedFunding,
     selectedLevels,
     selectedCitizenships,
+    selectedFields,
+    fieldsByRow,
     selectedUniversities,
     showBookmarked,
     bookmarkedIds,
@@ -555,6 +607,51 @@ export default function ScholarshipsClient({ scholarships }: Props) {
                         }
                       >
                         {opt}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Field of Study */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`gap-1.5 ${selectedFields.length > 0 ? "border-primary" : ""}`}
+                    >
+                      Field of Study
+                      {selectedFields.length > 0 && (
+                        <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
+                          {selectedFields.length}
+                        </span>
+                      )}
+                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="w-64 max-h-72 overflow-y-auto"
+                  >
+                    {availableFields.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                        No fields detected
+                      </div>
+                    )}
+                    {availableFields.map((field) => (
+                      <DropdownMenuCheckboxItem
+                        key={field}
+                        checked={selectedFields.includes(field)}
+                        onCheckedChange={() =>
+                          toggleMultiFilter(
+                            field,
+                            setSelectedFields,
+                            "field",
+                            selectedFields,
+                          )
+                        }
+                      >
+                        {field}
                       </DropdownMenuCheckboxItem>
                     ))}
                   </DropdownMenuContent>
