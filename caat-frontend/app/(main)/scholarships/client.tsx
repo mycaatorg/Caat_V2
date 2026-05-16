@@ -68,21 +68,30 @@ const DOMESTIC_CODES: Record<string, string[]> = {
   // Future: "United Kingdom": ["UK", "GB"], "United States": ["US"], etc.
 };
 
+// Defensive read: PostgREST occasionally returns a missing/null array for
+// freshly-added columns until its schema cache refreshes. Treat any
+// non-array as "no restriction".
+function citizenshipsOf(s: ScholarshipRow): string[] {
+  return Array.isArray(s.citizenships) ? s.citizenships : [];
+}
+
 function isDomesticEligible(s: ScholarshipRow): boolean {
-  if (s.citizenships.length === 0) return true;
+  const cits = citizenshipsOf(s);
+  if (cits.length === 0) return true;
   const domesticCodes = s.country ? DOMESTIC_CODES[s.country] ?? [] : [];
-  if (domesticCodes.some((c) => s.citizenships.includes(c))) return true;
+  if (domesticCodes.some((c) => cits.includes(c))) return true;
   // Fallback for countries we haven't mapped: anything that isn't an
   // explicit INTERNATIONAL marker counts as domestic.
   if (domesticCodes.length === 0) {
-    return s.citizenships.some((c) => c !== "INTERNATIONAL");
+    return cits.some((c) => c !== "INTERNATIONAL");
   }
   return false;
 }
 
 function isInternationalEligible(s: ScholarshipRow): boolean {
-  if (s.citizenships.length === 0) return true;
-  return s.citizenships.includes("INTERNATIONAL");
+  const cits = citizenshipsOf(s);
+  if (cits.length === 0) return true;
+  return cits.includes("INTERNATIONAL");
 }
 
 const CITIZENSHIP_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
