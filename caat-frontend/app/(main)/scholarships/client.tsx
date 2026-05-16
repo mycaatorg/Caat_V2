@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Bookmark,
   Star,
+  CircleDot,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
@@ -41,13 +42,85 @@ import { supabase } from "@/src/lib/supabaseClient";
 import { useAuth } from "@/src/context/AuthContext";
 import { toast } from "sonner";
 
-const ELIGIBILITY_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
+// Funding criteria — how the scholarship picks recipients / what it covers.
+const FUNDING_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
   "Merit-Based": (s) => s.merit_based,
   "Need-Based": (s) => s.need_based,
   "Full Ride": (s) => s.funding_type.includes("full_ride"),
+};
+
+// Study level — which academic stage the scholarship is for.
+const LEVEL_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
   Undergraduate: (s) => s.study_level.includes("undergraduate"),
   Postgraduate: (s) => s.study_level.includes("postgraduate"),
 };
+
+// Citizenship eligibility — country-relative.
+//
+// The scrapers write raw codes (AU, AU-PR, INTERNATIONAL) into the
+// citizenships array. We translate to user-facing Domestic / International
+// against each scholarship's country, so a UK or US uni added later "just
+// works" — only DOMESTIC_CODES needs an entry for the new country.
+//
+// Empty citizenships means "no restriction" → eligible for both options.
+const DOMESTIC_CODES: Record<string, string[]> = {
+  Australia: ["AU", "AU-PR"],
+  // Future: "United Kingdom": ["UK", "GB"], "United States": ["US"], etc.
+};
+
+// Defensive read: PostgREST occasionally returns a missing/null array for
+// freshly-added columns until its schema cache refreshes. Treat any
+// non-array as "no restriction".
+function citizenshipsOf(s: ScholarshipRow): string[] {
+  return Array.isArray(s.citizenships) ? s.citizenships : [];
+}
+
+function isDomesticEligible(s: ScholarshipRow): boolean {
+  const cits = citizenshipsOf(s);
+  if (cits.length === 0) return true;
+  const domesticCodes = s.country ? DOMESTIC_CODES[s.country] ?? [] : [];
+  if (domesticCodes.some((c) => cits.includes(c))) return true;
+  // Fallback for countries we haven't mapped: anything that isn't an
+  // explicit INTERNATIONAL marker counts as domestic.
+  if (domesticCodes.length === 0) {
+    return cits.some((c) => c !== "INTERNATIONAL");
+  }
+  return false;
+}
+
+function isInternationalEligible(s: ScholarshipRow): boolean {
+  const cits = citizenshipsOf(s);
+  if (cits.length === 0) return true;
+  return cits.includes("INTERNATIONAL");
+}
+
+const CITIZENSHIP_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
+  Domestic: isDomesticEligible,
+  International: isInternationalEligible,
+};
+
+// Field of study — uni faculties don't share a clean taxonomy in the DB,
+// so we infer from title + description + tags using broad keyword regexes.
+// Pre-computed per scholarship to keep the filter hot path O(1).
+const FIELD_PATTERNS: { label: string; re: RegExp }[] = [
+  { label: "Engineering", re: /\bengineer/i },
+  { label: "Business", re: /\bbusiness|commerce|management|finance|accounting|marketing/i },
+  { label: "Law", re: /\blaw\b|legal\b/i },
+  { label: "Medicine & Health", re: /\bmedicin|medical|health|nursing|pharmacy|dentist|optometry|physiotherapy/i },
+  { label: "Science", re: /\bscience\b|physics|chemistry|biology|biotech|veterinary/i },
+  { label: "Arts & Humanities", re: /\barts\b|humanities|languages|culture|history|philosophy/i },
+  { label: "Architecture & Design", re: /\barchitec|\bdesign\b|planning|urban/i },
+  { label: "Education & Social Work", re: /\beducation|teaching|social work|psychology/i },
+  { label: "Economics", re: /\beconomic/i },
+  { label: "IT & Computing", re: /computer|computing|information technology|\bIT\b|software|data science/i },
+  { label: "Music & Performing Arts", re: /\bmusic|conservatorium|performing arts|theatre|drama/i },
+  { label: "Indigenous Studies", re: /indigenous|aboriginal|torres strait/i },
+];
+
+function matchFieldsForRow(s: ScholarshipRow): string[] {
+  const haystack = [s.title, s.description ?? "", ...s.tags].join(" ");
+  return FIELD_PATTERNS.filter((p) => p.re.test(haystack)).map((p) => p.label);
+}
 
 const ITEMS_PER_PAGE = 6;
 
@@ -84,13 +157,54 @@ export default function ScholarshipsClient({ scholarships }: Props) {
   );
   const [searchQuery, setSearchQuery] = useState(sp.get("q") ?? "");
   const [locationQuery, setLocationQuery] = useState(sp.get("location") ?? "");
-  const [selectedEligibility, setSelectedEligibility] = useState<string[]>(
-    parseArray(sp.get("eligibility")),
+  const [selectedFunding, setSelectedFunding] = useState<string[]>(
+    parseArray(sp.get("funding")),
   );
+  const [selectedLevels, setSelectedLevels] = useState<string[]>(
+    parseArray(sp.get("level")),
+  );
+  const [selectedCitizenships, setSelectedCitizenships] = useState<string[]>(
+    parseArray(sp.get("citizenship")),
+  );
+  const [selectedFields, setSelectedFields] = useState<string[]>(
+    parseArray(sp.get("field")),
+  );
+  const [selectedUniversities, setSelectedUniversities] = useState<string[]>(
+    parseArray(sp.get("university")),
+  );
+
+  // Derive the universe of universities present in the data so the filter
+  // dropdown only shows options that would actually match something.
+  const availableUniversities = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of scholarships) {
+      const name = (s.school_name || s.provider_name || "").trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [scholarships]);
+
+  // Pre-compute field-of-study sets per scholarship and the universe of
+  // fields that appear at least once. O(n*patterns) once, instead of on
+  // every filter recompute.
+  const fieldsByRow = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const s of scholarships) {
+      map.set(s.id, new Set(matchFieldsForRow(s)));
+    }
+    return map;
+  }, [scholarships]);
+
+  const availableFields = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of fieldsByRow.values()) for (const v of f) set.add(v);
+    return FIELD_PATTERNS.map((p) => p.label).filter((l) => set.has(l));
+  }, [fieldsByRow]);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
   const [showBookmarked, setShowBookmarked] = useState(
     sp.get("bookmarked") === "1",
   );
+  const [showOpenOnly, setShowOpenOnly] = useState(sp.get("open") === "1");
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const [currentPage, setCurrentPage] = useState(Number(sp.get("page")) || 1);
@@ -203,8 +317,13 @@ export default function ScholarshipsClient({ scholarships }: Props) {
 
   function clearAll() {
     setLocationQuery("");
-    setSelectedEligibility([]);
+    setSelectedFunding([]);
+    setSelectedLevels([]);
+    setSelectedCitizenships([]);
+    setSelectedFields([]);
+    setSelectedUniversities([]);
     setShowBookmarked(false);
+    setShowOpenOnly(false);
     setSearchQuery("");
     setCurrentPage(1);
     router.replace(pathname, { scroll: false });
@@ -212,8 +331,13 @@ export default function ScholarshipsClient({ scholarships }: Props) {
 
   const hasActiveFilters =
     locationQuery.trim().length > 0 ||
-    selectedEligibility.length > 0 ||
+    selectedFunding.length > 0 ||
+    selectedLevels.length > 0 ||
+    selectedCitizenships.length > 0 ||
+    selectedFields.length > 0 ||
+    selectedUniversities.length > 0 ||
     showBookmarked ||
+    showOpenOnly ||
     searchQuery.trim().length > 0;
 
   const filtered = useMemo(() => {
@@ -221,6 +345,7 @@ export default function ScholarshipsClient({ scholarships }: Props) {
 
     return scholarships.filter((s) => {
       if (showBookmarked && !bookmarkedIds.has(s.id)) return false;
+      if (showOpenOnly && !s.is_active) return false;
 
       if (
         q &&
@@ -240,10 +365,34 @@ export default function ScholarshipsClient({ scholarships }: Props) {
       }
 
       if (
-        selectedEligibility.length > 0 &&
-        !selectedEligibility.every((opt) => ELIGIBILITY_MAP[opt]?.(s))
+        selectedFunding.length > 0 &&
+        !selectedFunding.every((opt) => FUNDING_MAP[opt]?.(s))
       ) {
         return false;
+      }
+
+      if (
+        selectedLevels.length > 0 &&
+        !selectedLevels.some((opt) => LEVEL_MAP[opt]?.(s))
+      ) {
+        return false;
+      }
+
+      if (
+        selectedCitizenships.length > 0 &&
+        !selectedCitizenships.some((opt) => CITIZENSHIP_MAP[opt]?.(s))
+      ) {
+        return false;
+      }
+
+      if (selectedFields.length > 0) {
+        const rowFields = fieldsByRow.get(s.id) ?? new Set();
+        if (!selectedFields.some((f) => rowFields.has(f))) return false;
+      }
+
+      if (selectedUniversities.length > 0) {
+        const uni = (s.school_name || s.provider_name || "").trim();
+        if (!selectedUniversities.includes(uni)) return false;
       }
 
       return true;
@@ -252,8 +401,14 @@ export default function ScholarshipsClient({ scholarships }: Props) {
     scholarships,
     searchQuery,
     locationQuery,
-    selectedEligibility,
+    selectedFunding,
+    selectedLevels,
+    selectedCitizenships,
+    selectedFields,
+    fieldsByRow,
+    selectedUniversities,
     showBookmarked,
+    showOpenOnly,
     bookmarkedIds,
   ]);
 
@@ -382,34 +537,34 @@ export default function ScholarshipsClient({ scholarships }: Props) {
                   </PopoverContent>
                 </Popover>
 
-                {/* Eligibility */}
+                {/* Level */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="outline"
                       size="sm"
-                      className={`gap-1.5 ${selectedEligibility.length > 0 ? "border-primary" : ""}`}
+                      className={`gap-1.5 ${selectedLevels.length > 0 ? "border-primary" : ""}`}
                     >
-                      <SlidersHorizontal className="h-3.5 w-3.5 opacity-60" />
-                      Eligibility
-                      {selectedEligibility.length > 0 && (
+                      Level
+                      {selectedLevels.length > 0 && (
                         <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
-                          {selectedEligibility.length}
+                          {selectedLevels.length}
                         </span>
                       )}
+                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-52">
-                    {Object.keys(ELIGIBILITY_MAP).map((opt) => (
+                  <DropdownMenuContent align="start" className="w-44">
+                    {Object.keys(LEVEL_MAP).map((opt) => (
                       <DropdownMenuCheckboxItem
                         key={opt}
-                        checked={selectedEligibility.includes(opt)}
+                        checked={selectedLevels.includes(opt)}
                         onCheckedChange={() =>
                           toggleMultiFilter(
                             opt,
-                            setSelectedEligibility,
-                            "eligibility",
-                            selectedEligibility,
+                            setSelectedLevels,
+                            "level",
+                            selectedLevels,
                           )
                         }
                       >
@@ -418,6 +573,188 @@ export default function ScholarshipsClient({ scholarships }: Props) {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
+
+                {/* Funding criteria */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`gap-1.5 ${selectedFunding.length > 0 ? "border-primary" : ""}`}
+                    >
+                      <SlidersHorizontal className="h-3.5 w-3.5 opacity-60" />
+                      Funding
+                      {selectedFunding.length > 0 && (
+                        <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
+                          {selectedFunding.length}
+                        </span>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-44">
+                    {Object.keys(FUNDING_MAP).map((opt) => (
+                      <DropdownMenuCheckboxItem
+                        key={opt}
+                        checked={selectedFunding.includes(opt)}
+                        onCheckedChange={() =>
+                          toggleMultiFilter(
+                            opt,
+                            setSelectedFunding,
+                            "funding",
+                            selectedFunding,
+                          )
+                        }
+                      >
+                        {opt}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Citizenship */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`gap-1.5 ${selectedCitizenships.length > 0 ? "border-primary" : ""}`}
+                    >
+                      Citizenship
+                      {selectedCitizenships.length > 0 && (
+                        <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
+                          {selectedCitizenships.length}
+                        </span>
+                      )}
+                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52">
+                    {Object.keys(CITIZENSHIP_MAP).map((opt) => (
+                      <DropdownMenuCheckboxItem
+                        key={opt}
+                        checked={selectedCitizenships.includes(opt)}
+                        onCheckedChange={() =>
+                          toggleMultiFilter(
+                            opt,
+                            setSelectedCitizenships,
+                            "citizenship",
+                            selectedCitizenships,
+                          )
+                        }
+                      >
+                        {opt}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Field of Study */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`gap-1.5 ${selectedFields.length > 0 ? "border-primary" : ""}`}
+                    >
+                      Field of Study
+                      {selectedFields.length > 0 && (
+                        <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
+                          {selectedFields.length}
+                        </span>
+                      )}
+                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="w-64 max-h-72 overflow-y-auto"
+                  >
+                    {availableFields.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                        No fields detected
+                      </div>
+                    )}
+                    {availableFields.map((field) => (
+                      <DropdownMenuCheckboxItem
+                        key={field}
+                        checked={selectedFields.includes(field)}
+                        onCheckedChange={() =>
+                          toggleMultiFilter(
+                            field,
+                            setSelectedFields,
+                            "field",
+                            selectedFields,
+                          )
+                        }
+                      >
+                        {field}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* University */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`gap-1.5 ${selectedUniversities.length > 0 ? "border-primary" : ""}`}
+                    >
+                      University
+                      {selectedUniversities.length > 0 && (
+                        <span className="bg-black text-white text-[10px] font-code px-1.5 py-0.5 leading-none">
+                          {selectedUniversities.length}
+                        </span>
+                      )}
+                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="w-72 max-h-72 overflow-y-auto"
+                  >
+                    {availableUniversities.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                        No universities available
+                      </div>
+                    )}
+                    {availableUniversities.map((uni) => (
+                      <DropdownMenuCheckboxItem
+                        key={uni}
+                        checked={selectedUniversities.includes(uni)}
+                        onCheckedChange={() =>
+                          toggleMultiFilter(
+                            uni,
+                            setSelectedUniversities,
+                            "university",
+                            selectedUniversities,
+                          )
+                        }
+                      >
+                        {uni}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Currently Open pill */}
+                <Button
+                  size="sm"
+                  variant={showOpenOnly ? "default" : "outline"}
+                  className="gap-1.5"
+                  onClick={() => {
+                    const next = !showOpenOnly;
+                    setShowOpenOnly(next);
+                    setCurrentPage(1);
+                    pushParams({ open: next ? "1" : null });
+                  }}
+                >
+                  <CircleDot
+                    className={`h-3.5 w-3.5 ${showOpenOnly ? "fill-current" : ""}`}
+                  />
+                  Open
+                </Button>
 
                 {/* Bookmarked pill */}
                 <Button

@@ -17,6 +17,7 @@ import SchoolBookmarkButton from "./bookmark-button";
 import ApplicationButton from "./application-button";
 import { SchoolNotesPanel } from "./SchoolNotesPanel";
 import { fetchSchoolNoteAction } from "./notes-actions";
+import { SchoolScholarshipsSection } from "./SchoolScholarshipsSection";
 
 export default async function SchoolDetailPage({
   params,
@@ -110,6 +111,11 @@ export default async function SchoolDetailPage({
           schoolId={school.id}
           initialNotes={note.notes}
           initialUpdatedAt={note.updated_at}
+        />
+
+        <SchoolScholarshipsSection
+          schoolId={school.id}
+          schoolName={school.name}
         />
       </div>
     </>
