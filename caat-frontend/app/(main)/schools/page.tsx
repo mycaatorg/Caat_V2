@@ -64,6 +64,8 @@ export default async function SchoolsPage({
   let query = supabase
     .from("schools")
     .select("*", { count: "exact" })
+    // Hide rows explicitly tagged as high_school; null + everything else is visible.
+    .or("institution_type.is.null,institution_type.neq.high_school")
     .range(from, to);
 
   if (selectedCountry) {
@@ -144,21 +146,23 @@ export default async function SchoolsPage({
                   key={school.id}
                   className="flex flex-col h-full hover:shadow-lg transition-shadow"
                 >
-                  <CardHeader>
-                    <CardTitle className="text-xl line-clamp-2 leading-tight">
-                      {school.name}
-                    </CardTitle>
+                  <CardHeader className="gap-2">
+                    {/* Title row + bookmark (top right, matches scholarship card) */}
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-xl line-clamp-2 leading-tight">
+                        {school.name}
+                      </CardTitle>
+                      <SchoolBookmarkButton schoolId={school.id} compact />
+                    </div>
                     <CardDescription className="text-base font-medium text-zinc-600 dark:text-zinc-400">
                       {school.country}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex-grow" />
 
-                  <CardFooter className="justify-end flex gap-2">
-                    {/* Inline bookmark button */}
-                    <SchoolBookmarkButton schoolId={school.id} compact />
-
-                    <Button asChild size="sm" variant="default">
+                  <CardFooter className="pt-0 gap-2">
+                    {/* Full-width primary CTA — matches scholarship card */}
+                    <Button asChild className="flex-1">
                       <Link href={`/schools/${school.id}`}>View Details</Link>
                     </Button>
 

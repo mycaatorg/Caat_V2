@@ -1,0 +1,154 @@
+import Link from "next/link";
+import { ArrowRight, ExternalLink } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/src/lib/supabaseClient";
+import {
+  ScholarshipRow,
+  formatAmountDisplay,
+} from "@/types/scholarships";
+
+interface Props {
+  schoolId: number;
+  schoolName: string;
+}
+
+const PREVIEW_LIMIT = 6;
+const SCHOOL_SCHOLARSHIP_COLUMNS = `
+  id, title, provider_name, description, amount_value, amount_currency,
+  amount_display, study_level, funding_type, eligible_countries,
+  excluded_countries, citizenships, tags, eligibility_summary, external_url,
+  is_active
+`;
+
+function normalizeSchoolName(name: string) {
+  return name.replace(/^the\s+/i, "").trim();
+}
+
+export async function SchoolScholarshipsSection({ schoolId, schoolName }: Props) {
+  const { data, error, count } = await supabase
+    .from("scholarship_schools")
+    .select(`scholarships(${SCHOOL_SCHOLARSHIP_COLUMNS})`, { count: "exact" })
+    .eq("school_id", schoolId)
+    .range(0, PREVIEW_LIMIT - 1);
+
+  if (error) {
+    return (
+      <section className="mt-8">
+        <h2 className="text-xl font-semibold mb-2">Scholarships</h2>
+        <p className="text-sm text-muted-foreground">
+          Couldn&rsquo;t load scholarships right now. Please try again later.
+        </p>
+      </section>
+    );
+  }
+
+  // Supabase nests the joined row under .scholarships. If the junction
+  // table missed a school row, fall back to the denormalized provider/school
+  // name so pages like /schools/1514 still show their scholarships.
+  let scholarships = (data ?? [])
+    .map((row) => row.scholarships as unknown as ScholarshipRow | null)
+    .filter((s): s is ScholarshipRow => s !== null);
+  let totalCount = count ?? scholarships.length;
+
+  if (scholarships.length === 0) {
+    const normalizedName = normalizeSchoolName(schoolName);
+    const fallback = await supabase
+      .from("scholarships")
+      .select(SCHOOL_SCHOLARSHIP_COLUMNS, { count: "exact" })
+      .or(`school_name.ilike.%${normalizedName}%,provider_name.ilike.%${normalizedName}%`)
+      .range(0, PREVIEW_LIMIT - 1);
+
+    if (!fallback.error) {
+      scholarships = (fallback.data ?? []) as ScholarshipRow[];
+      totalCount = fallback.count ?? scholarships.length;
+    }
+  }
+
+  scholarships = scholarships.sort((a, b) => {
+    if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
+    return a.title.localeCompare(b.title);
+  });
+
+  if (scholarships.length === 0) return null;
+
+  const previewing = scholarships.slice(0, PREVIEW_LIMIT);
+  const hiddenCount = Math.max(0, totalCount - previewing.length);
+  const filterName = normalizeSchoolName(schoolName);
+  const viewAllHref = `/scholarships?university=${encodeURIComponent(filterName)}`;
+
+  return (
+    <section className="mt-10">
+      <div className="mb-4 flex items-baseline justify-between gap-3">
+        <h2 className="text-xl font-semibold">
+          Scholarships at {schoolName}
+        </h2>
+        <span className="text-sm text-muted-foreground">
+          {totalCount} available
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {previewing.map((s) => (
+          <Card
+            key={s.id}
+            className="flex flex-col h-full hover:shadow-md transition-shadow"
+          >
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base leading-snug line-clamp-2">
+                {s.title}
+              </CardTitle>
+              {s.amount_display ? (
+                <CardDescription className="text-sm font-medium text-[#9a1a27]">
+                  {formatAmountDisplay(s)}
+                </CardDescription>
+              ) : null}
+            </CardHeader>
+
+            {s.description ? (
+              <CardContent className="text-sm text-muted-foreground line-clamp-3">
+                {s.description}
+              </CardContent>
+            ) : null}
+
+            <CardFooter className="mt-auto justify-end gap-2 pt-3">
+              <Button asChild size="sm" variant="default">
+                <Link href={`/scholarships/${s.id}`}>View Details</Link>
+              </Button>
+              {s.external_url ? (
+                <Button asChild size="icon" variant="outline">
+                  <a
+                    href={s.external_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span className="sr-only">Open official page</span>
+                  </a>
+                </Button>
+              ) : null}
+            </CardFooter>
+          </Card>
+        ))}
+      </div>
+
+      {hiddenCount > 0 && (
+        <div className="mt-6 flex justify-center">
+          <Button asChild variant="outline" size="lg" className="gap-2">
+            <Link href={viewAllHref}>
+              View all {totalCount} scholarships at {schoolName}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}

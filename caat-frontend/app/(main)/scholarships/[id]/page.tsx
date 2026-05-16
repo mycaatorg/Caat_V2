@@ -202,8 +202,11 @@ export default async function ScholarshipDetailPage({
           </div>
         )}
 
-        {/* Amount */}
-        <p className="text-4xl font-bold mb-8">{amountDisplay}</p>
+        {/* Amount — hide entirely if the scholarship has no monetary info,
+            so we don't render "See Details" as a giant headline. */}
+        {(scholarship.amount_value != null || scholarship.amount_display) && (
+          <p className="text-4xl font-bold mb-8">{amountDisplay}</p>
+        )}
 
         {/* ---------------------------------------------------------------- */}
         {/* About                                                             */}
