@@ -20,11 +20,24 @@ interface Props {
   schoolName: string;
 }
 
+const PREVIEW_LIMIT = 6;
+const SCHOOL_SCHOLARSHIP_COLUMNS = `
+  id, title, provider_name, description, amount_value, amount_currency,
+  amount_display, study_level, funding_type, eligible_countries,
+  excluded_countries, citizenships, tags, eligibility_summary, external_url,
+  is_active
+`;
+
+function normalizeSchoolName(name: string) {
+  return name.replace(/^the\s+/i, "").trim();
+}
+
 export async function SchoolScholarshipsSection({ schoolId, schoolName }: Props) {
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("scholarship_schools")
-    .select("scholarships(*)")
-    .eq("school_id", schoolId);
+    .select(`scholarships(${SCHOOL_SCHOLARSHIP_COLUMNS})`, { count: "exact" })
+    .eq("school_id", schoolId)
+    .range(0, PREVIEW_LIMIT - 1);
 
   if (error) {
     return (
@@ -37,23 +50,39 @@ export async function SchoolScholarshipsSection({ schoolId, schoolName }: Props)
     );
   }
 
-  // Supabase nests the joined row under .scholarships. We show inactive
-  // scholarships too (sorted to the bottom) so a school whose scholarships
-  // are all currently between terms doesn't render as if it had none.
-  const scholarships = (data ?? [])
+  // Supabase nests the joined row under .scholarships. If the junction
+  // table missed a school row, fall back to the denormalized provider/school
+  // name so pages like /schools/1514 still show their scholarships.
+  let scholarships = (data ?? [])
     .map((row) => row.scholarships as unknown as ScholarshipRow | null)
-    .filter((s): s is ScholarshipRow => s !== null)
-    .sort((a, b) => {
-      if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
-      return a.title.localeCompare(b.title);
-    });
+    .filter((s): s is ScholarshipRow => s !== null);
+  let totalCount = count ?? scholarships.length;
+
+  if (scholarships.length === 0) {
+    const normalizedName = normalizeSchoolName(schoolName);
+    const fallback = await supabase
+      .from("scholarships")
+      .select(SCHOOL_SCHOLARSHIP_COLUMNS, { count: "exact" })
+      .or(`school_name.ilike.%${normalizedName}%,provider_name.ilike.%${normalizedName}%`)
+      .range(0, PREVIEW_LIMIT - 1);
+
+    if (!fallback.error) {
+      scholarships = (fallback.data ?? []) as ScholarshipRow[];
+      totalCount = fallback.count ?? scholarships.length;
+    }
+  }
+
+  scholarships = scholarships.sort((a, b) => {
+    if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
+    return a.title.localeCompare(b.title);
+  });
 
   if (scholarships.length === 0) return null;
 
-  const PREVIEW_LIMIT = 6;
   const previewing = scholarships.slice(0, PREVIEW_LIMIT);
-  const hiddenCount = scholarships.length - previewing.length;
-  const viewAllHref = `/scholarships?university=${encodeURIComponent(schoolName)}`;
+  const hiddenCount = Math.max(0, totalCount - previewing.length);
+  const filterName = normalizeSchoolName(schoolName);
+  const viewAllHref = `/scholarships?university=${encodeURIComponent(filterName)}`;
 
   return (
     <section className="mt-10">
@@ -62,7 +91,7 @@ export async function SchoolScholarshipsSection({ schoolId, schoolName }: Props)
           Scholarships at {schoolName}
         </h2>
         <span className="text-sm text-muted-foreground">
-          {scholarships.length} available
+          {totalCount} available
         </span>
       </div>
 
@@ -114,7 +143,7 @@ export async function SchoolScholarshipsSection({ schoolId, schoolName }: Props)
         <div className="mt-6 flex justify-center">
           <Button asChild variant="outline" size="lg" className="gap-2">
             <Link href={viewAllHref}>
-              View all {scholarships.length} scholarships at {schoolName}
+              View all {totalCount} scholarships at {schoolName}
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
