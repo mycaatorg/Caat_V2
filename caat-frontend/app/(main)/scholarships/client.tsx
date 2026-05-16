@@ -55,18 +55,39 @@ const LEVEL_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
   Postgraduate: (s) => s.study_level.includes("postgraduate"),
 };
 
-// Citizenship eligibility — heuristic. The scrapers infer AU / AU-PR /
-// INTERNATIONAL into a `citizenships` array, but that column was stripped
-// from the DB schema (see scholarship-scraper/CLAUDE.md). For now we use
-// tags + eligible_countries as a proxy. A migration adding `citizenships`
-// to public.scholarships would let this be exact.
+// Citizenship eligibility — country-relative.
+//
+// The scrapers write raw codes (AU, AU-PR, INTERNATIONAL) into the
+// citizenships array. We translate to user-facing Domestic / International
+// against each scholarship's country, so a UK or US uni added later "just
+// works" — only DOMESTIC_CODES needs an entry for the new country.
+//
+// Empty citizenships means "no restriction" → eligible for both options.
+const DOMESTIC_CODES: Record<string, string[]> = {
+  Australia: ["AU", "AU-PR"],
+  // Future: "United Kingdom": ["UK", "GB"], "United States": ["US"], etc.
+};
+
+function isDomesticEligible(s: ScholarshipRow): boolean {
+  if (s.citizenships.length === 0) return true;
+  const domesticCodes = s.country ? DOMESTIC_CODES[s.country] ?? [] : [];
+  if (domesticCodes.some((c) => s.citizenships.includes(c))) return true;
+  // Fallback for countries we haven't mapped: anything that isn't an
+  // explicit INTERNATIONAL marker counts as domestic.
+  if (domesticCodes.length === 0) {
+    return s.citizenships.some((c) => c !== "INTERNATIONAL");
+  }
+  return false;
+}
+
+function isInternationalEligible(s: ScholarshipRow): boolean {
+  if (s.citizenships.length === 0) return true;
+  return s.citizenships.includes("INTERNATIONAL");
+}
+
 const CITIZENSHIP_MAP: Record<string, (s: ScholarshipRow) => boolean> = {
-  Domestic: (s) =>
-    s.tags.some((t) => /domestic|australian/i.test(t)) ||
-    s.eligible_countries.some((c) => /australia/i.test(c)),
-  International: (s) =>
-    s.tags.some((t) => /international/i.test(t)) ||
-    s.eligible_countries.some((c) => !/australia/i.test(c)),
+  Domestic: isDomesticEligible,
+  International: isInternationalEligible,
 };
 
 // Field of study — uni faculties don't share a clean taxonomy in the DB,

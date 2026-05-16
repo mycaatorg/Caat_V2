@@ -22,6 +22,7 @@ function baseScholarship(overrides: Partial<ScholarshipRow> = {}): ScholarshipRo
     funding_type: [],
     eligible_countries: [],
     excluded_countries: [],
+    citizenships: [],
     eligible_genders: [],
     minimum_gpa: null,
     requires_essay: null,

@@ -17,6 +17,13 @@ export interface ScholarshipRow {
   funding_type: string[];     // e.g. ["merit", "need", "full_ride", "tuition"]
   eligible_countries: string[];
   excluded_countries: string[];
+  /**
+   * Raw scraper citizenship codes: AU, AU-PR, INTERNATIONAL.
+   * Empty array means no restriction (open to all).
+   * Translated to user-facing Domestic / International client-side,
+   * relative to the scholarship's `country` (see scholarships/client.tsx).
+   */
+  citizenships: string[];
   eligible_genders: string[];
   minimum_gpa: number | null;
   requires_essay: boolean | null;
