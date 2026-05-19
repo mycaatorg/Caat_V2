@@ -136,15 +136,21 @@ describe("deriveDisplayTags()", () => {
     ).not.toContain("POST-GRAD");
   });
 
-  it("returns REGIONAL tag for scholarship with 1-8 eligible countries", () => {
+  it("returns REGIONAL tag when state_region is set", () => {
     expect(
-      deriveDisplayTags(baseScholarship({ eligible_countries: ["AU", "NZ"] }))
+      deriveDisplayTags(baseScholarship({ state_region: "NSW" }))
     ).toContain("REGIONAL");
   });
 
-  it("does not return REGIONAL for scholarship open to 9+ countries", () => {
+  it("does not return REGIONAL when only eligible_countries is set (country-only restriction)", () => {
     expect(
-      deriveDisplayTags(baseScholarship({ eligible_countries: ["AU","NZ","US","CA","UK","DE","FR","JP","SG"] }))
+      deriveDisplayTags(baseScholarship({ eligible_countries: ["AU"] }))
+    ).not.toContain("REGIONAL");
+  });
+
+  it("does not return REGIONAL when state_region is empty string", () => {
+    expect(
+      deriveDisplayTags(baseScholarship({ state_region: "  " }))
     ).not.toContain("REGIONAL");
   });
 
