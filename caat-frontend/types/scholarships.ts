@@ -68,8 +68,11 @@ export function deriveDisplayTags(s: ScholarshipRow): string[] {
     badges.push("POST-GRAD");
   }
 
-  // Regional: scholarship explicitly limits to a small set of countries
-  if (s.eligible_countries.length > 0 && s.eligible_countries.length <= 8) {
+  // Regional: restricted to a sub-national region (state/province). A
+  // country-only restriction isn't "regional" — most uni scholarships limit
+  // by country, and tagging them all REGIONAL was noise (e.g. every Sydney
+  // scholarship with eligible_countries=["AU"] was lighting up).
+  if ((s.state_region ?? "").trim().length > 0) {
     badges.push("REGIONAL");
   }
 
