@@ -116,7 +116,10 @@ export async function createDraft(args: {
     .select("*")
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error("createDraft insert failed", { args, error });
+    throw new Error(error.message || "Failed to create draft");
+  }
   if (!data) throw new Error("Failed to create draft");
   return data as EssayDraft;
 }
@@ -204,6 +207,14 @@ export async function deleteCustomPrompt(id: string): Promise<void> {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
   if (!user) throw new Error("Not signed in");
+
+  // essay_drafts no longer has a FK to either prompt table, so cascade by hand.
+  const { error: draftsError } = await supabase
+    .from("essay_drafts")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("prompt_id", id);
+  if (draftsError) throw draftsError;
 
   const { error } = await supabase
     .from("custom_essay_prompts")
