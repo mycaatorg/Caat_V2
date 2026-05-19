@@ -36,7 +36,7 @@ export default function ScholarshipCard({
   onToggleBookmark,
 }: Props) {
   return (
-    <Card className="flex flex-col h-full hover:shadow-lg transition-shadow">
+    <Card className="flex flex-col h-[420px] overflow-hidden hover:shadow-lg transition-shadow">
       <CardHeader className="pb-3 gap-2">
         {/* University name + bookmark */}
         <div className="flex items-start justify-between gap-2">
@@ -79,7 +79,7 @@ export default function ScholarshipCard({
         )}
       </CardHeader>
 
-      <CardContent className="flex-grow pb-3">
+      <CardContent className="flex-1 min-h-0 flex flex-col pb-3 overflow-hidden">
         {/* Amount */}
         <p className="text-2xl font-bold leading-tight">
           {scholarship.amount}
@@ -90,10 +90,14 @@ export default function ScholarshipCard({
           )}
         </p>
 
-        {/* Description */}
-        <p className="text-sm text-muted-foreground line-clamp-3 mt-2">
-          {scholarship.description}
-        </p>
+        {/* Description — scrolls inside the fixed-height card so long
+            stipend blurbs don't stretch the grid row. Explicit max-h
+            guards against the flex chain failing to constrain height. */}
+        <div className="mt-2 flex-1 min-h-0 max-h-[180px] overflow-y-auto pr-2">
+          <p className="text-sm text-muted-foreground">
+            {scholarship.description}
+          </p>
+        </div>
       </CardContent>
 
       <CardFooter className="pt-0">

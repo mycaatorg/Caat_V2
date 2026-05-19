@@ -217,9 +217,11 @@ export default async function ScholarshipDetailPage({
           </CardHeader>
           <CardContent>
             {scholarship.description || scholarship.eligibility_summary ? (
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {scholarship.description ?? scholarship.eligibility_summary}
-              </p>
+              <div className="max-h-[32rem] overflow-y-auto pr-2">
+                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                  {scholarship.description ?? scholarship.eligibility_summary}
+                </p>
+              </div>
             ) : (
               NONE
             )}
