@@ -1,18 +1,11 @@
 name: Nightly E2E (full suite)
 
-# The FULL Playwright suite (resume editor + community flows). Unlike the
-# read-only PR smoke, these tests CREATE data (posts, comments, etc.), so they
-# should run against a DEDICATED TEST Supabase project — not production.
+# The FULL legacy Playwright suite (resume editor + community flows) writes
+# synthetic data only to a disposable local Supabase stack on this runner.
 #
-# Before enabling the nightly schedule:
-#   1. Create a separate Supabase project for testing (run the same migrations).
-#   2. Add repo secrets pointing at it:
-#        E2E_SUPABASE_URL, E2E_SUPABASE_ANON_KEY  (a test project, NOT prod)
-#        E2E_TEST_EMAIL, E2E_TEST_PASSWORD        (a seeded test account there)
-#   3. Uncomment the `schedule` block below.
-#
-# Until then this workflow is manual-only (workflow_dispatch) so it never
-# writes test data into the production database on a timer.
+# Keep manual-only until the broad legacy suite is stable enough for scheduled
+# runs. Each dispatch starts from a fresh local database and has no production
+# database credentials.
 
 on:
   workflow_dispatch:
@@ -21,18 +14,17 @@ on:
 
 jobs:
   full-e2e:
-    name: Full E2E (production build)
+    name: Full E2E (isolated local Supabase)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: caat-frontend
     env:
-      # Prefer the dedicated test project; fall back to the build secrets.
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
-      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
-      PLAYWRIGHT_BASE_URL: http://localhost:3000
+      CAAT_ISOLATED_E2E: '1'
+      E2E_TEST_EMAIL: e2e.student@caat.local.test
+      E2E_TEST_PASSWORD: Caat-ci-e2e-local-only-2026
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3100
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -45,6 +37,11 @@ jobs:
           cache-dependency-path: |
             caat-frontend/package-lock.json
             caat-frontend/pnpm-lock.yaml
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 2.90.0
 
       - name: Install dependencies
         run: |
@@ -60,7 +57,25 @@ jobs:
       - name: Install Playwright (chromium only)
         run: npx playwright install --with-deps chromium
 
-      - name: Full E2E suite (Playwright builds + starts the prod server)
+      - name: Ensure PostgreSQL client for isolated bootstrap
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql --version
+
+      - name: Start isolated local Supabase
+        working-directory: .
+        run: |
+          mkdir -p "$RUNNER_TEMP/caat-supabase/supabase"
+          cp caat-frontend/tests/staging/config.toml "$RUNNER_TEMP/caat-supabase/supabase/config.toml"
+          docker network create --driver bridge --opt com.docker.network.bridge.host_binding_ipv4=127.0.0.1 caat-supabase
+          supabase --network-id caat-supabase --workdir "$RUNNER_TEMP/caat-supabase" start --exclude realtime,studio,imgproxy,edge-runtime,logflare,vector,supavisor,postgres-meta
+          supabase --workdir "$RUNNER_TEMP/caat-supabase" status --output env > "$RUNNER_TEMP/caat-supabase-status.env"
+          node .github/scripts/bootstrap-local-supabase.mjs "$RUNNER_TEMP/caat-supabase-status.env"
+
+      - name: Full E2E suite (single production build + server)
         run: npm run test:e2e
 
       - name: Upload Playwright report

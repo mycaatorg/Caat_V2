@@ -15,9 +15,11 @@
     "test:unit": "vitest run tests/unit",
     "test:coverage": "vitest run tests/unit --coverage",
     "test:watch": "vitest tests/unit",
-    "test:e2e": "playwright test",
-    "test:e2e:smoke": "playwright test runtime-smoke.spec.ts --project=e2e",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e": "node ../.github/scripts/assert-isolated-e2e.js && playwright test",
+    "test:e2e:smoke": "playwright test public-smoke.spec.ts route-guard.spec.ts --project=public-smoke",
+    "test:e2e:public": "playwright test public-smoke.spec.ts route-guard.spec.ts --project=public-smoke",
+    "test:e2e:ci": "node ../.github/scripts/assert-isolated-e2e.js && playwright test runtime-smoke.spec.ts route-guard.spec.ts public-smoke.spec.ts navigation.spec.ts browsing-schools.spec.ts browsing-majors.spec.ts documents.spec.ts staging-journeys.spec.ts staging-community.spec.ts staging-auth.spec.ts --project=e2e --project=public-smoke --project=staging --max-failures=5",
+    "test:e2e:ui": "node ../.github/scripts/assert-isolated-e2e.js && playwright test --ui"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

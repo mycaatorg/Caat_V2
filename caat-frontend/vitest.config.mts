@@ -11,20 +11,21 @@ export default defineConfig({
     pool: "vmThreads",
     coverage: {
       provider: "v8",
-      reporter: ["text-summary", "text"],
-      // Report only the pure-logic modules the unit suite actually targets, so
-      // the summary is a meaningful signal rather than diluted by UI/route code
-      // that is exercised by the e2e smoke instead. Soft reporting only, no
-      // hard threshold yet (see the Phase 6 plan G5).
-      // Globs avoid the literal "(main)" route-group parens (glob-special).
+      reporter: ["text-summary", "text", "json-summary", "lcov"],
+      // Include untested production code: these are whole-source UNIT coverage
+      // numbers. Browser route/journey coverage is reported separately.
       include: [
-        "lib/scholarship-tracking.ts",
-        "lib/scholarship-filters.ts",
-        "lib/local-date.ts",
-        "lib/profile-match.ts",
-        "app/**/applications/api.ts",
-        "app/**/communities/actions/_shared.ts",
-        "app/**/communities/actions/profiles.ts",
+        "app/**/*.{ts,tsx}",
+        "components/**/*.{ts,tsx}",
+        "lib/**/*.{ts,tsx}",
+        "hooks/**/*.{ts,tsx}",
+        "extensions/**/*.{ts,tsx}",
+        "constants/**/*.{ts,tsx}",
+        "middleware.ts",
+      ],
+      exclude: [
+        "**/*.d.ts", "**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}",
+        "**/__tests__/**", "**/tests/**", "**/node_modules/**",
       ],
     },
   },

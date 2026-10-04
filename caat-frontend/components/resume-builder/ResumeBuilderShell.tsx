@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import {
@@ -55,6 +55,31 @@ import DocumentStructurePanel from "./DocumentStructurePanel";
 import SectionEditorPanel from "./SectionEditorPanel";
 import ResumePreviewPanel, { ResumePage } from "./ResumePreviewPanel";
 import type { PageModel, PersonalHeader } from "./ResumePreviewPanel";
+
+type ResumeSavePayload = Parameters<typeof saveResumeState>[0];
+
+function makeSavePayload(
+  resumeId: string,
+  title: string,
+  settings: ResumeSettings,
+  sections: ResumeSection[],
+): ResumeSavePayload {
+  return {
+    resumeId,
+    title,
+    template: null,
+    settings,
+    sections: sections.map((section, sortOrder) => ({
+      id: section.id,
+      type: section.type,
+      label: section.label,
+      mode: section.mode,
+      contentHtml: section.contentHtml,
+      structuredData: section.structuredData,
+      sortOrder,
+    })),
+  };
+}
 
 export default function ResumeBuilderShell() {
   const [sections, setSections] = useState<ResumeSection[]>([]);
@@ -139,11 +164,37 @@ export default function ResumeBuilderShell() {
   const resumeIdRef = useRef(resumeId);
   const resumeTitleRef = useRef(resumeTitle);
   const isLoadingRef = useRef(isLoading);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const queuedSaveCountRef = useRef(0);
+  const lastSavedFingerprintRef = useRef<string | null>(null);
+  const transitionLockRef = useRef(false);
   sectionsRef.current = sections;
   settingsRef.current = settings;
   resumeIdRef.current = resumeId;
   resumeTitleRef.current = resumeTitle;
   isLoadingRef.current = isLoading;
+
+  const currentSavePayload = useCallback((): Parameters<typeof saveResumeState>[0] | null => {
+    const currentResumeId = resumeIdRef.current;
+    if (!currentResumeId) return null;
+
+    return makeSavePayload(currentResumeId, resumeTitleRef.current, settingsRef.current, sectionsRef.current);
+  }, []);
+
+  const enqueueSave = useCallback((payload: Parameters<typeof saveResumeState>[0]): Promise<void> => {
+    queuedSaveCountRef.current += 1;
+    setIsSaving(true);
+    const save = saveQueueRef.current.catch(() => {}).then(async () => {
+      await saveResumeState(payload);
+      lastSavedFingerprintRef.current = JSON.stringify(payload);
+      setLastSavedAt(new Date());
+    }).finally(() => {
+      queuedSaveCountRef.current -= 1;
+      setIsSaving(queuedSaveCountRef.current > 0);
+    });
+    saveQueueRef.current = save;
+    return save;
+  }, []);
 
   // --------------------------------------------------
   // Initial load from Supabase
@@ -162,36 +213,32 @@ export default function ResumeBuilderShell() {
         setResumeId(state.resumeId);
         setResumeTitle(state.title || "My Professional Resume");
         setSettings(state.settings ?? DEFAULT_SETTINGS);
+        const loadedTitle = state.title || "My Professional Resume";
+        const loadedSettings = state.settings ?? DEFAULT_SETTINGS;
+        resumeIdRef.current = state.resumeId;
+        resumeTitleRef.current = loadedTitle;
+        settingsRef.current = loadedSettings;
 
         // Load resume list for switcher
         const list = await listResumes();
-        if (!cancelled) setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
+        if (cancelled) return;
+        setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
 
         // If user has no sections yet, seed defaults once and save them
         if (!state.sections || state.sections.length === 0) {
           const defaults = getDefaultSections();
 
+          sectionsRef.current = defaults;
           setSections(defaults);
           setActiveSectionId(defaults[0]?.id ?? "");
 
           // Save seeded defaults so next refresh loads from db
-          await saveResumeState({
-            resumeId: state.resumeId,
-            title: state.title || "My Professional Resume",
-            template: state.template ?? null,
-            sections: defaults.map((s, idx) => ({
-              id: s.id,
-              type: s.type,
-              label: s.label,
-              mode: s.mode,
-              contentHtml: s.contentHtml,
-              structuredData: s.structuredData,
-              sortOrder: idx,
-            })),
-          });
+          const seedPayload = currentSavePayload();
+          if (seedPayload) await enqueueSave(seedPayload);
 
           const list = await listResumes();
-          if (!cancelled) setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
+          if (cancelled) return;
+          setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
           return;
         }
 
@@ -207,6 +254,10 @@ export default function ResumeBuilderShell() {
             structuredData: s.structuredData,
           }));
 
+        sectionsRef.current = loadedSections;
+        lastSavedFingerprintRef.current = JSON.stringify(
+          makeSavePayload(state.resumeId, loadedTitle, loadedSettings, loadedSections),
+        );
         setSections(loadedSections);
         setActiveSectionId(loadedSections[0]?.id ?? "");
       } catch (err) {
@@ -226,7 +277,7 @@ export default function ResumeBuilderShell() {
       cancelled = true;
     };
      
-  }, [reloadNonce]);
+  }, [reloadNonce, currentSavePayload, enqueueSave]);
 
   // --------------------------------------------------
   // Drag & drop ordering
@@ -319,33 +370,24 @@ export default function ResumeBuilderShell() {
   // Save (universal save button)
   // --------------------------------------------------
   async function onSave() {
-    if (!resumeId) return;
+    let payload = currentSavePayload();
+    if (!payload) return;
 
     try {
-      setIsSaving(true);
-
-      await saveResumeState({
-        resumeId,
-        title: resumeTitle,
-        template: null,
-        settings,
-        sections: sections.map((s, idx) => ({
-          id: s.id,
-          type: s.type,
-          label: s.label,
-          mode: s.mode,
-          contentHtml: s.contentHtml,
-          structuredData: s.structuredData,
-          sortOrder: idx,
-        })),
-      });
-
-      setLastSavedAt(new Date());
+      if (queuedSaveCountRef.current > 0) {
+        try {
+          await saveQueueRef.current;
+        } catch {
+          // A failed earlier attempt must not poison the retry queue.
+        }
+        payload = currentSavePayload();
+        if (!payload) return;
+      }
+      if (JSON.stringify(payload) === lastSavedFingerprintRef.current) return;
+      await enqueueSave(payload);
     } catch (err) {
       if (process.env.NODE_ENV !== "production") console.error(err);
       toast.error("Failed to save resume. Please try again.");
-    } finally {
-      setIsSaving(false);
     }
   }
 
@@ -375,103 +417,107 @@ export default function ResumeBuilderShell() {
   // autosave window (complements the flush-on-unmount for SPA navigation).
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (autosaveTimerRef.current || isSaving) {
+      const payload = currentSavePayload();
+      const hasUnsavedChanges = payload != null &&
+        JSON.stringify(payload) !== lastSavedFingerprintRef.current;
+      if (autosaveTimerRef.current || isSaving || hasUnsavedChanges) {
         e.preventDefault();
         e.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [isSaving]);
+  }, [currentSavePayload, isSaving]);
 
   // Persist the currently-loaded resume's pending edits before its content is
   // replaced (switch / new / unmount), reading from refs so it never saves a
   // stale snapshot. Clears the debounce so it can't fire against the new resume.
-  async function flushCurrentResume() {
+  const flushCurrentResume = useCallback(async () => {
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;
     }
     if (!resumeIdRef.current || isLoadingRef.current) return;
+    const outgoingResumeId = resumeIdRef.current;
+
+    while (true) {
+      if (queuedSaveCountRef.current > 0) {
+        try {
+          await saveQueueRef.current;
+        } catch {
+          // Re-evaluate the latest editor snapshot and retry it if still dirty.
+        }
+        continue;
+      }
+
+      const payload = currentSavePayload();
+      if (!payload || payload.resumeId !== outgoingResumeId) return;
+      const savedVersion = JSON.stringify(payload);
+      if (savedVersion === lastSavedFingerprintRef.current) return;
+      await enqueueSave(payload);
+
+      // The editor stays usable while a save is pending. If it changed during
+      // that write, persist the newer snapshot before replacing the editor.
+      const latest = currentSavePayload();
+      if (!latest || latest.resumeId !== outgoingResumeId) return;
+      if (JSON.stringify(latest) === savedVersion) return;
+    }
+  }, [currentSavePayload, enqueueSave]);
+
+  // Flush pending edits on unmount (client-side nav) and tab close.
+  useEffect(() => {
+    const onBeforeUnload = () => { void flushCurrentResume().catch(() => {}); };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      void flushCurrentResume().catch(() => {});
+    };
+     
+  }, [flushCurrentResume]);
+
+  // --------------------------------------------------
+  // Switch resume (load by id)
+  // --------------------------------------------------
+  async function switchResume(id: string) {
+    if (id === resumeIdRef.current || transitionLockRef.current) return;
+    transitionLockRef.current = true;
     try {
-      await saveResumeState({
-        resumeId: resumeIdRef.current,
-        title: resumeTitleRef.current,
-        template: null,
-        settings: settingsRef.current,
-        sections: sectionsRef.current.map((s, idx) => ({
+      // Flush the outgoing resume before its sections are replaced.
+      await flushCurrentResume();
+      setIsLoading(true);
+      const state = await loadResumeById(id);
+      if (!state) return;
+
+      const nextTitle = state.title || "Untitled";
+      const nextSettings = state.settings ?? DEFAULT_SETTINGS;
+      const loadedSections: ResumeSection[] = state.sections
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((s) => ({
           id: s.id,
           type: s.type,
           label: s.label,
           mode: s.mode,
           contentHtml: s.contentHtml,
           structuredData: s.structuredData,
-          sortOrder: idx,
-        })),
-      });
-    } catch {
-      // Best-effort; the manual Save button remains available.
-    }
-  }
+        }));
+      const nextSections = loadedSections.length > 0 ? loadedSections : getDefaultSections();
 
-  // Flush pending edits on unmount (client-side nav) and tab close.
-  useEffect(() => {
-    const onBeforeUnload = () => { void flushCurrentResume(); };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => {
-      window.removeEventListener("beforeunload", onBeforeUnload);
-      void flushCurrentResume();
-    };
-     
-  }, []);
-
-  // --------------------------------------------------
-  // Switch resume (load by id)
-  // --------------------------------------------------
-  async function switchResume(id: string) {
-    if (id === resumeId) return;
-    // Flush the outgoing resume before its sections are replaced.
-    await flushCurrentResume();
-    try {
-      setIsLoading(true);
-      const state = await loadResumeById(id);
-      if (!state) return;
-
+      resumeIdRef.current = state.resumeId;
+      resumeTitleRef.current = nextTitle;
+      settingsRef.current = nextSettings;
+      sectionsRef.current = nextSections;
+      lastSavedFingerprintRef.current = loadedSections.length > 0
+        ? JSON.stringify(makeSavePayload(state.resumeId, nextTitle, nextSettings, nextSections))
+        : null;
       setResumeId(state.resumeId);
-      setResumeTitle(state.title || "Untitled");
-      setSettings(state.settings ?? DEFAULT_SETTINGS);
+      setResumeTitle(nextTitle);
+      setSettings(nextSettings);
+      setSections(nextSections);
+      setActiveSectionId(nextSections[0]?.id ?? "");
 
-      if (!state.sections || state.sections.length === 0) {
-        const defaults = getDefaultSections();
-        setSections(defaults);
-        setActiveSectionId(defaults[0]?.id ?? "");
-        await saveResumeState({
-          resumeId: state.resumeId,
-          title: state.title || "Untitled",
-          template: state.template ?? null,
-          sections: defaults.map((s, idx) => ({
-            id: s.id,
-            type: s.type,
-            label: s.label,
-            mode: s.mode,
-            contentHtml: s.contentHtml,
-            structuredData: s.structuredData,
-            sortOrder: idx,
-          })),
-        });
-      } else {
-        const loadedSections: ResumeSection[] = state.sections
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((s) => ({
-            id: s.id,
-            type: s.type,
-            label: s.label,
-            mode: s.mode,
-            contentHtml: s.contentHtml,
-            structuredData: s.structuredData,
-          }));
-        setSections(loadedSections);
-        setActiveSectionId(loadedSections[0]?.id ?? "");
+      if (loadedSections.length === 0) {
+        const seedPayload = makeSavePayload(state.resumeId, nextTitle, nextSettings, nextSections);
+        await enqueueSave(seedPayload);
       }
 
       const list = await listResumes();
@@ -481,6 +527,7 @@ export default function ResumeBuilderShell() {
       toast.error("Could not switch resume. Please try again.");
     } finally {
       setIsLoading(false);
+      transitionLockRef.current = false;
     }
   }
 
@@ -488,32 +535,28 @@ export default function ResumeBuilderShell() {
   // New resume
   // --------------------------------------------------
   async function onNewResume() {
-    // Flush the outgoing resume before we swap in the fresh one.
-    await flushCurrentResume();
+    if (transitionLockRef.current) return;
+    transitionLockRef.current = true;
     try {
+      // Flush the outgoing resume before we swap in the fresh one.
+      await flushCurrentResume();
       setIsLoading(true);
       const state = await createResume();
       const defaults = getDefaultSections();
+      const nextTitle = state.title || "New Resume";
+      resumeIdRef.current = state.resumeId;
+      resumeTitleRef.current = nextTitle;
+      settingsRef.current = state.settings ?? DEFAULT_SETTINGS;
+      sectionsRef.current = defaults;
+      lastSavedFingerprintRef.current = null;
 
       setResumeId(state.resumeId);
-      setResumeTitle(state.title || "New Resume");
+      setResumeTitle(nextTitle);
+      setSettings(state.settings ?? DEFAULT_SETTINGS);
       setSections(defaults);
       setActiveSectionId(defaults[0]?.id ?? "");
 
-      await saveResumeState({
-        resumeId: state.resumeId,
-        title: state.title || "New Resume",
-        template: null,
-        sections: defaults.map((s, idx) => ({
-          id: s.id,
-          type: s.type,
-          label: s.label,
-          mode: s.mode,
-          contentHtml: s.contentHtml,
-          structuredData: s.structuredData,
-          sortOrder: idx,
-        })),
-      });
+      await enqueueSave(makeSavePayload(state.resumeId, nextTitle, state.settings ?? DEFAULT_SETTINGS, defaults));
 
       const list = await listResumes();
       setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
@@ -522,6 +565,7 @@ export default function ResumeBuilderShell() {
       toast.error("Could not create a new resume. Please try again.");
     } finally {
       setIsLoading(false);
+      transitionLockRef.current = false;
     }
   }
 
@@ -541,21 +585,10 @@ export default function ResumeBuilderShell() {
   async function commitEditResumeTitle() {
     const next = draftResumeTitle.trim();
     if (next.length > 0 && next !== resumeTitle && resumeId) {
+      resumeTitleRef.current = next;
       setResumeTitle(next);
-      await saveResumeState({
-        resumeId,
-        title: next,
-        template: null,
-        sections: sections.map((s, idx) => ({
-          id: s.id,
-          type: s.type,
-          label: s.label,
-          mode: s.mode,
-          contentHtml: s.contentHtml,
-          structuredData: s.structuredData,
-          sortOrder: idx,
-        })),
-      });
+      const payload = makeSavePayload(resumeId, next, settings, sections);
+      await enqueueSave(payload);
       const list = await listResumes();
       setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
     }
@@ -567,22 +600,87 @@ export default function ResumeBuilderShell() {
   // Delete resume (with confirmation)
   // --------------------------------------------------
   async function confirmDeleteResume() {
-    if (!resumeId) return;
-    const toDeleteId = resumeId;
+    if (!resumeIdRef.current || transitionLockRef.current) return;
+    const toDeleteId = resumeIdRef.current;
     const rest = resumeList.filter((r) => r.id !== toDeleteId);
+    let fingerprintToRestore = lastSavedFingerprintRef.current;
+    let replacementIdToCleanup: string | null = null;
+
+    transitionLockRef.current = true;
+    const outgoingFlush = flushCurrentResume();
+    setIsLoading(true);
 
     try {
+      // Keep the current resume alive until its latest edits and the next
+      // editor state are ready. A later switch/new call would flush the
+      // deleted id and can fail when sections are upserted against its FK.
+      await outgoingFlush;
+      fingerprintToRestore = lastSavedFingerprintRef.current;
+
+      let replacement: Awaited<ReturnType<typeof loadResumeById>>;
+      let createdReplacement = false;
+      if (rest.length > 0) {
+        replacement = await loadResumeById(rest[0].id);
+        if (!replacement) throw new Error("Could not load the replacement resume");
+      } else {
+        replacement = await createResume();
+        createdReplacement = true;
+        replacementIdToCleanup = replacement.resumeId;
+      }
+
+      const nextTitle = replacement.title || "Untitled";
+      const loadedSections: ResumeSection[] = replacement.sections
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((section) => ({
+          id: section.id,
+          type: section.type,
+          label: section.label,
+          mode: section.mode,
+          contentHtml: section.contentHtml,
+          structuredData: section.structuredData,
+        }));
+      const nextSections = loadedSections.length > 0 ? loadedSections : getDefaultSections();
+      const nextSettings = replacement.settings ?? DEFAULT_SETTINGS;
+      const nextPayload = makeSavePayload(replacement.resumeId, nextTitle, nextSettings, nextSections);
+
+      // Seed a fresh/empty replacement before deleting the current one so a
+      // failed initialization leaves the user's existing resume intact.
+      if (createdReplacement || loadedSections.length === 0) {
+        await enqueueSave(nextPayload);
+      }
+
       await deleteResume(toDeleteId);
       setDeleteResumeDialogOpen(false);
-
-      if (rest.length > 0) {
-        await switchResume(rest[0].id);
-      } else {
-        await onNewResume();
-      }
+      resumeIdRef.current = replacement.resumeId;
+      resumeTitleRef.current = nextTitle;
+      settingsRef.current = nextSettings;
+      sectionsRef.current = nextSections;
+      lastSavedFingerprintRef.current = JSON.stringify(nextPayload);
+      setResumeId(replacement.resumeId);
+      setResumeTitle(nextTitle);
+      setSettings(nextSettings);
+      setSections(nextSections);
+      setActiveSectionId(nextSections[0]?.id ?? "");
+      setResumeList(
+        rest.length > 0
+          ? rest
+          : [{ id: replacement.resumeId, title: nextTitle }],
+      );
+      replacementIdToCleanup = null;
     } catch (err) {
+      lastSavedFingerprintRef.current = fingerprintToRestore;
+      if (replacementIdToCleanup) {
+        try {
+          await deleteResume(replacementIdToCleanup);
+        } catch (cleanupErr) {
+          if (process.env.NODE_ENV !== "production") console.error(cleanupErr);
+        }
+      }
       if (process.env.NODE_ENV !== "production") console.error(err);
       toast.error("Could not delete resume. Please try again.");
+    } finally {
+      setIsLoading(false);
+      transitionLockRef.current = false;
     }
   }
 
@@ -796,11 +894,11 @@ export default function ResumeBuilderShell() {
             className="w-1 shrink-0 cursor-col-resize bg-border hover:bg-primary/40 transition-colors select-none"
           />
 
-          <div className="flex flex-col flex-1 min-w-0 overflow-auto">
+          <div className="flex flex-col flex-1 min-w-0 overflow-auto" aria-busy={isLoading} inert={isLoading}>
             <SectionEditorPanel
               section={activeSection}
               onChange={(patch) => {
-                if (!activeSection) return;
+                if (isLoading || !activeSection) return;
                 updateSection(activeSection.id, patch);
               }}
             />
@@ -840,13 +938,15 @@ export default function ResumeBuilderShell() {
             </DndContext>
           )}
           {mobileTab === "editor" && (
-            <SectionEditorPanel
-              section={activeSection}
-              onChange={(patch) => {
-                if (!activeSection) return;
-                updateSection(activeSection.id, patch);
-              }}
-            />
+            <div aria-busy={isLoading} inert={isLoading}>
+              <SectionEditorPanel
+                section={activeSection}
+                onChange={(patch) => {
+                  if (isLoading || !activeSection) return;
+                  updateSection(activeSection.id, patch);
+                }}
+              />
+            </div>
           )}
           {mobileTab === "preview" && (
             <ResumePreviewPanel

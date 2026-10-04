@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { contentSecurityConnectSources } from "./lib/isolated-e2e-csp";
 
 const securityHeaders = [
   {
@@ -37,7 +38,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self'",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in https://challenges.cloudflare.com",
+      `connect-src ${contentSecurityConnectSources(process.env).join(" ")}`,
       "frame-src https://challenges.cloudflare.com https://www.youtube.com https://www.youtube-nocookie.com",
       "object-src 'none'",
       "base-uri 'self'",

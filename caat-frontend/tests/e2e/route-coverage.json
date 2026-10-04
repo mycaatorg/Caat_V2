@@ -1,0 +1,334 @@
+{
+  "routes": [
+    {
+      "route": "/",
+      "access": "public",
+      "kind": "static",
+      "coverage": "public-content",
+      "expected": "Master Your Path to"
+    },
+    {
+      "route": "/contact",
+      "access": "public",
+      "kind": "static",
+      "coverage": "public-content",
+      "expected": "Contact Us"
+    },
+    {
+      "route": "/forgot-password",
+      "access": "public",
+      "kind": "static",
+      "coverage": "public-content",
+      "expected": "Reset password"
+    },
+    {
+      "route": "/help",
+      "access": "public",
+      "kind": "static",
+      "coverage": "public-content",
+      "expected": "Help Center"
+    },
+    {
+      "route": "/login",
+      "access": "public",
+      "kind": "static",
+      "coverage": "public-content",
+      "expected": "Welcome back"
+    },
+    {
+      "route": "/privacy",
+      "access": "public",
+      "kind": "static",
+      "coverage": "public-content",
+      "expected": "Privacy Policy"
+    },
+    {
+      "route": "/reset-password",
+      "access": "public",
+      "kind": "static",
+      "coverage": "public-content",
+      "expected": "Link expired"
+    },
+    {
+      "route": "/scholarship",
+      "access": "public",
+      "kind": "static",
+      "coverage": "public-content",
+      "expected": "Find scholarships for your Australian university journey"
+    },
+    {
+      "route": "/scholarship/[slug]",
+      "access": "public",
+      "kind": "dynamic",
+      "coverage": "public-detail",
+      "expected": "E2E Test Scholarship",
+      "limitation": "The PR browser job asserts a successful seeded detail render and a missing-slug 404; the non-isolated public smoke selects a real catalog link.",
+      "notFoundExpected": "Page not found"
+    },
+    {
+      "route": "/signup",
+      "access": "public",
+      "kind": "static",
+      "coverage": "public-content",
+      "expected": "Create account"
+    },
+    {
+      "route": "/terms",
+      "access": "public",
+      "kind": "static",
+      "coverage": "public-content",
+      "expected": "Terms of Service"
+    },
+    {
+      "route": "/applications",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Applications"
+    },
+    {
+      "route": "/applications/[id]",
+      "access": "authenticated",
+      "kind": "dynamic",
+      "coverage": "isolated-detail",
+      "limitation": "The local isolated fixture exercises successful detail rendering; route-guard coverage separately verifies unauthenticated redirects.",
+      "expected": "E2E Test University"
+    },
+    {
+      "route": "/communities",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "All Posts",
+      "expectedRole": "tab"
+    },
+    {
+      "route": "/communities/[postId]",
+      "access": "authenticated",
+      "kind": "dynamic",
+      "coverage": "auth-guard",
+      "limitation": "The unauthenticated guard is checked; the isolated community journey creates a post and follows its generated permalink to verify successful detail rendering and persistence."
+    },
+    {
+      "route": "/communities/c/[slug]",
+      "access": "authenticated",
+      "kind": "dynamic",
+      "coverage": "isolated-detail",
+      "limitation": "The local isolated fixture exercises successful detail rendering; route-guard coverage separately verifies unauthenticated redirects.",
+      "expected": "E2E Test Community"
+    },
+    {
+      "route": "/communities/groups",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Communities"
+    },
+    {
+      "route": "/communities/notifications",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Notifications"
+    },
+    {
+      "route": "/communities/profile/[userId]",
+      "access": "authenticated",
+      "kind": "dynamic",
+      "coverage": "isolated-detail",
+      "limitation": "The isolated community journey opens the seeded student profile from a created post and verifies the profile content; the guard test separately verifies unauthenticated redirects.",
+      "expected": "Posts",
+      "expectedRole": "text"
+    },
+    {
+      "route": "/communities/saved",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Saved Posts"
+    },
+    {
+      "route": "/dashboard",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Dashboard"
+    },
+    {
+      "route": "/documents",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Document Vault"
+    },
+    {
+      "route": "/essays",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Essay prompts",
+      "expectedRole": "text"
+    },
+    {
+      "route": "/majors",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "E2E Test Engineering",
+      "expectedRole": "text"
+    },
+    {
+      "route": "/majors/[id]",
+      "access": "authenticated",
+      "kind": "dynamic",
+      "coverage": "isolated-detail",
+      "limitation": "The local isolated fixture exercises successful detail rendering; route-guard coverage separately verifies unauthenticated redirects.",
+      "expected": "E2E Test Engineering"
+    },
+    {
+      "route": "/profile",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Personal Information",
+      "limitation": "The isolated seed provides a profile row; without one, initial client load creates a blank profile.",
+      "expectedRole": "text"
+    },
+    {
+      "route": "/resume-builder",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Personal Information"
+    },
+    {
+      "route": "/scholarships",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "E2E Test Scholarship"
+    },
+    {
+      "route": "/scholarships/[id]",
+      "access": "authenticated",
+      "kind": "dynamic",
+      "coverage": "isolated-detail",
+      "limitation": "The local isolated fixture exercises successful detail rendering; route-guard coverage separately verifies unauthenticated redirects.",
+      "expected": "E2E Test Scholarship"
+    },
+    {
+      "route": "/schools",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "E2E Test University",
+      "expectedRole": "text"
+    },
+    {
+      "route": "/schools/[id]",
+      "access": "authenticated",
+      "kind": "dynamic",
+      "coverage": "isolated-detail",
+      "limitation": "The local isolated fixture exercises successful detail rendering; route-guard coverage separately verifies unauthenticated redirects.",
+      "expected": "E2E Test University"
+    },
+    {
+      "route": "/settings",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Settings"
+    }
+  ],
+  "writeJourneys": [
+    {
+      "id": "essay-draft-autosave",
+      "coverage": "isolated-ci",
+      "specs": [
+        "tests/e2e/staging-journeys.spec.ts",
+        "tests/e2e/essays.spec.ts"
+      ],
+      "reason": "The isolated PR journey creates a custom prompt/draft, verifies autosave and reload, then deletes the prompt."
+    },
+    {
+      "id": "community-post-comment-lifecycle",
+      "coverage": "isolated-ci",
+      "specs": [
+        "tests/e2e/staging-community.spec.ts",
+        "tests/e2e/community-smoke.spec.ts",
+        "tests/e2e/community-features.spec.ts"
+      ],
+      "reason": "PR staging creates a synthetic group post, follows its permalink, adds a comment, saves it, verifies persistence, and deletes it from the disposable local database."
+    },
+    {
+      "id": "resume-editor-autosave-formatting",
+      "coverage": "partial-isolated-ci",
+      "specs": [
+        "tests/e2e/staging-journeys.spec.ts",
+        "tests/e2e/resume-builder.spec.ts",
+        "tests/e2e/dual-mode.spec.ts",
+        "tests/e2e/guided-rich.spec.ts"
+      ],
+      "reason": "PR staging verifies saved section text survives reload; formatting, reorder, multi-resume switching, and delete journeys remain manual-only."
+    },
+    {
+      "id": "profile-save-success",
+      "coverage": "isolated-ci",
+      "specs": [
+        "tests/e2e/staging-journeys.spec.ts",
+        "tests/e2e/profile.spec.ts"
+      ],
+      "reason": "PR staging changes a seeded student's name and verifies the saved value after reload; other profile fields remain outside this journey."
+    },
+    {
+      "id": "document-upload-success",
+      "coverage": "isolated-ci",
+      "specs": [
+        "tests/e2e/staging-journeys.spec.ts",
+        "tests/e2e/documents.spec.ts"
+      ],
+      "reason": "PR staging uploads a synthetic PDF to local Storage, verifies metadata after reload, then deletes the file and row."
+    },
+    {
+      "id": "application-create-update",
+      "coverage": "isolated-ci",
+      "specs": [
+        "tests/e2e/staging-journeys.spec.ts"
+      ],
+      "reason": "PR staging creates an application from a synthetic school, changes status/checklist/notes, and verifies persistence across views."
+    },
+    {
+      "id": "scholarship-tracking-write",
+      "coverage": "isolated-ci",
+      "specs": [
+        "tests/e2e/staging-journeys.spec.ts"
+      ],
+      "reason": "PR staging saves a synthetic scholarship, changes status, and verifies persistence in both detail and tracked-list views."
+    },
+    {
+      "id": "account-signup-and-password-reset-success",
+      "coverage": "not-covered",
+      "specs": [
+        "tests/e2e/public-smoke.spec.ts"
+      ],
+      "reason": "PR browser checks render auth forms without submitting them; successful signup and email-based reset need local mail assertions and cleanup."
+    },
+    {
+      "id": "major-bookmark-write",
+      "coverage": "isolated-ci",
+      "specs": [
+        "tests/e2e/staging-journeys.spec.ts",
+        "tests/e2e/browsing-majors.spec.ts"
+      ],
+      "reason": "PR staging bookmarks the synthetic major, verifies persistence after reload and in the bookmarked list, then removes the bookmark."
+    },
+    {
+      "id": "school-notes-and-application-checklist",
+      "coverage": "isolated-ci",
+      "specs": [
+        "tests/e2e/staging-journeys.spec.ts"
+      ],
+      "reason": "PR staging verifies school notes and application status/checklist/notes persistence against local fixtures."
+    }
+  ]
+}
