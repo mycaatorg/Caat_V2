@@ -1,11 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
+
+function isRetryableVerificationError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const authError = error as { name?: string; status?: number };
+  return authError.name === "AuthRetryableFetchError" ||
+    authError.name === "AuthUnknownError" ||
+    (authError.name === "AuthApiError" &&
+      typeof authError.status === "number" &&
+      (authError.status === 408 || authError.status === 429 || authError.status >= 500));
+}
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -17,21 +27,58 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [verificationError, setVerificationError] = useState(false);
+  const verificationAttemptRef = useRef(0);
+  const mountedRef = useRef(false);
+  const retryVerificationRef = useRef<() => void>(() => {});
 
   useEffect(() => {
+    mountedRef.current = true;
+
+    const checkCurrentUser = async () => {
+      const attempt = ++verificationAttemptRef.current;
+      setCheckingSession(true);
+      setVerificationError(false);
+
+      try {
+        // D1 — getUser() validates the JWT against the Supabase Auth server,
+        // unlike getSession() which trusts whatever is in local storage.
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (!mountedRef.current || verificationAttemptRef.current !== attempt) return;
+        if (user) {
+          setSessionReady(true);
+        } else if (isRetryableVerificationError(authError)) {
+          // A retryable Auth/server error does not prove that the recovery link expired.
+          setVerificationError(true);
+        }
+      } catch {
+        if (!mountedRef.current || verificationAttemptRef.current !== attempt) return;
+        setVerificationError(true);
+      } finally {
+        if (mountedRef.current && verificationAttemptRef.current === attempt) {
+          setCheckingSession(false);
+        }
+      }
+    };
+
+    retryVerificationRef.current = () => { void checkCurrentUser(); };
     const { data: listener } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") setSessionReady(true);
+      if (!mountedRef.current || event !== "PASSWORD_RECOVERY") return;
+      // The recovery event authorizes this reset form; ignore any older getUser result.
+      verificationAttemptRef.current += 1;
+      setSessionReady(true);
+      setVerificationError(false);
       setCheckingSession(false);
     });
 
-    // D1 — getUser() validates the JWT against the Supabase Auth server,
-    // unlike getSession() which trusts whatever is in local storage.
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setSessionReady(true);
-      setCheckingSession(false);
-    });
+    void checkCurrentUser();
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      mountedRef.current = false;
+      verificationAttemptRef.current += 1;
+      retryVerificationRef.current = () => {};
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -79,19 +126,40 @@ export default function ResetPasswordPage() {
           ) : !sessionReady ? (
             <div className="space-y-6">
               <div className="h-[4px] w-12 bg-black" />
-              <h1 className="text-3xl font-bold tracking-tight font-display">
-                Link expired
-              </h1>
-              <p className="text-sm text-[#525252] font-serif leading-relaxed">
-                This password reset link is no longer valid. Please request a new one.
-              </p>
-              <Link
-                href="/forgot-password"
-                className="inline-flex items-center gap-2 bg-black text-white text-[11px] tracking-[0.18em] uppercase px-6 py-3.5 hover:bg-white hover:text-black border border-black transition-colors duration-100 font-code"
-              >
-                Request new link
-                <ArrowRight size={13} strokeWidth={1.5} />
-              </Link>
+              {verificationError ? (
+                <>
+                  <h1 className="text-3xl font-bold tracking-tight font-display">
+                    Could not verify your reset link
+                  </h1>
+                  <p className="text-sm text-[#525252] font-serif leading-relaxed">
+                    We could not verify your reset link right now. Please try again.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => retryVerificationRef.current()}
+                    className="inline-flex items-center gap-2 bg-black text-white text-[11px] tracking-[0.18em] uppercase px-6 py-3.5 hover:bg-white hover:text-black border border-black transition-colors duration-100 font-code"
+                  >
+                    Try again
+                    <ArrowRight size={13} strokeWidth={1.5} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h1 className="text-3xl font-bold tracking-tight font-display">
+                    Link expired
+                  </h1>
+                  <p className="text-sm text-[#525252] font-serif leading-relaxed">
+                    This password reset link is no longer valid. Please request a new one.
+                  </p>
+                  <Link
+                    href="/forgot-password"
+                    className="inline-flex items-center gap-2 bg-black text-white text-[11px] tracking-[0.18em] uppercase px-6 py-3.5 hover:bg-white hover:text-black border border-black transition-colors duration-100 font-code"
+                  >
+                    Request new link
+                    <ArrowRight size={13} strokeWidth={1.5} />
+                  </Link>
+                </>
+              )}
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-0">
