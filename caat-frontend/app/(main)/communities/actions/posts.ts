@@ -249,17 +249,21 @@ export async function updatePostAction(
   if (hoursDiff > 24)
     return { error: "Posts can only be edited within 24 hours" };
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("community_posts")
     .update({ content: sanitized, edited_at: new Date().toISOString() })
     .eq("id", postId)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("id");
+
+  if (error) return { error: sanitizeError(error, "Could not update post.") };
+  if (!updated?.length) return { error: "Could not update post. Please try again." };
 
   return {
-    error: error ? sanitizeError(error, "Could not update post.") : null,
+    error: null,
     // Return the server-sanitized HTML so the client renders the trusted
     // version optimistically without re-running sanitize-html in the browser (C4).
-    content: error ? undefined : sanitized,
+    content: sanitized,
   };
 }
 
@@ -465,4 +469,3 @@ export async function pinPostAction(
     });
   return { error: error ? sanitizeError(error, "Could not pin post.") : null };
 }
-

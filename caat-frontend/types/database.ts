@@ -1698,8 +1698,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      can_view_group_members: {
-        Args: { p_group_id: string; p_user_id: string }
+      approve_group_join_request: {
+        Args: { p_group_id: string; p_requester_user_id: string }
+        Returns: boolean
+      }
+      can_access_community_group: {
+        Args: { p_group_id: string }
+        Returns: boolean
+      }
+      can_read_community_comment: {
+        Args: { p_comment_id: string }
+        Returns: boolean
+      }
+      can_read_community_post: {
+        Args: { p_post_id: string }
+        Returns: boolean
+      }
+      can_request_community_group: {
+        Args: { p_group_id: string }
+        Returns: boolean
+      }
+      can_write_community_group: {
+        Args: { p_group_id: string }
         Returns: boolean
       }
       delete_own_account: {
@@ -1736,6 +1756,10 @@ export type Database = {
           is_verified: boolean
           last_name: string
         }[]
+      }
+      reject_group_join_request: {
+        Args: { p_group_id: string; p_requester_user_id: string }
+        Returns: boolean
       }
       scholarship_universities: { Args: never; Returns: string[] }
       search_scholarships: {

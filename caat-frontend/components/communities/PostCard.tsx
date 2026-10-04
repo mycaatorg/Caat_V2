@@ -71,7 +71,7 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
   const [editContent, setEditContent] = useState(post.content);
   const [displayContent, setDisplayContent] = useState(post.content);
   const [displayEditedAt, setDisplayEditedAt] = useState(post.edited_at);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
   // Like / save optimistic state
   const [optimistic, setOptimistic] = useOptimistic(
@@ -157,22 +157,36 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
   }
 
   function handleDelete() {
+    if (isPending) return;
     startTransition(async () => {
-      const { error } = await deletePostAction(post.id);
-      if (error) { toast.error(error); return; }
+      let result: Awaited<ReturnType<typeof deletePostAction>>;
+      try {
+        result = await deletePostAction(post.id);
+      } catch {
+        toast.error("Could not delete post. Please try again.");
+        return;
+      }
+      if (result.error) { toast.error(result.error); return; }
       toast.success("Post deleted.");
       onPostDeleted?.(post.id);
     });
   }
 
   function handleEditSave() {
+    if (isPending) return;
     if (!htmlToText(editContent).trim() || editContent === displayContent) { setIsEditing(false); return; }
     startTransition(async () => {
-      const { error, content: sanitized } = await updatePostAction(post.id, editContent);
-      if (error) { toast.error(error); return; }
+      let result: Awaited<ReturnType<typeof updatePostAction>>;
+      try {
+        result = await updatePostAction(post.id, editContent);
+      } catch {
+        toast.error("Could not update post. Please try again.");
+        return;
+      }
+      if (result.error) { toast.error(result.error); return; }
       // Render the server-sanitized HTML (postBodyHtml no longer sanitizes on
       // the client), falling back to the editor output if none came back.
-      setDisplayContent(sanitized ?? editContent);
+      setDisplayContent(result.content ?? editContent);
       setDisplayEditedAt(new Date().toISOString());
       setIsEditing(false);
       toast.success("Post updated.");
@@ -257,7 +271,7 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
                       <BadgeCheck className="size-4" />
                       {isPinned ? "Unpin from profile" : "Pin to profile"}
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="text-[#9a1a27] dark:text-[#e06b78] focus:text-[#9a1a27] gap-2" onClick={handleDelete}>
+                    <DropdownMenuItem disabled={isPending} className="text-[#9a1a27] dark:text-[#e06b78] focus:text-[#9a1a27] gap-2" onClick={handleDelete}>
                       <Trash2 className="size-4" />
                       Delete post
                     </DropdownMenuItem>
@@ -296,8 +310,8 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
           <div className="space-y-2">
             <RichTextEditor variant="minimal" content={editContent} onChange={setEditContent} />
             <div className="flex gap-2 justify-end">
-              <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)}>Cancel</Button>
-              <Button size="sm" onClick={handleEditSave} disabled={!htmlToText(editContent).trim() || editContent === displayContent}>Save</Button>
+              <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} disabled={isPending}>Cancel</Button>
+              <Button size="sm" onClick={handleEditSave} disabled={isPending || !htmlToText(editContent).trim() || editContent === displayContent}>Save</Button>
             </div>
           </div>
         ) : (

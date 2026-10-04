@@ -55,46 +55,65 @@ export function CommentItem({ comment, currentUser, isReply = false, onReplyAdde
   }
 
   function submitReply() {
-    if (!replyText.trim()) return;
+    if (isPending || !replyText.trim()) return;
     startTransition(async () => {
-      const { comment: newReply, error } = await addCommentAction(
-        comment.post_id,
-        replyText,
-        comment.id
-      );
-      if (error || !newReply) {
-        toast.error(error ?? "Failed to post reply.");
+      let result: Awaited<ReturnType<typeof addCommentAction>>;
+      try {
+        result = await addCommentAction(
+          comment.post_id,
+          replyText,
+          comment.id
+        );
+      } catch {
+        toast.error("Could not post reply. Please try again.");
         return;
       }
-      onReplyAdded(comment.id, newReply);
+      if (result.error || !result.comment) {
+        toast.error(result.error ?? "Failed to post reply.");
+        return;
+      }
       setReplyText("");
       setIsReplying(false);
+      onReplyAdded(comment.id, result.comment);
     });
   }
 
   function submitEdit() {
     const text = editText.trim();
-    if (!text) return;
+    if (isPending || !text) return;
     startTransition(async () => {
-      const { error, edited_at } = await updateCommentAction(comment.id, text);
-      if (error || !edited_at) {
-        toast.error(error ?? "Could not edit comment.");
+      let result: Awaited<ReturnType<typeof updateCommentAction>>;
+      try {
+        result = await updateCommentAction(comment.id, text);
+      } catch {
+        toast.error("Could not update comment. Please try again.");
         return;
       }
-      onEdited(comment.id, text, edited_at);
+      if (result.error || !result.edited_at) {
+        toast.error(result.error ?? "Could not edit comment.");
+        return;
+      }
       setIsEditing(false);
+      onEdited(comment.id, text, result.edited_at);
     });
   }
 
   function confirmDelete() {
+    if (isPending) return;
     startTransition(async () => {
-      const { mode, error } = await deleteCommentAction(comment.id);
-      if (error || !mode) {
-        toast.error(error ?? "Could not delete comment.");
+      let result: Awaited<ReturnType<typeof deleteCommentAction>>;
+      try {
+        result = await deleteCommentAction(comment.id);
+      } catch {
+        toast.error("Could not delete comment. Please try again.");
+        return;
+      }
+      if (result.error || !result.mode) {
+        toast.error(result.error ?? "Could not delete comment.");
         return;
       }
       setConfirmingDelete(false);
-      onDeleted(comment.id, mode);
+      onDeleted(comment.id, result.mode);
     });
   }
 
@@ -168,7 +187,7 @@ export function CommentItem({ comment, currentUser, isReply = false, onReplyAdde
                     <span className="ml-2 text-[11px] text-muted-foreground">
                       Delete?
                       <button className="ml-1 text-[#9a1a27] dark:text-[#e06b78] hover:underline" onClick={confirmDelete} disabled={isPending}>Yes</button>
-                      <button className="ml-1 hover:underline" onClick={() => setConfirmingDelete(false)}>No</button>
+                      <button className="ml-1 hover:underline" onClick={() => setConfirmingDelete(false)} disabled={isPending}>No</button>
                     </span>
                   ) : (
                     <button className="text-[11px] text-muted-foreground hover:text-[#9a1a27] ml-2 transition-colors" onClick={() => setConfirmingDelete(true)}>

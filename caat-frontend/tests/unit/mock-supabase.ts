@@ -21,6 +21,7 @@ export interface QueryResult<T = unknown> {
 export interface QueryContext {
   table: string;
   op: "select" | "insert" | "update" | "delete" | "upsert";
+  calls: { method: string; args: unknown[] }[];
 }
 
 type Resolver = (ctx: QueryContext) => QueryResult;
@@ -33,28 +34,37 @@ export function createMockSupabase(opts: {
   claimsSub?: string | null;
 }) {
   const resolver: Resolver = opts.resolver ?? (() => ({ data: null, error: null }));
+  const queries: QueryContext[] = [];
 
   const from = vi.fn((table: string) => {
-    const ctx: QueryContext = { table, op: "select" };
+    const ctx: QueryContext = { table, op: "select", calls: [] };
+    queries.push(ctx);
     const builder: Record<string, unknown> = {};
     const passthrough =
-      (op?: QueryContext["op"]) =>
-      () => {
+      (method: string, op?: QueryContext["op"]) =>
+      (...args: unknown[]) => {
+        ctx.calls.push({ method, args });
         if (op) ctx.op = op;
         return builder;
       };
     // Chaining/filtering methods return the builder unchanged.
-    for (const m of ["select", "eq", "in", "order", "ilike", "or", "limit", "range", "not", "gte", "lte"]) {
-      builder[m] = passthrough();
+    for (const m of ["select", "eq", "in", "order", "ilike", "or", "limit", "range", "not", "gte", "lte", "is"]) {
+      builder[m] = passthrough(m);
     }
     // Mutating verbs stamp the op so the resolver can branch on read vs write.
-    builder.insert = passthrough("insert");
-    builder.update = passthrough("update");
-    builder.delete = passthrough("delete");
-    builder.upsert = passthrough("upsert");
+    builder.insert = passthrough("insert", "insert");
+    builder.update = passthrough("update", "update");
+    builder.delete = passthrough("delete", "delete");
+    builder.upsert = passthrough("upsert", "upsert");
     // Terminal resolvers.
-    builder.single = () => Promise.resolve(resolver(ctx));
-    builder.maybeSingle = () => Promise.resolve(resolver(ctx));
+    builder.single = () => {
+      ctx.calls.push({ method: "single", args: [] });
+      return Promise.resolve(resolver(ctx));
+    };
+    builder.maybeSingle = () => {
+      ctx.calls.push({ method: "maybeSingle", args: [] });
+      return Promise.resolve(resolver(ctx));
+    };
     builder.then = (onFulfilled: (v: QueryResult) => unknown, onRejected?: (e: unknown) => unknown) =>
       Promise.resolve(resolver(ctx)).then(onFulfilled, onRejected);
     return builder;
@@ -74,5 +84,5 @@ export function createMockSupabase(opts: {
     ),
   };
 
-  return { from, rpc, auth };
+  return { from, rpc, auth, queries };
 }
