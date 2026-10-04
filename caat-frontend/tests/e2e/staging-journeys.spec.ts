@@ -141,13 +141,12 @@ test("resume section content is saved and restored after reloading the builder",
   await page.goto("/resume-builder");
   const resumeBreadcrumb = page.getByRole("main").getByRole("navigation", { name: "breadcrumb" });
   await expect(resumeBreadcrumb.getByText("Resume Builder", { exact: true })).toBeVisible({ timeout: 15_000 });
+  const saveButton = page.getByRole("button", { name: "Save", exact: true });
+  await expect(saveButton).toBeEnabled({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "Education", exact: true }).first().click();
   const editor = page.locator(".ProseMirror").first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
-  await editor.fill(content);
-  const saveButton = page.getByRole("button", { name: "Save", exact: true });
-  await expect(saveButton).toBeEnabled();
   const persistedSectionWrite = page.waitForResponse((response) => {
     const request = response.request();
     return request.method() === "POST"
@@ -155,6 +154,7 @@ test("resume section content is saved and restored after reloading the builder",
       && request.postData()?.includes(content) === true
       && response.ok();
   }, { timeout: 15_000 });
+  await editor.fill(content);
   await saveButton.click();
   await persistedSectionWrite;
   await expect(saveButton).toBeEnabled();
