@@ -11,6 +11,10 @@ on:
       - develop
       - main
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   discover-projects:
     name: Discover JavaScript/TypeScript projects
@@ -42,6 +46,7 @@ jobs:
     name: Lint
     needs: discover-projects
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Blocking (G5): the pre-existing "unused eslint-disable" backlog was cleared
     # in Phase 6, so lint failures now fail the PR instead of just showing red.
     strategy:
@@ -91,15 +96,7 @@ jobs:
     name: Project CI
     needs: discover-projects
     runs-on: ubuntu-latest
-    env:
-      # Supabase environment variables required at build time. Store these as
-      # GitHub Actions secrets in your repository settings:
-      #   - NEXT_PUBLIC_SUPABASE_URL
-      #   - NEXT_PUBLIC_SUPABASE_ANON_KEY
-      #
-      # They are injected here so that Next.js can read them during `next build`.
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+    timeout-minutes: 20
     strategy:
       # Allow one project to continue even if another fails, while still failing
       # the overall workflow at the end if any project is red.
@@ -152,7 +149,7 @@ jobs:
         if: ${{ matrix.project.scripts.typecheck }}
         run: npm run typecheck
 
-      - name: Unit tests with scoped coverage
+      - name: Unit tests with whole-source coverage
         # Run the suite once, with coverage when this project supports it.
         if: ${{ matrix.project.scripts['test:coverage'] }}
         run: npm run test:coverage
@@ -162,11 +159,11 @@ jobs:
         if: ${{ !matrix.project.scripts['test:coverage'] && matrix.project.scripts.test }}
         run: npm test
 
-      - name: Upload scoped coverage report
+      - name: Upload whole-source coverage report
         if: ${{ always() && matrix.project.scripts['test:coverage'] }}
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report-${{ strategy.job-index }}
+          name: whole-source-coverage-${{ strategy.job-index }}
           path: ${{ matrix.project.path }}/coverage
           if-no-files-found: error
           retention-days: 7
@@ -177,39 +174,28 @@ jobs:
 
       - name: Build
         # Build only when a "build" script exists (e.g. Next.js "next build").
-        # This will run `next build` with Supabase environment variables provided
-        # via GitHub Actions secrets configured in the repository settings.
-        if: ${{ matrix.project.scripts.build }}
+        # The CAAT browser job owns the single production build, using its
+        # disposable loopback Supabase instance; skip a duplicate frontend build.
+        if: ${{ matrix.project.scripts.build && matrix.project.path != 'caat-frontend' }}
         run: npm run build
 
   e2e-smoke:
-    name: E2E runtime smoke (production build)
+    name: E2E browser journeys (isolated Supabase)
     needs: discover-projects
     runs-on: ubuntu-latest
-    # Runs on every PR into develop/main (G1). It is read-only, so it is safe on
-    # the shared Supabase. It needs a working login: set the repo SECRETS
-    # NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, E2E_TEST_EMAIL,
-    # E2E_TEST_PASSWORD (Settings > Secrets and variables > Actions). The auth
-    # setup FAILS LOUDLY (does not silently skip) if the login does not succeed,
-    # so a missing/wrong credential surfaces as a red check rather than a false
-    # green. The E2E_TEST_* fallbacks below let a fork run it against a locally
-    # seeded account; in this repo the CI secrets should be set.
-    # Read-only: loads every critical authenticated route against a real
-    # production build and asserts no 5xx. This is the cheap check that catches
-    # "build passed but the deployed app 500s" regressions (e.g. the
-    # /communities serverless crash). It creates no data, so it is safe to run
-    # against the shared Supabase.
+    timeout-minutes: 30
+    # Every browser test, including authenticated writes, uses a disposable
+    # loopback-only Supabase stack built from synthetic schema/data. No
+    # production database credentials enter this job.
     defaults:
       run:
         working-directory: caat-frontend
     env:
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      # Fall back to the seeded test account if the secrets are unset. If neither
-      # the secret nor the fallback can log in, auth.setup.ts fails the job.
-      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
-      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
-      PLAYWRIGHT_BASE_URL: http://localhost:3000
+      CAAT_ISOLATED_E2E: '1'
+      E2E_TEST_EMAIL: e2e.student@caat.local.test
+      # Ephemeral, local-only account value for this disposable runner stack.
+      E2E_TEST_PASSWORD: Caat-ci-e2e-local-only-2026
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3100
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -222,6 +208,11 @@ jobs:
           cache-dependency-path: |
             caat-frontend/package-lock.json
             caat-frontend/pnpm-lock.yaml
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 2.90.0
 
       - name: Install dependencies
         run: |
@@ -237,53 +228,40 @@ jobs:
       - name: Install Playwright (chromium only)
         run: npx playwright install --with-deps chromium
 
-      - name: Runtime smoke (Playwright builds + starts the prod server)
-        run: npm run test:e2e:smoke
+      - name: Verify isolated bootstrap safety contracts
+        working-directory: .
+        run: node --test .github/scripts/*.test.js caat-frontend/tests/staging/safety.test.mjs
+
+      - name: Ensure PostgreSQL client for isolated bootstrap
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql --version
+
+      - name: Start isolated local Supabase
+        working-directory: .
+        run: |
+          mkdir -p "$RUNNER_TEMP/caat-supabase/supabase"
+          cp caat-frontend/tests/staging/config.toml "$RUNNER_TEMP/caat-supabase/supabase/config.toml"
+          docker network create --driver bridge --opt com.docker.network.bridge.host_binding_ipv4=127.0.0.1 caat-supabase
+          supabase --network-id caat-supabase --workdir "$RUNNER_TEMP/caat-supabase" start --exclude realtime,studio,imgproxy,edge-runtime,logflare,vector,supavisor,postgres-meta
+          supabase --workdir "$RUNNER_TEMP/caat-supabase" status --output env > "$RUNNER_TEMP/caat-supabase-status.env"
+          node .github/scripts/bootstrap-local-supabase.mjs "$RUNNER_TEMP/caat-supabase-status.env"
+
+      - name: Production browser journeys (one build + server)
+        run: npm run test:e2e:ci
+
+      - name: Publish write-journey coverage boundary
+        if: always()
+        working-directory: .
+        run: node .github/scripts/report-write-e2e-boundary.js
 
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: caat-frontend/playwright-report
-          retention-days: 7
-
-  e2e-public:
-    name: E2E public pages (production build)
-    runs-on: ubuntu-latest
-    # This suite has no auth setup dependency and submits no forms. It reads
-    # only public catalog data; the redirect assertion does not sign in.
-    defaults:
-      run:
-        working-directory: caat-frontend
-    env:
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      PLAYWRIGHT_BASE_URL: http://localhost:3000
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: caat-frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright (chromium only)
-        run: npx playwright install --with-deps chromium
-
-      - name: Public browser smoke (Playwright builds + starts the prod server)
-        run: npm run test:e2e:public
-
-      - name: Upload Playwright report on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-public-report
           path: caat-frontend/playwright-report
           retention-days: 7

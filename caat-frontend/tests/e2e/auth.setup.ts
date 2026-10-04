@@ -5,16 +5,18 @@
  */
 import { test as setup, expect } from "@playwright/test";
 import path from "path";
+import { assertIsolatedE2EEnvironment } from "../../lib/isolated-e2e-csp";
 
 const AUTH_FILE = path.join(__dirname, ".auth/user.json");
 
-// Use `||` (not `??`) so an empty-string env falls back to the seeded account.
-// GitHub Actions substitutes an unset secret as "" (not undefined), and `??`
-// would keep that empty string, filling the login form blank and failing.
-const TEST_EMAIL = process.env.E2E_TEST_EMAIL || "test@gmail.com";
-const TEST_PASSWORD = process.env.E2E_TEST_PASSWORD || "testtest123";
-
 setup("authenticate", async ({ page }) => {
+  assertIsolatedE2EEnvironment(process.env);
+  const TEST_EMAIL = process.env.E2E_TEST_EMAIL;
+  const TEST_PASSWORD = process.env.E2E_TEST_PASSWORD;
+  if (!TEST_EMAIL || !TEST_PASSWORD) {
+    throw new Error("E2E_TEST_EMAIL and E2E_TEST_PASSWORD are required; E2E never falls back to a shared account.");
+  }
+
   await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill(TEST_EMAIL);
   await page.getByLabel("Password", { exact: true }).fill(TEST_PASSWORD);

@@ -81,14 +81,15 @@ PRD_*.txt
 *_PLAN.md
 *_PRD.md
 
-# Database migrations — schema details, RLS policies, table structure should
-# stay private in the public repo. The team applies these manually against
-# the Supabase project. Files remain on disk for local reference.
+# Keep ad-hoc SQL dumps and production migration exports out of this public
+# repository. Staging uses audited schema-only metadata (no user records,
+# project credentials, or endpoints) and the synthetic fixture exceptions below.
 supabase/migrations/
 *.sql
+!caat-frontend/tests/staging/seed.sql
+!caat-frontend/tests/staging/seed-user-fixtures.sql
 
 # Exception (Phase 1 E9): the RLS/policy migrations under the frontend app ARE
-# tracked in-repo so the security posture is versioned and reviewable. This is
-# a private repo, so the "stay private" rationale above does not apply here.
+# tracked in-repo so the security posture is versioned and reviewable.
 !caat-frontend/supabase/migrations/
 !caat-frontend/supabase/migrations/*.sql

@@ -12,22 +12,20 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text-summary", "text", "json-summary", "lcov"],
-      // Keep the report scoped to modules with explicit unit coverage: core
-      // helpers plus the feature shells/components exercised by unit tests.
-      // This is reporting only; avoid a whole-app percentage claim or a
-      // threshold that the selected test scope has not established.
-      // Globs avoid the literal "(main)" route-group parens (glob-special).
+      // Include untested production code: these are whole-source UNIT coverage
+      // numbers. Browser route/journey coverage is reported separately.
       include: [
-        "components/essays/EssaysShell.tsx",
-        "components/profile/PersonalInfoCard.tsx",
-        "components/communities/GroupJoinButton.tsx",
-        "lib/scholarship-tracking.ts",
-        "lib/scholarship-filters.ts",
-        "lib/local-date.ts",
-        "lib/profile-match.ts",
-        "app/**/applications/api.ts",
-        "app/**/communities/actions/_shared.ts",
-        "app/**/communities/actions/profiles.ts",
+        "app/**/*.{ts,tsx}",
+        "components/**/*.{ts,tsx}",
+        "lib/**/*.{ts,tsx}",
+        "hooks/**/*.{ts,tsx}",
+        "extensions/**/*.{ts,tsx}",
+        "constants/**/*.{ts,tsx}",
+        "middleware.ts",
+      ],
+      exclude: [
+        "**/*.d.ts", "**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}",
+        "**/__tests__/**", "**/tests/**", "**/node_modules/**",
       ],
     },
   },

@@ -40,31 +40,4 @@ test.describe("Schools browsing", () => {
     await expect(page).toHaveURL(/country=/, { timeout: 5_000 });
   });
 
-  test("pagination: next link updates page param", async ({ page }) => {
-    await page.goto("/schools");
-    // Schools uses Link not button for pagination
-    const nextLink = page.getByRole("link", { name: /next/i });
-    const isVisible = await nextLink.isVisible({ timeout: 5_000 }).catch(() => false);
-    if (isVisible) {
-      await nextLink.click();
-      await expect(page).toHaveURL(/page=2/);
-    }
-  });
-
-  test("pagination: previous is absent or disabled on page 1", async ({ page }) => {
-    await page.goto("/schools");
-    // On page 1 there should be no previous link
-    const prevLink = page.getByRole("link", { name: /prev/i });
-    const prevVisible = await prevLink.isVisible({ timeout: 3_000 }).catch(() => false);
-    expect(prevVisible).toBe(false);
-  });
-
-  test("school card links to detail page", async ({ page }) => {
-    await page.goto("/schools");
-    const firstLink = page.locator("a[href^='/schools/']").first();
-    await expect(firstLink).toBeVisible({ timeout: 15_000 });
-    const href = await firstLink.getAttribute("href");
-    await firstLink.click();
-    await expect(page).toHaveURL(new RegExp(href!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  });
 });

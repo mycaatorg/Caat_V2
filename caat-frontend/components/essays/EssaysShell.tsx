@@ -66,6 +66,7 @@ export default function EssaysShell({
   const [creatingCustomPrompt, setCreatingCustomPrompt] = useState(false);
   const [newCustomTitle, setNewCustomTitle] = useState("");
   const [savingCustomPrompt, setSavingCustomPrompt] = useState(false);
+  const [deletingCustomPromptId, setDeletingCustomPromptId] = useState<string | null>(null);
   const [renamingCustomId, setRenamingCustomId] = useState<string | null>(null);
   const [renameCustomValue, setRenameCustomValue] = useState("");
   const [confirmDeleteCustomId, setConfirmDeleteCustomId] = useState<string | null>(null);
@@ -495,20 +496,35 @@ export default function EssaysShell({
 
   const handleDeleteCustomPrompt = useCallback(
     async (id: string) => {
+      if (transitionLockRef.current) return;
+      const deletingActivePrompt = selectedPromptId === id;
+      transitionLockRef.current = true;
       setConfirmDeleteCustomId(null);
       try {
+        if (deletingActivePrompt) {
+          setDeletingCustomPromptId(id);
+          try {
+            await flushPending();
+          } catch {
+            toast.error("Could not save this essay before deleting it. Please retry.");
+            return;
+          }
+        }
         await deleteCustomPrompt(id);
         // Delete all drafts for this custom prompt from local state
         setCustomPrompts((prev) => prev.filter((p) => p.id !== id));
-        if (selectedPromptId === id) {
+        if (deletingActivePrompt) {
           const next = prompts?.[0] ?? null;
           setSelectedPromptId(next?.id ?? null);
         }
       } catch {
         toast.error("Failed to delete essay. Please try again.");
+      } finally {
+        if (deletingActivePrompt) setDeletingCustomPromptId(null);
+        transitionLockRef.current = false;
       }
     },
-    [selectedPromptId, prompts]
+    [selectedPromptId, prompts, flushPending]
   );
 
   const lastSavedLabel =
@@ -716,7 +732,7 @@ export default function EssaysShell({
               placeholder="Start writing your essay here."
               value={essayContent}
               onChange={(e) => setEssayContent(e.target.value)}
-              disabled={draftsLoading || creatingDraft || savingCustomPrompt}
+              disabled={draftsLoading || creatingDraft || savingCustomPrompt || deletingCustomPromptId === selectedPromptId}
               className="min-h-70 flex-1 resize-y font-mono text-sm"
             />
             <div className="flex items-center justify-end gap-3 mt-1.5 text-xs text-muted-foreground">

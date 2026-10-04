@@ -1,0 +1,41 @@
+project_id = "caat-test"
+[api]
+enabled = true
+port = 55431
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+[db]
+port = 55432
+shadow_port = 55430
+major_version = 17
+health_timeout = "3m"
+[db.pooler]
+enabled = false
+[db.migrations]
+enabled = false
+[db.seed]
+enabled = false
+[realtime]
+enabled = true
+[studio]
+enabled = false
+[inbucket]
+enabled = true
+port = 55434
+[storage]
+enabled = true
+file_size_limit = "10MiB"
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3100"
+additional_redirect_urls = ["http://localhost:3100"]
+jwt_expiry = 3600
+enable_signup = true
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+[edge_runtime]
+enabled = false
+[analytics]
+enabled = false

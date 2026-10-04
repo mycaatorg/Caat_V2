@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   updateDraft: vi.fn(),
   createDraft: vi.fn(),
   createCustomPrompt: vi.fn(),
+  fetchCustomPrompts: vi.fn(),
+  deleteCustomPrompt: vi.fn(),
   getUser: vi.fn(),
   onAuthStateChange: vi.fn(),
 }));
@@ -23,9 +25,9 @@ vi.mock("@/components/essays/api", () => ({
   createDraft: mocks.createDraft,
   deleteDraft: vi.fn(),
   setCurrentDraft: vi.fn().mockResolvedValue(undefined),
-  fetchCustomPrompts: vi.fn().mockResolvedValue([]),
+  fetchCustomPrompts: mocks.fetchCustomPrompts,
   createCustomPrompt: mocks.createCustomPrompt,
-  deleteCustomPrompt: vi.fn(),
+  deleteCustomPrompt: mocks.deleteCustomPrompt,
   renameCustomPrompt: vi.fn(),
 }));
 
@@ -178,6 +180,7 @@ describe("essay draft autosave coordination", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createDraft.mockResolvedValue(draft("draft-new", "Draft 2", ""));
+    mocks.fetchCustomPrompts.mockResolvedValue([]);
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   });
   afterEach(() => {
@@ -572,6 +575,50 @@ describe("essay draft autosave coordination", () => {
     const cleanBeforeUnload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(cleanBeforeUnload);
     expect(cleanBeforeUnload.defaultPrevented).toBe(false);
+    await unmountEditor(root);
+  });
+
+  it("waits for the active custom draft save before deleting its prompt", async () => {
+    const customPrompt = {
+      id: "custom-prompt-1",
+      user_id: "user-1",
+      title: "Custom essay",
+      created_at: "2026-01-01T00:00:00.000Z",
+    };
+    const customDraft = {
+      ...draft("custom-draft-1", "Custom draft", "Original custom response", true),
+      prompt_id: customPrompt.id,
+      prompt_slug: customPrompt.id,
+    };
+    const persistence = controlledPersistence([customDraft]);
+    mocks.fetchCustomPrompts.mockResolvedValue([customPrompt]);
+    mocks.deleteCustomPrompt.mockResolvedValue(undefined);
+    const root = await mountEditor([customDraft]);
+
+    await act(async () => { buttonNamed("Custom essay").click(); });
+    await settleEffects();
+    editEssay(editorElement(), "Latest custom response");
+    await act(async () => { buttonNamed("Save").click(); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(1);
+
+    const promptRow = [...document.querySelectorAll("div.group")].find((row) => row.textContent?.includes("Custom essay"));
+    const deleteToggle = promptRow?.querySelector<HTMLButtonElement>('button[aria-label="Delete"]');
+    if (!promptRow || !deleteToggle) throw new Error("Custom essay delete control missing");
+    await act(async () => deleteToggle.click());
+    const confirmDelete = [...promptRow.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Delete");
+    if (!confirmDelete) throw new Error("Custom essay delete confirmation missing");
+    await act(async () => confirmDelete.click());
+    await settleEffects();
+
+    expect(mocks.deleteCustomPrompt).not.toHaveBeenCalled();
+    expect(editorElement().disabled).toBe(true);
+    expect(persistence.writes).toHaveLength(1);
+    await act(async () => { persistence.writes[0].resolve(); await Promise.resolve(); });
+    await settleEffects();
+
+    expect(persistence.persisted.get("custom-draft-1")).toBe("Latest custom response");
+    expect(mocks.deleteCustomPrompt).toHaveBeenCalledWith("custom-prompt-1");
     await unmountEditor(root);
   });
 });
