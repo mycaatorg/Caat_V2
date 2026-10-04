@@ -12,12 +12,15 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB — must mirror Supabase bucket
 async function validateFileMagicBytes(file: File): Promise<boolean> {
   const buffer = await file.slice(0, 8).arrayBuffer();
   const bytes = new Uint8Array(buffer);
-  // PDF: %PDF (25 50 44 46)
-  if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) return true;
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return true;
-  // JPEG: FF D8 FF
-  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return true;
+  // Require the content signature to agree with the MIME type that will be
+  // persisted and passed to storage; accepting any allowed signature would
+  // let a PNG be stored with an application/pdf content type, for example.
+  if (file.type === "application/pdf")
+    return bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
+  if (file.type === "image/png")
+    return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47;
+  if (file.type === "image/jpeg")
+    return bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF;
   return false;
 }
 

@@ -40,19 +40,16 @@ test.describe("Navigation", () => {
   test("theme toggle switches theme", async ({ page }) => {
     await page.goto("/dashboard");
     // Wait for nav-user to load (rendered asynchronously after supabase.auth.getUser)
-    const navUserBtn = page.locator("[data-sidebar='menu-button']").filter({ hasText: /test@gmail\.com/ });
+    const testEmail = process.env.E2E_TEST_EMAIL;
+    expect(testEmail, "isolated browser job must configure E2E_TEST_EMAIL").toBeTruthy();
+    const navUserBtn = page.locator("[data-sidebar='menu-button']").filter({ hasText: testEmail! });
     await expect(navUserBtn).toBeVisible({ timeout: 10_000 });
     await navUserBtn.click();
-    // Theme toggle item — text is "Light Mode" or "Dark Mode" depending on current theme
-    const themeItem = page.getByText(/light mode|dark mode/i);
+    const isDark = await page.locator("html").evaluate((html) => html.classList.contains("dark"));
+    const targetTheme = isDark ? "Light" : "Dark";
+    const themeItem = page.getByRole("menuitem", { name: targetTheme, exact: true });
     await expect(themeItem).toBeVisible({ timeout: 5_000 });
-    const currentThemeText = await themeItem.textContent();
     await themeItem.click();
-    // Dropdown closes after click; re-open to verify theme toggled
-    await navUserBtn.click();
-    const newThemeText = await page.getByText(/light mode|dark mode/i).textContent().catch(() => null);
-    if (newThemeText && currentThemeText) {
-      expect(newThemeText).not.toBe(currentThemeText);
-    }
+    await expect.poll(() => page.locator("html").evaluate((html) => html.classList.contains("dark"))).toBe(!isDark);
   });
 });

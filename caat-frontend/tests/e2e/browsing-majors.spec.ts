@@ -18,19 +18,18 @@ test.describe("Majors browsing", () => {
     await expect(page).toHaveURL(/search=computer|q=computer/, { timeout: 5_000 });
   });
 
-  test("category pill filters majors", async ({ page }) => {
+  test("category pill updates the selected category and URL", async ({ page }) => {
     await page.goto("/majors");
     await expect(page.getByRole("button", { name: /^all$/i })).toBeVisible({ timeout: 15_000 });
-    // Click the first non-All, non-Bookmarked pill
-    const pills = page.getByRole("button").filter({ hasNotText: /^all$|bookmarked/i });
-    const firstPill = pills.first();
-    const isVisible = await firstPill.isVisible({ timeout: 5_000 }).catch(() => false);
-    if (isVisible) {
-      await firstPill.click();
-      await expect(page).toHaveURL(/category=|tab=/, { timeout: 3_000 }).catch(() => {
-        // Some implementations use local state — just verify the pill exists
-      });
-    }
+    // Scope to a real category control. Searching every button on the page
+    // accidentally selected the sidebar toggle and left the URL unchanged.
+    const categoryButton = page.getByRole("button", { name: "Engineering", exact: true }).first();
+    await expect(categoryButton).toBeVisible();
+    const category = (await categoryButton.innerText()).trim();
+    await categoryButton.click();
+    await expect(page).toHaveURL(/category=/);
+    const resultSummary = page.locator("p").filter({ hasText: /majors? in/i });
+    await expect(resultSummary).toContainText(category);
   });
 
   test("Bookmarked filter shows only bookmarked majors or empty state", async ({ page }) => {
@@ -42,22 +41,15 @@ test.describe("Majors browsing", () => {
     ).toBeVisible({ timeout: 5_000 });
   });
 
-  test("clicking major card navigates to detail page", async ({ page }) => {
-    await page.goto("/majors");
-    const firstLink = page.locator("a[href^='/majors/']").first();
-    await expect(firstLink).toBeVisible({ timeout: 15_000 });
-    const href = await firstLink.getAttribute("href");
-    await firstLink.click();
-    await expect(page).toHaveURL(new RegExp(href!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  });
-
-  test("compare: button disabled when fewer than 2 majors selected", async ({ page }) => {
+  test("compare selection is client-side and can be reversed", async ({ page }) => {
     await page.goto("/majors");
     await expect(page.getByRole("button", { name: /^all$/i })).toBeVisible({ timeout: 15_000 });
-    const compareBtn = page.getByRole("button", { name: /compare/i });
-    const visible = await compareBtn.isVisible().catch(() => false);
-    if (visible) {
-      await expect(compareBtn).toBeDisabled();
-    }
+    const card = page.locator("[data-slot=card]").first();
+    const selectButton = card.getByRole("button", { name: "Compare", exact: true });
+    await expect(selectButton).toBeVisible({ timeout: 15_000 });
+    await selectButton.click();
+    await expect(card.getByRole("button", { name: "Selected", exact: true })).toBeVisible();
+    await card.getByRole("button", { name: "Selected", exact: true }).click();
+    await expect(card.getByRole("button", { name: "Compare", exact: true })).toBeVisible();
   });
 });

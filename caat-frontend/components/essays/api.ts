@@ -101,11 +101,12 @@ export async function createDraft(args: {
   if (!user) throw new Error("Not signed in");
 
   // Unset current on all other drafts for this prompt so unique index holds
-  await supabase
+  const { error: resetError } = await supabase
     .from("essay_drafts")
     .update({ is_current: false })
     .eq("user_id", user.id)
     .eq("prompt_id", args.promptId);
+  if (resetError) throw resetError;
 
   const { data, error } = await supabase
     .from("essay_drafts")
@@ -139,11 +140,12 @@ export async function setCurrentDraft(draftId: string, promptId: string): Promis
   if (!user) throw new Error("Not signed in");
 
   // Unset all drafts for this prompt first
-  await supabase
+  const { error: resetError } = await supabase
     .from("essay_drafts")
     .update({ is_current: false })
     .eq("user_id", user.id)
     .eq("prompt_id", promptId);
+  if (resetError) throw resetError;
 
   // Then mark the selected one
   const { error } = await supabase

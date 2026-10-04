@@ -62,6 +62,7 @@ function discoverProjects(startDir) {
             lint: Boolean(scripts.lint),
             test: Boolean(scripts.test),
             'test:unit': Boolean(scripts['test:unit']),
+            'test:coverage': Boolean(scripts['test:coverage']),
             typecheck: Boolean(scripts.typecheck),
             build: Boolean(scripts.build),
           },
@@ -82,4 +83,3 @@ const matrix = { include: projects };
 // This JSON is consumed by the workflow via fromJSON(). Output is minified so
 // it can be safely passed as a single-line GitHub Actions output.
 console.log(JSON.stringify(matrix));
-

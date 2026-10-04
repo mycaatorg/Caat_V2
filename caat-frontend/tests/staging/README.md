@@ -1,0 +1,41 @@
+# Local full-stack staging fixtures
+
+This directory contains a schema snapshot and deterministic synthetic fixtures for disposable local Supabase only. The snapshot was generated from the production database's **schema metadata only** (42 public tables, 335 columns, constraints, indexes, RLS/policies, functions/triggers, sequences, extensions, buckets, and table/sequence ACLs). No user rows, credentials, secrets, production storage objects, or external data are included. Provenance date: 2026-10-04. Schema fingerprint/source reference: parent task's `/tmp/caat-schema-only.json` and `/tmp/caat-schema-grants.json`.
+
+Before keeping a function or trigger definition, the definitions were checked for URLs, outbound network/email/webhook/cron calls, and embedded credentials. The 12 functions and 10 triggers are SQL/PLpgSQL data operations (updated-at maintenance, community parent/child cleanup, moderation, and local search/profile helpers). `delete_own_account` deletes application rows and the matching `auth.users` row; it is included to reproduce schema behavior but is never called by bootstrap or seeding. There are no custom `auth.users` triggers, so the user script explicitly creates `profiles` rows.
+
+## Start on a disposable local Supabase instance
+
+The checked-in config uses project ID `caat-test`, selects API/database/mail ports 55431/55432/55434, disables Studio and external edge/analytics/image/pooler services, and leaves migrations/seeds disabled. **The Docker network below supplies the loopback binding; the TOML port settings alone do not.** Use Supabase CLI 2.90.0, a disposable Docker context, Node 20+, and `psql`. From `caat-frontend`:
+
+```sh
+CAAT_TEST_STACK=$(mktemp -d)
+mkdir -p "$CAAT_TEST_STACK/supabase"
+cp tests/staging/config.toml "$CAAT_TEST_STACK/supabase/config.toml"
+docker network create --driver bridge --opt com.docker.network.bridge.host_binding_ipv4=127.0.0.1 caat-supabase
+supabase --network-id caat-supabase --workdir "$CAAT_TEST_STACK" start --exclude realtime,studio,imgproxy,edge-runtime,logflare,vector,supavisor,postgres-meta
+```
+
+Read this local stack's connection settings with `supabase --workdir "$CAAT_TEST_STACK" status`; never commit its keys or test passwords. Set only local values in your shell:
+
+```sh
+export SUPABASE_DB_URL='postgresql://postgres:<local-db-password>@127.0.0.1:55432/postgres'
+export SUPABASE_URL='http://127.0.0.1:55431'
+export SUPABASE_SERVICE_ROLE_KEY='<local-service-role-key>'
+export E2E_TEST_PASSWORD='<disposable-local-password-at-least-12-chars>'
+node tests/staging/setup-local.mjs
+```
+
+The DB bootstrap accepts only loopback and known local Supabase DB ports (54322 or 55432); it refuses to run if app tables already exist. User seeding accepts only loopback and local API ports (54321 or 55431). Do not put production connection values in these variables. `seed-users.mjs` never prints its key/password. The seed creates two confirmed test users and explicit profile rows, then setup inserts synthetic Australian school/major/scholarship/essay catalog records. The user-owned community group fixture is deliberately seeded only after the Auth accounts exist. DB passwords are passed to libpq through its process environment rather than command arguments. All fixture rows use `E2E Test` names and stable UUIDs prefixed `e2000000`.
+
+## Snapshot fidelity and known boundaries
+
+The metadata did not contain enum types or views; none were present in the exported schema. The single `schools.id` sequence is recreated as its identity sequence. The Supabase platform must supply the `auth` and `storage` schemas, `auth.uid()`, `auth.users`, `storage.objects`, `storage.foldername()`, and built-in roles; those managed platform objects are not recreated here. The local image also needs the six captured extensions (`plpgsql` is PostgreSQL built-in; the generated SQL installs the remaining five). The exported grant snapshot covers public table and sequence ACLs only; it does not include function ACL/owner/config, schema ACLs, extension versions, or managed `auth`/`storage` internals. Check any local migration differences before treating this as a complete production clone. After setup, `node --test tests/staging/safety.test.mjs` verifies the guard helper and `node tests/staging/rls-smoke.mjs` performs real owner/peer row and private-document-storage RLS checks; these scripts use only generated synthetic rows and clean up their own random test artifacts.
+
+## Browser verification and CI
+
+Set `CAAT_ISOLATED_E2E=1`, `PLAYWRIGHT_BASE_URL=http://127.0.0.1:3100`, `E2E_TEST_EMAIL=e2e.student@caat.local.test`, the seeded `E2E_TEST_PASSWORD`, and this stack's `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`. Then `CI=true npm run test:e2e:ci` builds once and runs the Chromium suite against a loopback production server. Keep service-role and database credentials out of the app/browser process; they are needed only for setup and RLS checks. The CI helper scopes them to those child processes.
+
+The same source repository supplies local and GitHub environments. GitHub creates a fresh stack for every run, runs setup and owner/peer RLS checks, then runs the browser suite. Authenticated routes never use production database credentials, including page loads that can create profile, dashboard, or resume rows. The route manifest records the successful render checks and remaining journey boundaries; whole-source unit coverage is a separate metric.
+
+For a public deployment check, `PLAYWRIGHT_BASE_URL=https://<deployment> npm run test:e2e:public` exercises public pages and signed-out redirects without authenticated writes. The full legacy suite remains a manual-only workflow; its presence is not a claim that every legacy journey has been verified in the PR job.
