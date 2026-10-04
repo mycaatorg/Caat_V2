@@ -307,11 +307,11 @@
     },
     {
       "id": "account-signup-and-password-reset-success",
-      "coverage": "not-covered",
+      "coverage": "isolated-ci",
       "specs": [
-        "tests/e2e/public-smoke.spec.ts"
+        "tests/e2e/staging-auth.spec.ts"
       ],
-      "reason": "PR browser checks render auth forms without submitting them; successful signup and email-based reset need local mail assertions and cleanup."
+      "reason": "PR staging creates a synthetic account, requests a reset through the UI, reads its real local Mailpit email, validates and follows the loopback recovery link, changes the password, verifies old credentials fail and new credentials work, then deletes the account."
     },
     {
       "id": "major-bookmark-write",
