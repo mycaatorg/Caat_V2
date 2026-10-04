@@ -11,13 +11,16 @@ export default defineConfig({
     pool: "vmThreads",
     coverage: {
       provider: "v8",
-      reporter: ["text-summary", "text"],
-      // Report only the pure-logic modules the unit suite actually targets, so
-      // the summary is a meaningful signal rather than diluted by UI/route code
-      // that is exercised by the e2e smoke instead. Soft reporting only, no
-      // hard threshold yet (see the Phase 6 plan G5).
+      reporter: ["text-summary", "text", "json-summary", "lcov"],
+      // Keep the report scoped to modules with explicit unit coverage: core
+      // helpers plus the feature shells/components exercised by unit tests.
+      // This is reporting only; avoid a whole-app percentage claim or a
+      // threshold that the selected test scope has not established.
       // Globs avoid the literal "(main)" route-group parens (glob-special).
       include: [
+        "components/essays/EssaysShell.tsx",
+        "components/profile/PersonalInfoCard.tsx",
+        "components/communities/GroupJoinButton.tsx",
         "lib/scholarship-tracking.ts",
         "lib/scholarship-filters.ts",
         "lib/local-date.ts",

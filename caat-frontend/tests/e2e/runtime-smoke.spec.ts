@@ -26,8 +26,10 @@ const ROUTES = [
 for (const route of ROUTES) {
   test(`loads ${route} without a server error`, async ({ page }) => {
     const resp = await page.goto(route, { waitUntil: "domcontentloaded" });
-    // No 5xx from the server-rendered route.
-    expect(resp?.status(), `${route} returned ${resp?.status()}`).toBeLessThan(500);
+    // Every listed path is a real route and should render directly for the
+    // authenticated test account. A redirect to /login must not count as green.
+    expect(new URL(page.url()).pathname, `${route} redirected elsewhere`).toBe(route);
+    expect(resp?.status(), `${route} returned ${resp?.status()}`).toBe(200);
     // No Next error page leaked into the body.
     const body = (await page.locator("body").innerText().catch(() => "")) ?? "";
     expect(body).not.toMatch(/Internal Server Error|Application error|500\s*\|/i);

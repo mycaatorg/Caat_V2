@@ -30,8 +30,15 @@ export default defineConfig({
         ...devices["Desktop Chrome"],
         storageState: "tests/e2e/.auth/user.json",
       },
-      testIgnore: /unauth\.spec\.ts/,
+      testIgnore: [/unauth\.spec\.ts/, /public-smoke\.spec\.ts/],
       dependencies: ["setup"],
+    },
+    // Read-only public pages and the unauthenticated redirect guard. This
+    // project deliberately has no auth setup dependency.
+    {
+      name: "public-smoke",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: /public-smoke\.spec\.ts/,
     },
     // Unauthenticated tests (route protection, public pages)
     {

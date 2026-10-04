@@ -9,6 +9,8 @@ import type { EssayDraft, EssayPrompt } from "@/components/essays/api";
 const mocks = vi.hoisted(() => ({
   fetchDraftsForPrompt: vi.fn(),
   updateDraft: vi.fn(),
+  createDraft: vi.fn(),
+  createCustomPrompt: vi.fn(),
   getUser: vi.fn(),
   onAuthStateChange: vi.fn(),
 }));
@@ -18,11 +20,11 @@ vi.mock("@/components/essays/api", () => ({
   fetchEssayPrompts: vi.fn(),
   fetchDraftsForPrompt: mocks.fetchDraftsForPrompt,
   updateDraft: mocks.updateDraft,
-  createDraft: vi.fn(),
+  createDraft: mocks.createDraft,
   deleteDraft: vi.fn(),
   setCurrentDraft: vi.fn().mockResolvedValue(undefined),
   fetchCustomPrompts: vi.fn().mockResolvedValue([]),
-  createCustomPrompt: vi.fn(),
+  createCustomPrompt: mocks.createCustomPrompt,
   deleteCustomPrompt: vi.fn(),
   renameCustomPrompt: vi.fn(),
 }));
@@ -100,6 +102,13 @@ function buttonNamed(name: string): HTMLButtonElement {
   return button;
 }
 
+function draftRowButton(label: string): HTMLButtonElement {
+  const matches = [...document.querySelectorAll("button")].filter((item) => item.textContent?.includes(label));
+  const button = matches.at(-1);
+  if (!button) throw new Error(`Draft row button not found: ${label}`);
+  return button;
+}
+
 function editorElement(): HTMLTextAreaElement {
   const editor = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Start writing your essay here."]');
   if (!editor) throw new Error("Essay editor not found");
@@ -114,18 +123,32 @@ function editEssay(editor: HTMLTextAreaElement, value: string) {
   });
 }
 
-async function mountEditor(drafts: EssayDraft[]): Promise<Root> {
+function editInput(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  act(() => {
+    setter?.call(input, value);
+    input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+  });
+}
+
+async function mountEditor(drafts: EssayDraft[], prompts: EssayPrompt[] = [prompt]): Promise<Root> {
   mocks.getUser.mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
   mocks.onAuthStateChange.mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
-  mocks.fetchDraftsForPrompt.mockResolvedValue(drafts);
+  mocks.fetchDraftsForPrompt.mockImplementation(async (promptId: string) => drafts.filter((item) => item.prompt_id === promptId));
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  await act(async () => { root.render(<EssaysShell initialPrompts={[prompt]} />); });
+  await act(async () => { root.render(<EssaysShell initialPrompts={prompts} />); });
   mountedRoots.push(root);
   await settleEffects();
-  expect(mocks.fetchDraftsForPrompt).toHaveBeenCalledWith(prompt.id);
+  expect(mocks.fetchDraftsForPrompt).toHaveBeenCalledWith(prompts[0].id);
   return root;
+}
+
+async function unmountEditor(root: Root) {
+  await act(async () => { root.unmount(); });
+  const index = mountedRoots.indexOf(root);
+  if (index >= 0) mountedRoots.splice(index, 1);
 }
 
 type PendingWrite = { draftId: string; content: string; resolve: () => void; reject: (error: Error) => void };
@@ -154,6 +177,7 @@ function controlledPersistence(seed: EssayDraft[]) {
 describe("essay draft autosave coordination", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.createDraft.mockResolvedValue(draft("draft-new", "Draft 2", ""));
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   });
   afterEach(() => {
@@ -197,7 +221,7 @@ describe("essay draft autosave coordination", () => {
     expect(persistence.persisted.get("draft-b")).toBe("Original B");
     expect(persistence.maxActiveWrites).toBe(1);
     expect(editorElement().value).toBe("Original B");
-    await act(async () => { root.unmount(); });
+    await unmountEditor(root);
   });
 
   it("saves the latest same-draft edit when autosave fires during an earlier write", async () => {
@@ -225,7 +249,288 @@ describe("essay draft autosave coordination", () => {
 
     expect(persistence.persisted.get("draft-a")).toBe("Latest autosave edit");
     expect(persistence.maxActiveWrites).toBe(1);
-    await act(async () => { root.unmount(); });
+    await unmountEditor(root);
+  });
+
+  it("flushes outgoing content before creating and selecting a new draft", async () => {
+    const outgoing = draft("draft-a", "Draft A", "Original A", true);
+    const persistence = controlledPersistence([outgoing]);
+    const root = await mountEditor([outgoing]);
+
+    editEssay(editorElement(), "Save before create");
+    await act(async () => { buttonNamed("New draft").click(); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(1);
+    expect(mocks.createDraft).not.toHaveBeenCalled();
+
+    await act(async () => { persistence.writes[0].resolve(); await Promise.resolve(); });
+    await settleEffects();
+    expect(persistence.persisted.get("draft-a")).toBe("Save before create");
+    expect(mocks.createDraft).toHaveBeenCalledTimes(1);
+    expect(editorElement().value).toBe("");
+    await unmountEditor(root);
+  });
+
+  it("does not create a new draft when the required outgoing flush fails", async () => {
+    const outgoing = draft("draft-a", "Draft A", "Original A", true);
+    const persistence = controlledPersistence([outgoing]);
+    const root = await mountEditor([outgoing]);
+
+    editEssay(editorElement(), "Retry before create");
+    await act(async () => { buttonNamed("New draft").click(); });
+    await settleEffects();
+    await act(async () => { persistence.writes[0].reject(new Error("offline")); await Promise.resolve(); });
+
+    expect(mocks.createDraft).not.toHaveBeenCalled();
+    expect(editorElement().value).toBe("Retry before create");
+    await act(async () => { buttonNamed("Save").click(); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(2);
+    await act(async () => { persistence.writes[1].resolve(); await Promise.resolve(); });
+    expect(persistence.persisted.get("draft-a")).toBe("Retry before create");
+    await unmountEditor(root);
+  });
+
+  it("prevents editing the outgoing draft while new-draft creation is pending", async () => {
+    const outgoing = draft("draft-a", "Draft A", "Original A", true);
+    const other = draft("draft-b", "Draft B", "Original B");
+    const secondPrompt: EssayPrompt = { ...prompt, id: "prompt-2", slug: "prompt-2", title: "Prompt 2" };
+    const created = draft("draft-new", "Draft 2", "");
+    const persistence = controlledPersistence([outgoing, other]);
+    let finishCreate!: (createdDraft: EssayDraft) => void;
+    mocks.createDraft.mockImplementation(() => new Promise<EssayDraft>((resolve) => { finishCreate = resolve; }));
+    const root = await mountEditor([outgoing, other], [prompt, secondPrompt]);
+
+    editEssay(editorElement(), "Save before create");
+    await act(async () => { buttonNamed("New draft").click(); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(1);
+    await act(async () => { persistence.writes[0].resolve(); await Promise.resolve(); });
+    await settleEffects();
+    expect(mocks.createDraft).toHaveBeenCalledTimes(1);
+    expect(editorElement().disabled).toBe(true);
+    expect(buttonNamed("Prompt 2").disabled).toBe(true);
+    expect(buttonNamed("Draft B").disabled).toBe(true);
+
+    await act(async () => { finishCreate(created); await Promise.resolve(); });
+    await settleEffects();
+    expect(editorElement().disabled).toBe(false);
+    expect(editorElement().value).toBe("");
+    expect(persistence.persisted.get("draft-a")).toBe("Save before create");
+    await unmountEditor(root);
+  });
+
+  it("does not create a custom prompt if the outgoing essay cannot be flushed", async () => {
+    const outgoing = draft("draft-a", "Draft A", "Original A", true);
+    const persistence = controlledPersistence([outgoing]);
+    const root = await mountEditor([outgoing]);
+
+    editEssay(editorElement(), "Keep before custom prompt");
+    await act(async () => { document.querySelector<HTMLButtonElement>('button[aria-label="Add custom essay"]')?.click(); });
+    const titleInput = document.querySelector<HTMLInputElement>('input[placeholder="Essay title…"]');
+    if (!titleInput) throw new Error("Custom essay title input not found");
+    editInput(titleInput, "My essay");
+    await act(async () => { document.querySelector<HTMLButtonElement>('button[aria-label="Confirm"]')?.click(); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(1);
+    await act(async () => { persistence.writes[0].reject(new Error("offline")); await Promise.resolve(); });
+    await settleEffects();
+
+    expect(mocks.createCustomPrompt).not.toHaveBeenCalled();
+    expect(editorElement().value).toBe("Keep before custom prompt");
+    expect(titleInput.value).toBe("My essay");
+    await unmountEditor(root);
+  });
+
+  it("retries the latest same-draft content when an earlier autosave fails", async () => {
+    vi.useFakeTimers();
+    const outgoing = draft("draft-a", "Draft A", "Original A", true);
+    const persistence = controlledPersistence([outgoing]);
+    const root = await mountEditor([outgoing]);
+
+    editEssay(editorElement(), "First failing edit");
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(1);
+
+    editEssay(editorElement(), "Latest retry edit");
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    await settleEffects();
+    await act(async () => { persistence.writes[0].reject(new Error("temporary failure")); await Promise.resolve(); });
+    await settleEffects();
+
+    expect(persistence.writes).toHaveLength(2);
+    expect(persistence.writes[1].content).toBe("Latest retry edit");
+    await act(async () => { persistence.writes[1].resolve(); await Promise.resolve(); });
+    expect(persistence.persisted.get("draft-a")).toBe("Latest retry edit");
+    await unmountEditor(root);
+  });
+
+  it("recovers the queued switch flush after an earlier save fails", async () => {
+    const outgoing = draft("draft-a", "Draft A", "Original A", true);
+    const other = draft("draft-b", "Draft B", "Original B");
+    const persistence = controlledPersistence([outgoing, other]);
+    const root = await mountEditor([outgoing, other]);
+
+    editEssay(editorElement(), "Earlier failed write");
+    await act(async () => { buttonNamed("Save").click(); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(1);
+    editEssay(editorElement(), "Latest queued write");
+    await act(async () => { buttonNamed("Draft B").click(); });
+    await settleEffects();
+
+    await act(async () => { persistence.writes[0].reject(new Error("temporary failure")); await Promise.resolve(); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(2);
+    expect(persistence.writes[1].content).toBe("Latest queued write");
+    await act(async () => { persistence.writes[1].resolve(); await Promise.resolve(); });
+    await settleEffects();
+
+    expect(persistence.persisted.get("draft-a")).toBe("Latest queued write");
+    expect(persistence.persisted.get("draft-b")).toBe("Original B");
+    expect(editorElement().value).toBe("Original B");
+    await unmountEditor(root);
+  });
+
+  it("preserves an intentional A/B/A edit sequence across queued flushes", async () => {
+    const outgoing = draft("draft-a", "Draft A", "Original A", true);
+    const other = draft("draft-b", "Draft B", "Original B");
+    const persistence = controlledPersistence([outgoing, other]);
+    const root = await mountEditor([outgoing, other]);
+
+    editEssay(editorElement(), "Version A");
+    await act(async () => { buttonNamed("Save").click(); });
+    await settleEffects();
+    expect(persistence.writes.map((write) => write.content)).toEqual(["Version A"]);
+
+    editEssay(editorElement(), "Version B");
+    await act(async () => { buttonNamed("Draft B").click(); });
+    editEssay(editorElement(), "Version A");
+    await act(async () => { persistence.writes[0].resolve(); await Promise.resolve(); });
+    await settleEffects();
+    expect(persistence.writes.map((write) => write.content)).toEqual(["Version A", "Version B"]);
+    await act(async () => { persistence.writes[1].resolve(); await Promise.resolve(); });
+    await settleEffects();
+    expect(persistence.writes.map((write) => write.content)).toEqual(["Version A", "Version B", "Version A"]);
+    await act(async () => { persistence.writes[2].resolve(); await Promise.resolve(); });
+    await settleEffects();
+
+    expect(persistence.persisted.get("draft-a")).toBe("Version A");
+    expect(persistence.persisted.get("draft-b")).toBe("Original B");
+    expect(editorElement().value).toBe("Original B");
+    await unmountEditor(root);
+  });
+
+  it("keeps latest content when the active draft row is clicked during a save", async () => {
+    vi.useFakeTimers();
+    const outgoing = draft("draft-a", "Draft A", "Original A", true);
+    const other = draft("draft-b", "Draft B", "Original B");
+    const persistence = controlledPersistence([outgoing, other]);
+    const root = await mountEditor([outgoing, other]);
+
+    editEssay(editorElement(), "Earlier same-draft revision");
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(1);
+
+    editEssay(editorElement(), "Latest same-draft revision");
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(1);
+    await act(async () => { draftRowButton("Draft A").click(); });
+    await settleEffects();
+    await act(async () => { persistence.writes[0].resolve(); await Promise.resolve(); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(2);
+    expect(persistence.writes[1].content).toBe("Latest same-draft revision");
+    await act(async () => { persistence.writes[1].resolve(); await Promise.resolve(); });
+    await settleEffects();
+
+    expect(persistence.persisted.get("draft-a")).toBe("Latest same-draft revision");
+    expect(editorElement().value).toBe("Latest same-draft revision");
+    await unmountEditor(root);
+  });
+
+  it("waits for the latest outgoing content before switching prompts", async () => {
+    const secondPrompt: EssayPrompt = { ...prompt, id: "prompt-2", slug: "prompt-2", title: "Prompt 2" };
+    const outgoing = draft("draft-a", "Draft A", "Original A", true);
+    const incoming = { ...draft("draft-c", "Draft C", "Prompt 2 response", true), prompt_id: secondPrompt.id, prompt_slug: secondPrompt.slug };
+    const persistence = controlledPersistence([outgoing, incoming]);
+    const root = await mountEditor([outgoing, incoming], [prompt, secondPrompt]);
+
+    editEssay(editorElement(), "First prompt 1 edit");
+    await act(async () => { buttonNamed("Prompt 2").click(); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(1);
+    expect([...document.querySelectorAll("button")].some((item) => item.textContent?.includes("Saving…"))).toBe(true);
+    editEssay(editorElement(), "Latest prompt 1 edit");
+    expect(editorElement().value).toBe("Latest prompt 1 edit");
+
+    await act(async () => { persistence.writes[0].resolve(); await Promise.resolve(); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(2);
+    expect(persistence.writes[1].content).toBe("Latest prompt 1 edit");
+    expect(editorElement().value).toBe("Latest prompt 1 edit");
+    await act(async () => { persistence.writes[1].resolve(); await Promise.resolve(); });
+    await settleEffects();
+
+    expect(persistence.persisted.get("draft-a")).toBe("Latest prompt 1 edit");
+    expect(persistence.persisted.get("draft-c")).toBe("Prompt 2 response");
+    expect(editorElement().value).toBe("Prompt 2 response");
+    await unmountEditor(root);
+  });
+
+  it("keeps the outgoing prompt selected and editable when its flush fails", async () => {
+    const secondPrompt: EssayPrompt = { ...prompt, id: "prompt-2", slug: "prompt-2", title: "Prompt 2" };
+    const outgoing = draft("draft-a", "Draft A", "Original A", true);
+    const incoming = { ...draft("draft-c", "Draft C", "Prompt 2 response", true), prompt_id: secondPrompt.id, prompt_slug: secondPrompt.slug };
+    const persistence = controlledPersistence([outgoing, incoming]);
+    const root = await mountEditor([outgoing, incoming], [prompt, secondPrompt]);
+
+    editEssay(editorElement(), "Unsaved prompt 1 response");
+    await act(async () => { buttonNamed("Prompt 2").click(); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(1);
+    await act(async () => { persistence.writes[0].reject(new Error("offline")); await Promise.resolve(); });
+    await settleEffects();
+
+    expect(editorElement().value).toBe("Unsaved prompt 1 response");
+    expect(persistence.persisted.get("draft-a")).toBe("Original A");
+    expect(persistence.persisted.get("draft-c")).toBe("Prompt 2 response");
+    await act(async () => { buttonNamed("Save").click(); });
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(2);
+    await act(async () => { persistence.writes[1].resolve(); await Promise.resolve(); });
+    expect(persistence.persisted.get("draft-a")).toBe("Unsaved prompt 1 response");
+    await unmountEditor(root);
+  });
+
+  it("does not write unchanged draft content when Save is clicked", async () => {
+    const outgoing = draft("draft-a", "Draft A", "Original A", true);
+    const persistence = controlledPersistence([outgoing]);
+    const root = await mountEditor([outgoing]);
+
+    await act(async () => { buttonNamed("Save").click(); });
+    await settleEffects();
+
+    expect(persistence.writes).toHaveLength(0);
+    expect(mocks.updateDraft).not.toHaveBeenCalled();
+    await unmountEditor(root);
+  });
+
+  it("flushes pending edits on client-side unmount", async () => {
+    const outgoing = draft("draft-a", "Draft A", "Original A", true);
+    const persistence = controlledPersistence([outgoing]);
+    const root = await mountEditor([outgoing]);
+
+    editEssay(editorElement(), "Unmounted pending edit");
+    await unmountEditor(root);
+    await settleEffects();
+    expect(persistence.writes).toHaveLength(1);
+    expect(persistence.writes[0].content).toBe("Unmounted pending edit");
+    await act(async () => { persistence.writes[0].resolve(); await Promise.resolve(); });
+    expect(persistence.persisted.get("draft-a")).toBe("Unmounted pending edit");
   });
 
   it("keeps the outgoing draft selected and editable when a required flush fails", async () => {
@@ -242,13 +547,20 @@ describe("essay draft autosave coordination", () => {
     const beforeUnload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(beforeUnload);
     expect(beforeUnload.defaultPrevented).toBe(true);
+    expect(persistence.writes).toHaveLength(1);
     await act(async () => { persistence.writes[0].reject(failure); await Promise.resolve(); });
+    await settleEffects();
+
+    const dirtyBeforeUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(dirtyBeforeUnload);
+    expect(dirtyBeforeUnload.defaultPrevented).toBe(true);
     await settleEffects();
     expect(persistence.writes).toHaveLength(2);
     await act(async () => { persistence.writes[1].reject(failure); await Promise.resolve(); });
+    await settleEffects();
 
     expect(editorElement().value).toBe("Retry this edit");
-    expect([...document.querySelectorAll("button")].some((item) => item.textContent?.includes("Save"))).toBe(true);
+    expect([...document.querySelectorAll("button")].some((item) => ["Save", "Saving…"].includes(item.textContent?.trim() ?? ""))).toBe(true);
     expect(persistence.persisted.get("draft-a")).toBe("Original A");
     expect(persistence.persisted.get("draft-b")).toBe("Original B");
     expect(mocks.updateDraft).toHaveBeenCalledTimes(2);
@@ -257,6 +569,9 @@ describe("essay draft autosave coordination", () => {
     expect(persistence.writes).toHaveLength(3);
     await act(async () => { persistence.writes[2].resolve(); await Promise.resolve(); });
     expect(persistence.persisted.get("draft-a")).toBe("Retry this edit");
-    await act(async () => { root.unmount(); });
+    const cleanBeforeUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(cleanBeforeUnload);
+    expect(cleanBeforeUnload.defaultPrevented).toBe(false);
+    await unmountEditor(root);
   });
 });

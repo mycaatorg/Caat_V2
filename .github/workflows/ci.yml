@@ -27,6 +27,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Test project discovery contract
+        run: node --test .github/scripts/*.test.js
+
       - name: Discover subprojects for CI
         # This script scans the repo for package.json files (excluding build artifacts)
         # and emits a matrix object describing each project and which npm scripts it supports.
@@ -80,10 +83,7 @@ jobs:
           fi
 
       - name: Lint
-        # This job is intentionally separate so that lint failures do not have
-        # to block merging. In GitHub branch protection settings, only mark the
-        # main "Project CI" job as required if you want to allow merges with lint
-        # failures while you are still iterating on rules.
+        # Separate job keeps the lint result visible as its own check.
         if: ${{ matrix.project.scripts.lint }}
         run: npm run lint
 
@@ -152,22 +152,28 @@ jobs:
         if: ${{ matrix.project.scripts.typecheck }}
         run: npm run typecheck
 
-      - name: Test
-        # Real Vitest unit suite (the old file-existence "smoke" was removed in
-        # Phase 6). Kept as a distinct step so the matrix reports it by name.
-        if: ${{ matrix.project.scripts.test }}
-        run: npm test
-
-      - name: Unit tests (Vitest)
-        if: ${{ matrix.project.scripts['test:unit'] }}
-        run: npm run test:unit
-
-      - name: Coverage summary (soft, reporting only)
-        # Prints a coverage text-summary for the pure-logic modules the unit
-        # suite targets. No hard threshold yet (G5): informational, does not
-        # fail the build.
+      - name: Unit tests with scoped coverage
+        # Run the suite once, with coverage when this project supports it.
         if: ${{ matrix.project.scripts['test:coverage'] }}
         run: npm run test:coverage
+
+      - name: Unit tests
+        # Projects without coverage support still run their normal test command.
+        if: ${{ !matrix.project.scripts['test:coverage'] && matrix.project.scripts.test }}
+        run: npm test
+
+      - name: Upload scoped coverage report
+        if: ${{ always() && matrix.project.scripts['test:coverage'] }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ strategy.job-index }}
+          path: ${{ matrix.project.path }}/coverage
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Unit tests (test:unit fallback)
+        if: ${{ !matrix.project.scripts['test:coverage'] && !matrix.project.scripts.test && matrix.project.scripts['test:unit'] }}
+        run: npm run test:unit
 
       - name: Build
         # Build only when a "build" script exists (e.g. Next.js "next build").
@@ -242,3 +248,42 @@ jobs:
           path: caat-frontend/playwright-report
           retention-days: 7
 
+  e2e-public:
+    name: E2E public pages (production build)
+    runs-on: ubuntu-latest
+    # This suite has no auth setup dependency and submits no forms. It reads
+    # only public catalog data; the redirect assertion does not sign in.
+    defaults:
+      run:
+        working-directory: caat-frontend
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      PLAYWRIGHT_BASE_URL: http://localhost:3000
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: caat-frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright (chromium only)
+        run: npx playwright install --with-deps chromium
+
+      - name: Public browser smoke (Playwright builds + starts the prod server)
+        run: npm run test:e2e:public
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-public-report
+          path: caat-frontend/playwright-report
+          retention-days: 7

@@ -27,9 +27,12 @@ jobs:
       run:
         working-directory: caat-frontend
     env:
-      # Prefer the dedicated test project; fall back to the build secrets.
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      # Full E2E writes test data, so use only the dedicated test project.
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+      E2E_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+      E2E_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+      PRODUCTION_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
       E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
       PLAYWRIGHT_BASE_URL: http://localhost:3000
@@ -45,6 +48,10 @@ jobs:
           cache-dependency-path: |
             caat-frontend/package-lock.json
             caat-frontend/pnpm-lock.yaml
+
+      - name: Require isolated E2E database and account
+        run: node .github/scripts/assert-e2e-isolation.js
+        working-directory: .
 
       - name: Install dependencies
         run: |

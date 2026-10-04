@@ -110,15 +110,23 @@ export default function EssaysShell({
   activeDraftRef.current = activeDraft;
   const savingRef = useRef(false);
   const pendingSaveRef = useRef(false);
+  const transitionLockRef = useRef(false);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingWritesRef = useRef(0);
+  const queuedSaveTailRef = useRef<{ draftId: string; content: string; promise: Promise<void> } | null>(null);
 
   // M1 — warn on hard close/refresh while an essay edit is still within the
   // autosave window (complements the flush-before-switch/unmount fixes).
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (autosaveTimerRef.current || savingRef.current || pendingSaveRef.current || pendingWritesRef.current > 0) {
+      if (
+        autosaveTimerRef.current ||
+        savingRef.current ||
+        pendingSaveRef.current ||
+        pendingWritesRef.current > 0 ||
+        (activeDraftRef.current !== null && essayContentRef.current !== activeDraftRef.current.content)
+      ) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -130,7 +138,13 @@ export default function EssaysShell({
   // Persist outgoing edits in order, draining any further typing that happens
   // while a write is in flight. Declared before effects that reference it.
   const saveDraftContent = useCallback((draft: EssayDraft, content: string) => {
+    const currentTail = queuedSaveTailRef.current;
+    if (currentTail?.draftId === draft.id && currentTail.content === content) {
+      return currentTail.promise;
+    }
+
     pendingWritesRef.current += 1;
+    setSaving(true);
     const queuedSave = saveQueueRef.current.then(async () => {
       await updateDraft(draft.id, { content });
       const updatedAt = new Date().toISOString();
@@ -144,11 +158,18 @@ export default function EssaysShell({
         prev?.id === draft.id ? { ...prev, content, updated_at: updatedAt } : prev
       );
     });
+    const queuedWrite = { draftId: draft.id, content, promise: queuedSave };
+    queuedSaveTailRef.current = queuedWrite;
+    const finishQueuedWrite = () => {
+      pendingWritesRef.current -= 1;
+      if (queuedSaveTailRef.current === queuedWrite) queuedSaveTailRef.current = null;
+      if (pendingWritesRef.current === 0) setSaving(false);
+    };
     // Keep later writes moving after a failure while returning this write's
     // rejection to callers that need to keep the current draft selected.
     saveQueueRef.current = queuedSave.then(
-      () => { pendingWritesRef.current -= 1; },
-      () => { pendingWritesRef.current -= 1; },
+      finishQueuedWrite,
+      finishQueuedWrite,
     );
     return queuedSave;
   }, []);
@@ -286,7 +307,7 @@ export default function EssaysShell({
       setSaveError(err instanceof Error ? err.message : "Failed to save");
     } finally {
       savingRef.current = false;
-      setSaving(false);
+      setSaving(pendingWritesRef.current > 0);
       if (pendingSaveRef.current) {
         pendingSaveRef.current = false;
         // Re-run to capture edits made during the in-flight save.
@@ -298,10 +319,14 @@ export default function EssaysShell({
 
   const handleSwitchDraft = useCallback(
     async (draft: EssayDraft) => {
+      if (transitionLockRef.current || activeDraftRef.current?.id === draft.id) return;
+      transitionLockRef.current = true;
       try {
         await flushPending();
       } catch {
         return;
+      } finally {
+        transitionLockRef.current = false;
       }
       setActiveDraft(draft);
       setEssayContent(draft.content);
@@ -312,6 +337,19 @@ export default function EssaysShell({
     },
     [flushPending]
   );
+
+  const handleSelectPrompt = useCallback(async (promptId: string) => {
+    if (promptId === selectedPromptId || transitionLockRef.current) return;
+    transitionLockRef.current = true;
+    try {
+      await flushPending();
+    } catch {
+      return;
+    } finally {
+      transitionLockRef.current = false;
+    }
+    setSelectedPromptId(promptId);
+  }, [flushPending, selectedPromptId]);
 
   const startRename = useCallback((draft: EssayDraft) => {
     setRenamingId(draft.id);
@@ -336,31 +374,35 @@ export default function EssaysShell({
   );
 
   const handleNewDraft = useCallback(async () => {
-    if (!selectedPromptId || creatingDraft || !isAuthenticated) return;
-    // Flush the outgoing draft's pending edits before we swap the editor to the
-    // fresh, empty draft.
+    if (!selectedPromptId || creatingDraft || !isAuthenticated || transitionLockRef.current) return;
+    transitionLockRef.current = true;
     try {
-      await flushPending();
-    } catch {
-      return;
-    }
-    const promptSlug = selectedPrompt?.slug ?? `custom-${selectedPromptId}`;
-    setCreatingDraft(true);
-    setSaveError(null);
-    try {
-      const newDraft = await createDraft({
-        promptId: selectedPromptId,
-        promptSlug,
-        label: `Draft ${drafts.length + 1}`,
-        schoolId: selectedPrompt?.scope === "per_school" ? tagSchoolId : null,
-      });
-      setDrafts((prev) => [newDraft, ...prev]);
-      setActiveDraft(newDraft);
-      setEssayContent("");
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Failed to create draft");
+      // Flush the outgoing draft before creating its replacement.
+      try {
+        await flushPending();
+      } catch {
+        return;
+      }
+      const promptSlug = selectedPrompt?.slug ?? `custom-${selectedPromptId}`;
+      setCreatingDraft(true);
+      setSaveError(null);
+      try {
+        const newDraft = await createDraft({
+          promptId: selectedPromptId,
+          promptSlug,
+          label: `Draft ${drafts.length + 1}`,
+          schoolId: selectedPrompt?.scope === "per_school" ? tagSchoolId : null,
+        });
+        setDrafts((prev) => [newDraft, ...prev]);
+        setActiveDraft(newDraft);
+        setEssayContent("");
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : "Failed to create draft");
+      } finally {
+        setCreatingDraft(false);
+      }
     } finally {
-      setCreatingDraft(false);
+      transitionLockRef.current = false;
     }
   }, [selectedPromptId, selectedPrompt, creatingDraft, isAuthenticated, drafts.length, tagSchoolId, flushPending]);
 
@@ -409,7 +451,14 @@ export default function EssaysShell({
   // Custom prompt handlers
   const handleCreateCustomPrompt = useCallback(async () => {
     const title = newCustomTitle.trim();
-    if (!title || savingCustomPrompt || !isAuthenticated) return;
+    if (!title || savingCustomPrompt || !isAuthenticated || transitionLockRef.current) return;
+    transitionLockRef.current = true;
+    try {
+      await flushPending();
+    } catch {
+      transitionLockRef.current = false;
+      return;
+    }
     setSavingCustomPrompt(true);
     try {
       const cp = await createCustomPrompt(title);
@@ -421,8 +470,9 @@ export default function EssaysShell({
       toast.error("Failed to create essay. Please try again.");
     } finally {
       setSavingCustomPrompt(false);
+      transitionLockRef.current = false;
     }
-  }, [newCustomTitle, savingCustomPrompt, isAuthenticated]);
+  }, [newCustomTitle, savingCustomPrompt, isAuthenticated, flushPending]);
 
   const startRenameCustom = useCallback((cp: CustomEssayPrompt) => {
     setRenamingCustomId(cp.id);
@@ -550,6 +600,7 @@ export default function EssaysShell({
                               <button
                                 type="button"
                                 onClick={() => { handleSwitchDraft(draft); setDraftsPopoverOpen(false); }}
+                                disabled={creatingDraft || savingCustomPrompt}
                                 className={cn(
                                   "flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1.5 text-left text-sm transition-colors",
                                   activeDraft?.id === draft.id
@@ -610,7 +661,7 @@ export default function EssaysShell({
                       variant="ghost"
                       size="sm"
                       className="w-full justify-start gap-2 text-sm"
-                      disabled={draftsLoading || creatingDraft}
+                      disabled={draftsLoading || creatingDraft || savingCustomPrompt}
                       onClick={() => { handleNewDraft(); setDraftsPopoverOpen(false); }}
                     >
                       <Plus className="h-4 w-4" />
@@ -645,7 +696,7 @@ export default function EssaysShell({
             <Button
               size="sm"
               variant="outline"
-              disabled={creatingDraft || !isAuthenticated}
+              disabled={creatingDraft || savingCustomPrompt || !isAuthenticated}
               onClick={handleNewDraft}
               className="gap-1.5"
             >
@@ -665,7 +716,7 @@ export default function EssaysShell({
               placeholder="Start writing your essay here."
               value={essayContent}
               onChange={(e) => setEssayContent(e.target.value)}
-              disabled={draftsLoading}
+              disabled={draftsLoading || creatingDraft || savingCustomPrompt}
               className="min-h-70 flex-1 resize-y font-mono text-sm"
             />
             <div className="flex items-center justify-end gap-3 mt-1.5 text-xs text-muted-foreground">
@@ -716,7 +767,8 @@ export default function EssaysShell({
                 <button
                   key={prompt.id}
                   type="button"
-                  onClick={() => setSelectedPromptId(prompt.id)}
+                  onClick={() => { void handleSelectPrompt(prompt.id); }}
+                  disabled={creatingDraft || savingCustomPrompt}
                   className={cn(
                     "flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors",
                     selectedPromptId === prompt.id
@@ -812,7 +864,8 @@ export default function EssaysShell({
                       ) : (
                         <button
                           type="button"
-                          onClick={() => setSelectedPromptId(cp.id)}
+                          onClick={() => { void handleSelectPrompt(cp.id); }}
+                          disabled={creatingDraft || savingCustomPrompt}
                           className={cn(
                             "flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors",
                             selectedPromptId === cp.id

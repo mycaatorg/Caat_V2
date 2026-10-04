@@ -17,6 +17,7 @@
     "test:watch": "vitest tests/unit",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test runtime-smoke.spec.ts --project=e2e",
+    "test:e2e:public": "playwright test public-smoke.spec.ts --project=public-smoke",
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
