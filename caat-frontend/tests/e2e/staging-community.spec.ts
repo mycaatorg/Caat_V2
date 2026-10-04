@@ -161,3 +161,50 @@ test("seeded community post, comment, and save persist across detail reloads", a
     if (!page.isClosed()) await removeSyntheticPost(page, content);
   }
 });
+
+test("community post draft survives a failed request and retry persists once", async ({ page }) => {
+  await signInToLocalStudent(page);
+  await page.goto(GROUP_URL);
+  const content = `E2E community retry ${RUN_ID}`;
+  const main = page.getByRole("main").last();
+  await main.locator("div.cursor-text").filter({ hasText: "Share your experience, results, or advice" }).click();
+  const editor = main.locator(".ProseMirror").first();
+  await expect(editor).toBeVisible();
+  await editor.fill(content);
+  await page.getByText("Select a topic").click();
+  await page.getByRole("option", { name: "Advice", exact: true }).click();
+
+  let failedRequests = 0;
+  await page.route("**/communities/**", async (route) => {
+    const request = route.request();
+    if (failedRequests === 0 && request.method() === "POST" &&
+        request.headers()["next-action"] && request.postData()?.includes(content)) {
+      failedRequests += 1;
+      await route.abort("failed");
+      return;
+    }
+    await route.continue();
+  });
+  try {
+    await page.getByRole("button", { name: "Post", exact: true }).click();
+    await expect.poll(() => failedRequests).toBe(1);
+    await expect(page.locator("[data-sonner-toast]").filter({ hasText: /could not|failed|try again/i }).first()).toBeVisible();
+    await expect(editor).toHaveText(content);
+    await expect(page.getByRole("button", { name: "Post", exact: true })).toBeEnabled();
+    await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Post shared." })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Post", exact: true }).click();
+    await expect(page.getByText("Post shared.", { exact: true })).toBeVisible();
+    await page.reload();
+    const cards = page.locator("div.bg-card").filter({ hasText: content });
+    await expect(cards).toHaveCount(1);
+    // Assert the complete rendered body, not matching descendant paragraphs.
+    // The array form still rejects duplicate cards or duplicated body content.
+    const bodies = cards.locator(".community-prose");
+    await expect(bodies).toHaveText([content]);
+    await expect(bodies).toBeVisible();
+  } finally {
+    await page.unroute("**/communities/**");
+    if (!page.isClosed()) await removeSyntheticPost(page, content);
+  }
+});

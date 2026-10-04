@@ -1,0 +1,25 @@
+# Community authorization and mutation recovery — PROD-84
+
+## Goal
+Protect other users' community content and retain drafts when a write fails. Extend meaningful tests of real actions/components, keeping persistence mocks at the Supabase boundary and existing isolated RLS/browser checks.
+
+## Global Constraints
+Use the existing repo and CI. Never use production data or credentials for write tests. No unrelated redesign, new dependencies, or broad refactors. The database migration is limited to the reproduced privacy and membership defects in Task 4. Fix only defects reproduced with failing tests. Unit coverage starts at 406 tests and 19.19% runtime lines (1341/6985); browser baseline is 88 checks. Strict flaky CI stays enabled. GitHub pushes are authorized; Vercel releases must remain in caats-projects via StealthStartup. Parent handles all commits, reviews, pushes, merges and deployment.
+
+## Task 1: Server-action permissions and failures
+Own actions/groups.ts, posts.ts, comments.ts, feed.ts and new tests/unit/community-actions*.test.ts. Read shared authorization helpers and actual database policies to establish intended rules. Exercise real actions with existing mock-supabase boundary, leaving authorization helpers real. Cover anonymous/unauthorized denial before mutation, successful owner/moderator/member behavior where supported, update/delete failures, group join approvals and partial failure handling, comment parent relationships, feed privacy. Prioritize mutation correctness; avoid filler tests of simple forwarding. Reproduce any actual bugs before fixing. Do not change shared mock helper or schema without reporting need. Run scoped tests and typecheck; record evidence and unresolved scope in /tmp/caat-community-server-report.md.
+
+## Task 2: UI failed-request recovery
+Own community components and new tests/unit/community-mutation-ui.test.tsx (or split focused files). Cover create post, edit/delete post, add/reply/edit/delete comment: returned errors and rejected promises must show useful feedback, preserve drafts/edit modes and content, avoid false success/deletion, and allow retry. Use real UI, mock only server-action boundary and rich editor if jsdom requires. Cover group create/manage failure as justified by server findings. Reproduce failures before minimal fixes. No unrelated like/save UI redesign. Scoped tests and typecheck; report /tmp/caat-community-ui-report.md.
+
+## Task 3: Integration review and release
+Independently review each task, run full lint/typecheck/coverage/contracts and existing 88 browser checks on isolated Mini. Add one browser transport-failure-and-retry journey for a meaningful affected form, keeping real successful persistence/reload. Claude peer review whole diff; fix findings with regression evidence. Publish PR to develop, wait full strict CI; release develop to main, verify correct Vercel project/SHA and 36 public checks. Report actual test and coverage deltas, CI duration, limits; update PROD-84 Done only after verified deployment.
+
+## Task 4: Private community database enforcement — PROD-85
+Added after a real loopback owner/peer probe reproduced private post exposure, private self-join with owner role, and denied legitimate approval. Treat database fix as a release priority. No production probing with customer data.
+
+- Add an additive reviewed migration, no destructive data rewriting. Gate private post/comment/related row visibility and writes at RLS, including aggregate poll RPCs that bypass RLS. Preserve public feed behavior, author editing/deletion, owner/member reads, owner self-membership and public self-join as member. Deny self-promoted roles and private self-join. Use non-recursive helper functions with fixed search paths and caller auth.uid(), restricted grants. Never trust supplied viewer identity. Cross-post comment parents must be rejected at database boundary too.
+- Make group approval atomic, owner-only, pending-request-based, idempotent retry without role downgrade; membership plus request update in one transaction/RPC. Switch action and add generated type entry. No user can approve their own private request via direct table writes.
+- Keep schema snapshot as historical baseline; local bootstrap explicitly applies new migration after snapshot, before seed. Mini reused database applies migration exactly once (idempotent reapply should be safe), fresh CI exercises bootstrap.
+- Add dedicated real owner/member/nonmember/anonymous RLS regression script to CI with local-only guards and synthetic cleanup. Prove red on old schema, green on migration; verify existing RLS/browser checks and public joins.
+- Production policy metadata must be verified before migration; Supabase Stealth browser currently signed out, user asked to sign in. Prepare exact SQL plus deployment/rollback sequence and review before applying. Do not silently deploy app RPC usage without deployed migration. If access stays unavailable, publish reviewable code/PR with release held and report concrete blocker.

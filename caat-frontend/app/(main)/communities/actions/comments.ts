@@ -128,6 +128,16 @@ export async function addCommentAction(
     return { comment: null, error: "Not authorized to comment on this post" };
   }
 
+  if (parentCommentId) {
+    const { data: parentComment } = await supabase
+      .from("community_comments")
+      .select("post_id")
+      .eq("id", parentCommentId)
+      .maybeSingle();
+    if (!parentComment || parentComment.post_id !== postId)
+      return { comment: null, error: "Parent comment not found on this post" };
+  }
+
   // Block enforcement — a blocked user can't comment on the post author's content.
   const { data: postAuthor } = await supabase
     .from("community_posts")
@@ -256,7 +266,7 @@ export async function updateCommentAction(
     return { error: "Not authorized", edited_at: null };
 
   const editedAt = new Date().toISOString();
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("community_comments")
     // A7 — sanitize HTML markup on store (see addCommentAction); plain text verbatim.
     .update({
@@ -264,11 +274,16 @@ export async function updateCommentAction(
       edited_at: editedAt,
     })
     .eq("id", commentId)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("id");
+
+  if (error) return { error: sanitizeError(error, "Could not update comment."), edited_at: null };
+  if (!updated?.length)
+    return { error: "Could not update comment. Please try again.", edited_at: null };
 
   return {
-    error: error ? sanitizeError(error, "Could not update comment.") : null,
-    edited_at: error ? null : editedAt,
+    error: null,
+    edited_at: editedAt,
   };
 }
 
@@ -292,35 +307,40 @@ export async function deleteCommentAction(
 
   // If the comment has replies, soft-delete so the thread structure survives;
   // otherwise remove it outright.
-  const { count: replyCount } = await supabase
+  const { count: replyCount, error: replyCountError } = await supabase
     .from("community_comments")
     .select("id", { count: "exact", head: true })
     .eq("parent_comment_id", commentId);
+  if (replyCountError || replyCount == null)
+    return { mode: null, error: "Could not check comment replies. Please try again." };
 
   if ((replyCount ?? 0) > 0) {
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("community_comments")
       .update({ is_deleted: true, content: "[deleted]" })
       .eq("id", commentId)
-      .eq("user_id", user.id);
+      .eq("user_id", user.id)
+      .select("id");
+    if (error) return { mode: null, error: sanitizeError(error, "Could not delete comment.") };
+    if (!updated?.length) return { mode: null, error: "Could not delete comment. Please try again." };
     return {
-      mode: error ? null : "soft",
-      error: error ? sanitizeError(error, "Could not delete comment.") : null,
+      mode: "soft",
+      error: null,
     };
   }
 
-  await supabase
-    .from("community_comment_likes")
-    .delete()
-    .eq("comment_id", commentId);
-  const { error } = await supabase
+  // The comment-like FK cascades in the same transaction as a hard delete.
+  const { data: deleted, error } = await supabase
     .from("community_comments")
     .delete()
     .eq("id", commentId)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("id");
+  if (error) return { mode: null, error: sanitizeError(error, "Could not delete comment.") };
+  if (!deleted?.length) return { mode: null, error: "Could not delete comment. Please try again." };
   return {
-    mode: error ? null : "hard",
-    error: error ? sanitizeError(error, "Could not delete comment.") : null,
+    mode: "hard",
+    error: null,
   };
 }
 

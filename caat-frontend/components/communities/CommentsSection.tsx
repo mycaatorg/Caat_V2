@@ -80,14 +80,21 @@ export function CommentsSection({ postId, currentUser, onCountChange }: Comments
   }
 
   function submitComment() {
-    if (!newComment.trim()) return;
+    if (isPending || !newComment.trim()) return;
     startTransition(async () => {
-      const { comment, error } = await addCommentAction(postId, newComment);
-      if (error || !comment) {
-        toast.error(error ?? "Failed to post comment.");
+      let result: Awaited<ReturnType<typeof addCommentAction>>;
+      try {
+        result = await addCommentAction(postId, newComment);
+      } catch {
+        toast.error("Could not post comment. Please try again.");
         return;
       }
-      setComments((prev) => [...prev, comment]);
+      if (result.error || !result.comment) {
+        toast.error(result.error ?? "Failed to post comment.");
+        return;
+      }
+      const createdComment = result.comment;
+      setComments((prev) => [...prev, createdComment]);
       setNewComment("");
       onCountChange(1);
     });
