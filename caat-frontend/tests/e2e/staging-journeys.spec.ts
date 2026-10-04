@@ -138,7 +138,18 @@ test("resume section content is saved and restored after reloading the builder",
   const editor = page.locator(".ProseMirror").first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
   await editor.fill(content);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  const saveButton = page.getByRole("button", { name: "Save", exact: true });
+  await expect(saveButton).toBeEnabled();
+  const persistedSectionWrite = page.waitForResponse((response) => {
+    const request = response.request();
+    return request.method() === "POST"
+      && new URL(response.url()).pathname.endsWith("/rest/v1/resume_sections")
+      && request.postData()?.includes(content) === true
+      && response.ok();
+  }, { timeout: 15_000 });
+  await saveButton.click();
+  await persistedSectionWrite;
+  await expect(saveButton).toBeEnabled();
   await expect(page.getByText(/last saved on:/i).first()).toBeVisible({ timeout: 15_000 });
 
   await page.reload();
