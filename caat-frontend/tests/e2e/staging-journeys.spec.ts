@@ -62,7 +62,7 @@ async function assertIsolatedDetailRoute(page: Page, routePath: string, url: str
   expect(contract?.coverage, `${routePath} must have successful isolated detail coverage`).toBe("isolated-detail");
   expect(contract?.expected, `${routePath} must define its expected visible content`).toBeTruthy();
   await page.goto(url);
-  await expect(page.getByText(contract!.expected!, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("main").getByRole("heading", { name: contract!.expected!, exact: true, level: 1 })).toBeVisible({ timeout: 15_000 });
 }
 
 test("seeded profile edits persist after reload and satisfy the route-coverage contract", async ({ page }) => {
@@ -73,8 +73,9 @@ test("seeded profile edits persist after reload and satisfy the route-coverage c
   expect(profileRoute, "route-coverage.json must define /profile").toBeDefined();
   expect(profileRoute?.coverage).toBe("authenticated-content");
   expect(profileRoute?.expected).toBeTruthy();
-  await expect(page.getByText(profileRoute!.expected!, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Profile Progress", { exact: true })).toBeVisible();
+  const main = page.getByRole("main");
+  await expect(main.getByText(profileRoute!.expected!, { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(main.getByText("Profile Progress", { exact: true })).toBeVisible();
 
   const firstName = marker("E2EProfile");
   const personalCard = page.locator('[data-slot="card"]').filter({ hasText: "Personal Information" });
@@ -105,7 +106,7 @@ test("custom essay draft content autosaves and reloads from the real account", a
   const title = marker("E2E essay");
   const content = marker("Persisted essay response");
   await page.goto("/essays");
-  await expect(page.getByText("Essay prompts", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("main").getByText("Essay prompts", { exact: true })).toBeVisible({ timeout: 15_000 });
 
   try {
     await page.getByRole("button", { name: "Add custom essay" }).click();
@@ -115,9 +116,15 @@ test("custom essay draft content autosaves and reloads from the real account", a
     await page.getByRole("button", { name: /new draft/i }).first().click();
     const editor = page.getByPlaceholder("Start writing your essay here.");
     await expect(editor).toBeVisible({ timeout: 10_000 });
+    const persistedDraftUpdate = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === "PATCH"
+        && new URL(response.url()).pathname.endsWith("/rest/v1/essay_drafts")
+        && request.postData()?.includes(content) === true
+        && response.ok();
+    }, { timeout: 15_000 });
     await editor.fill(content);
-    await expect(page.getByText(/last saved on:|saving…/i).first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/last saved on:/i).first()).toBeVisible({ timeout: 15_000 });
+    await persistedDraftUpdate;
 
     await page.reload();
     await expect(page.getByRole("button", { name: new RegExp(title) })).toBeVisible({ timeout: 15_000 });
@@ -132,17 +139,29 @@ test("resume section content is saved and restored after reloading the builder",
   await signInToIsolatedStudent(page);
   const content = marker("Persisted resume education");
   await page.goto("/resume-builder");
-  await expect(page.getByLabel("breadcrumb").getByText("Resume Builder", { exact: true })).toBeVisible({ timeout: 15_000 });
+  const resumeBreadcrumb = page.getByRole("main").getByRole("navigation", { name: "breadcrumb" });
+  await expect(resumeBreadcrumb.getByText("Resume Builder", { exact: true })).toBeVisible({ timeout: 15_000 });
+  const saveButton = page.getByRole("button", { name: "Save", exact: true });
+  await expect(saveButton).toBeEnabled({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "Education", exact: true }).first().click();
   const editor = page.locator(".ProseMirror").first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
+  const persistedSectionWrite = page.waitForResponse((response) => {
+    const request = response.request();
+    return request.method() === "POST"
+      && new URL(response.url()).pathname.endsWith("/rest/v1/resume_sections")
+      && request.postData()?.includes(content) === true
+      && response.ok();
+  }, { timeout: 15_000 });
   await editor.fill(content);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await saveButton.click();
+  await persistedSectionWrite;
+  await expect(saveButton).toBeEnabled();
   await expect(page.getByText(/last saved on:/i).first()).toBeVisible({ timeout: 15_000 });
 
   await page.reload();
-  await expect(page.getByLabel("breadcrumb").getByText("Resume Builder", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(resumeBreadcrumb.getByText("Resume Builder", { exact: true })).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Education", exact: true }).first().click();
   await expect(page.locator(".ProseMirror").first()).toContainText(content, { timeout: 15_000 });
 });

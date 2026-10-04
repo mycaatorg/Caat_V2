@@ -9,6 +9,8 @@ export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false, // auth tests need sequential order
   forbidOnly: !!process.env.CI,
+  // Retries collect diagnostics; a retry must not turn a flaky release gate green.
+  failOnFlakyTests: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   maxFailures: process.env.CI ? 5 : 0,
   workers: 1,
