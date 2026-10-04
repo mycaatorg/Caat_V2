@@ -87,10 +87,7 @@ export async function createGroupAction(input: {
   if (insertError || !row)
     return { group: null, error: "Failed to create community" };
 
-  // Creator auto-joins as owner
-  await supabase
-    .from("community_group_members")
-    .insert({ group_id: row.id, user_id: user.id, role: "owner" });
+  // The database trigger inserts the owner membership in the same transaction.
 
   revalidatePath("/communities/groups");
   revalidatePath("/communities");
@@ -130,7 +127,7 @@ export async function updateGroupAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
   // Note: slug is intentionally NOT changed on rename so existing links keep working.
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("community_groups")
     .update({
       name: parsed.data.name,
@@ -138,13 +135,14 @@ export async function updateGroupAction(
       is_private: parsed.data.is_private,
     })
     .eq("id", groupId)
-    .eq("creator_id", user.id);
+    .eq("creator_id", user.id)
+    .select("id");
 
+  if (error) return { error: sanitizeError(error, "Could not update community.") };
+  if (!updated?.length) return { error: "Could not update community. Please try again." };
   revalidatePath("/communities/groups");
   revalidatePath("/communities");
-  return {
-    error: error ? sanitizeError(error, "Could not update community.") : null,
-  };
+  return { error: null };
 }
 
 
@@ -166,17 +164,18 @@ export async function deleteGroupAction(
 
   // Children (posts, members, requests) are removed by the delete_group_children
   // trigger so other members' posts cascade despite per-row RLS.
-  const { error } = await supabase
+  const { data: deleted, error } = await supabase
     .from("community_groups")
     .delete()
     .eq("id", groupId)
-    .eq("creator_id", user.id);
+    .eq("creator_id", user.id)
+    .select("id");
 
+  if (error) return { error: sanitizeError(error, "Could not delete community.") };
+  if (!deleted?.length) return { error: "Could not delete community. Please try again." };
   revalidatePath("/communities/groups");
   revalidatePath("/communities");
-  return {
-    error: error ? sanitizeError(error, "Could not delete community.") : null,
-  };
+  return { error: null };
 }
 
 
@@ -345,9 +344,11 @@ export async function requestJoinGroupAction(
   if (existing) return { error: null };
 
   // Upsert request
-  await supabase
+  const { error: requestError } = await supabase
     .from("community_group_requests")
     .upsert({ group_id: groupId, user_id: user.id, status: "pending" });
+  if (requestError)
+    return { error: sanitizeError(requestError, "Could not request to join this community.") };
 
   // Notify group owner
   const { data: groupRow } = await supabase
@@ -397,25 +398,22 @@ export async function approveJoinRequestAction(
   if (!group || group.creator_id !== user.id)
     return { error: "Not authorized" };
 
-  // Add as member, mark request approved, and notify the requester.
-  await supabase
-    .from("community_group_members")
-    .upsert(
-      { group_id: groupId, user_id: requesterUserId, role: "member" },
-      { onConflict: "group_id,user_id", ignoreDuplicates: false },
-    );
-  await supabase
-    .from("community_group_requests")
-    .update({ status: "approved" })
-    .eq("group_id", groupId)
-    .eq("user_id", requesterUserId);
-  await supabase.from("notifications").insert({
-    user_id: requesterUserId,
-    actor_id: user.id,
-    type: "request_approved",
-    post_id: null,
-    message: `Your request to join ${group.name as string} was approved`,
-  });
+  const { data: changed, error: approvalError } = await supabase.rpc(
+    "approve_group_join_request",
+    { p_group_id: groupId, p_requester_user_id: requesterUserId },
+  );
+  if (approvalError)
+    return { error: sanitizeError(approvalError, "Could not approve this join request.") };
+  // A repeated approval is successful but must not send a duplicate notification.
+  if (changed) {
+    await supabase.from("notifications").insert({
+      user_id: requesterUserId,
+      actor_id: user.id,
+      type: "request_approved",
+      post_id: null,
+      message: `Your request to join ${group.name as string} was approved`,
+    });
+  }
 
   revalidatePath("/communities");
   revalidatePath("/communities/groups");
@@ -441,11 +439,12 @@ export async function rejectJoinRequestAction(
   if (!group || group.creator_id !== user.id)
     return { error: "Not authorized" };
 
-  await supabase
-    .from("community_group_requests")
-    .update({ status: "rejected" })
-    .eq("group_id", groupId)
-    .eq("user_id", requesterUserId);
+  const { error } = await supabase.rpc("reject_group_join_request", {
+    p_group_id: groupId,
+    p_requester_user_id: requesterUserId,
+  });
+  if (error)
+    return { error: sanitizeError(error, "Could not reject this join request.") };
   // Intentionally no notification on rejection — avoids confirming the group exists
   // to a user who attempted to discover private groups by id.
 
@@ -521,9 +520,14 @@ export async function joinGroupAction(
   if (group.is_private)
     return { error: "This community requires an approved join request" };
 
-  await supabase
+  const { error } = await supabase
     .from("community_group_members")
-    .upsert({ group_id: groupId, user_id: user.id, role: "member" });
+    .upsert(
+      { group_id: groupId, user_id: user.id, role: "member" },
+      { onConflict: "group_id,user_id", ignoreDuplicates: true },
+    );
+  if (error)
+    return { error: sanitizeError(error, "Could not join this community.") };
   revalidatePath("/communities");
   revalidatePath("/communities/groups");
   return { error: null };
@@ -551,11 +555,14 @@ export async function leaveGroupAction(
       error: "As the creator you can't leave. Delete the community instead.",
     };
 
-  await supabase
+  const { data: deleted, error } = await supabase
     .from("community_group_members")
     .delete()
     .eq("group_id", groupId)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("group_id");
+  if (error) return { error: sanitizeError(error, "Could not leave this community.") };
+  if (!deleted?.length) return { error: "Could not leave this community. Please try again." };
   revalidatePath("/communities");
   revalidatePath("/communities/groups");
   return { error: null };

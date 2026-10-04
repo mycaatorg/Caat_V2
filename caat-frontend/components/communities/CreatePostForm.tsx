@@ -207,22 +207,28 @@ export function CreatePostForm({ currentUser, onPostCreated, groupId }: CreatePo
       : null;
 
     startTransition(async () => {
-      const { post, error } = await createPostAction({
-        content,
-        topic_tag: topicTag,
-        result_card: resultCard,
-        score_card: scoreCard,
-        resume_id: showResume && selectedResumeId ? selectedResumeId : null,
-        is_anonymous: isAnonymous,
-        university_id: showSchool && selectedSchool ? selectedSchool.id : null,
-        poll_options: pollOptionsFinal,
-        group_id: groupId ?? null,
-      });
+      let result: Awaited<ReturnType<typeof createPostAction>>;
+      try {
+        result = await createPostAction({
+          content,
+          topic_tag: topicTag,
+          result_card: resultCard,
+          score_card: scoreCard,
+          resume_id: showResume && selectedResumeId ? selectedResumeId : null,
+          is_anonymous: isAnonymous,
+          university_id: showSchool && selectedSchool ? selectedSchool.id : null,
+          poll_options: pollOptionsFinal,
+          group_id: groupId ?? null,
+        });
+      } catch {
+        toast.error("Could not share your post. Please try again.");
+        return;
+      }
 
-      if (error || !post) { toast.error(error ?? "Failed to create post."); return; }
-      toast.success("Post shared.");
-      onPostCreated(post);
+      if (result.error || !result.post) { toast.error(result.error ?? "Failed to create post."); return; }
       reset();
+      toast.success("Post shared.");
+      onPostCreated(result.post);
     });
   }
 
