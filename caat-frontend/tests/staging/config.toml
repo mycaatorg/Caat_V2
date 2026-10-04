@@ -21,6 +21,7 @@ enabled = true
 [studio]
 enabled = false
 [inbucket]
+# Local disposable inbox service used by Auth recovery E2E.
 enabled = true
 port = 55434
 [storage]
