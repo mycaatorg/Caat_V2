@@ -198,7 +198,11 @@ test("community post draft survives a failed request and retry persists once", a
     await page.reload();
     const cards = page.locator("div.bg-card").filter({ hasText: content });
     await expect(cards).toHaveCount(1);
-    await expect(cards.getByText(content, { exact: true })).toBeVisible();
+    // Assert the complete rendered body, not matching descendant paragraphs.
+    // The array form still rejects duplicate cards or duplicated body content.
+    const bodies = cards.locator(".community-prose");
+    await expect(bodies).toHaveText([content]);
+    await expect(bodies).toBeVisible();
   } finally {
     await page.unroute("**/communities/**");
     if (!page.isClosed()) await removeSyntheticPost(page, content);
