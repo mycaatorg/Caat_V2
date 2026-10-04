@@ -111,12 +111,14 @@ export default function EssaysShell({
   const savingRef = useRef(false);
   const pendingSaveRef = useRef(false);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingWritesRef = useRef(0);
 
   // M1 — warn on hard close/refresh while an essay edit is still within the
   // autosave window (complements the flush-before-switch/unmount fixes).
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (autosaveTimerRef.current || savingRef.current || pendingSaveRef.current) {
+      if (autosaveTimerRef.current || savingRef.current || pendingSaveRef.current || pendingWritesRef.current > 0) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -125,32 +127,51 @@ export default function EssaysShell({
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
 
-  // Persist the outgoing draft's pending edits before its content is replaced,
-  // so switching draft/prompt (or navigating) within the autosave window never
-  // drops work. Best-effort: updates the drafts list without touching the
-  // active editor, which is about to change. Declared here (before the effects
-  // that reference it) to avoid a use-before-declaration.
+  // Persist outgoing edits in order, draining any further typing that happens
+  // while a write is in flight. Declared before effects that reference it.
+  const saveDraftContent = useCallback((draft: EssayDraft, content: string) => {
+    pendingWritesRef.current += 1;
+    const queuedSave = saveQueueRef.current.then(async () => {
+      await updateDraft(draft.id, { content });
+      const updatedAt = new Date().toISOString();
+      if (activeDraftRef.current?.id === draft.id) {
+        activeDraftRef.current = { ...activeDraftRef.current, content, updated_at: updatedAt };
+      }
+      setDrafts((prev) =>
+        prev.map((item) => item.id === draft.id ? { ...item, content, updated_at: updatedAt } : item)
+      );
+      setActiveDraft((prev) =>
+        prev?.id === draft.id ? { ...prev, content, updated_at: updatedAt } : prev
+      );
+    });
+    // Keep later writes moving after a failure while returning this write's
+    // rejection to callers that need to keep the current draft selected.
+    saveQueueRef.current = queuedSave.then(
+      () => { pendingWritesRef.current -= 1; },
+      () => { pendingWritesRef.current -= 1; },
+    );
+    return queuedSave;
+  }, []);
+
   const flushPending = useCallback(async () => {
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;
     }
-    const draft = activeDraftRef.current;
-    const content = essayContentRef.current;
-    if (!draft || content === draft.content) return;
     try {
-      await updateDraft(draft.id, { content });
-      setDrafts((prev) =>
-        prev.map((d) =>
-          d.id === draft.id
-            ? { ...d, content, updated_at: new Date().toISOString() }
-            : d
-        )
-      );
-    } catch {
-      // Non-fatal on switch; the manual Save button and autosave remain.
+      setSaveError(null);
+      while (true) {
+        const draft = activeDraftRef.current;
+        const content = essayContentRef.current;
+        if (!draft || (content === draft.content && pendingWritesRef.current === 0)) return;
+        await saveDraftContent(draft, content);
+        if (essayContentRef.current === content) return;
+      }
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save");
+      throw err;
     }
-  }, []);
+  }, [saveDraftContent]);
 
   // Load prompts on mount
   useEffect(() => {
@@ -232,7 +253,7 @@ export default function EssaysShell({
       cancelled = true;
       // Flush the outgoing prompt's active draft before this effect re-runs and
       // replaces the editor content for the newly selected prompt.
-      void flushPending();
+      void flushPending().catch(() => {});
     };
   }, [selectedPromptId, isAuthenticated, flushPending]);
 
@@ -255,24 +276,12 @@ export default function EssaysShell({
       return;
     }
     const content = essayContentRef.current;
-    if (content === draft.content) return;
+    if (content === draft.content && pendingWritesRef.current === 0) return;
     setSaveError(null);
     savingRef.current = true;
     setSaving(true);
     try {
-      await updateDraft(draft.id, { content });
-      setDrafts((prev) =>
-        prev.map((d) =>
-          d.id === draft.id
-            ? { ...d, content, updated_at: new Date().toISOString() }
-            : d
-        )
-      );
-      setActiveDraft((prev) =>
-        prev?.id === draft.id
-          ? { ...prev, content, updated_at: new Date().toISOString() }
-          : prev
-      );
+      await saveDraftContent(draft, content);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -285,11 +294,15 @@ export default function EssaysShell({
       }
     }
      
-  }, []);
+  }, [saveDraftContent]);
 
   const handleSwitchDraft = useCallback(
     async (draft: EssayDraft) => {
-      await flushPending();
+      try {
+        await flushPending();
+      } catch {
+        return;
+      }
       setActiveDraft(draft);
       setEssayContent(draft.content);
       setRenamingId(null);
@@ -326,7 +339,11 @@ export default function EssaysShell({
     if (!selectedPromptId || creatingDraft || !isAuthenticated) return;
     // Flush the outgoing draft's pending edits before we swap the editor to the
     // fresh, empty draft.
-    await flushPending();
+    try {
+      await flushPending();
+    } catch {
+      return;
+    }
     const promptSlug = selectedPrompt?.slug ?? `custom-${selectedPromptId}`;
     setCreatingDraft(true);
     setSaveError(null);
@@ -465,11 +482,11 @@ export default function EssaysShell({
   // Flush pending edits on unmount (client-side navigation away) and on tab
   // close, so leaving within the 2s autosave window doesn't lose work.
   useEffect(() => {
-    const onBeforeUnload = () => { void flushPending(); };
+    const onBeforeUnload = () => { void flushPending().catch(() => {}); };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => {
       window.removeEventListener("beforeunload", onBeforeUnload);
-      void flushPending();
+      void flushPending().catch(() => {});
     };
   }, [flushPending]);
 
