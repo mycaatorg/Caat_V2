@@ -1,10 +1,11 @@
 import { supabase } from "@/lib/supabase/client";
 import { sanitizeError } from "@/lib/safe-error";
-import type { ApplicationRow, ApplicationStatus } from "@/types/applications";
+import { isSubmittedStatus, type ApplicationRow, type ApplicationStatus } from "@/types/applications";
 import type { ScholarshipRow } from "@/types/scholarships";
 import type { ProfileRow } from "@/types/profile";
 import { matchScholarship } from "@/lib/profile-match";
 import { fetchTrackedForSchool, type TrackedScholarship } from "@/lib/scholarship-tracking";
+import { assertApplicationWritten } from "@/app/(main)/applications/api";
 
 /**
  * Per-school application hub data. Aggregates everything a student needs for
@@ -202,12 +203,7 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
   const deadlineSet = !!application.deadline_at;
   const essayDrafted = drafts.some((d) => d.school_id == null || d.school_id === schoolId);
   const keyDocsUploaded = docRows.some((d) => d.school_id == null || d.school_id === schoolId);
-  const submitted =
-    application.status === "submitted" ||
-    application.status === "decision_pending" ||
-    application.status === "accepted" ||
-    application.status === "rejected" ||
-    application.status === "waitlisted";
+  const submitted = isSubmittedStatus(application.status);
   const readiness: ReadinessSignals = {
     deadlineSet,
     essayDrafted,
@@ -272,12 +268,13 @@ export async function updateApplicationStatus(
   status: ApplicationStatus
 ): Promise<void> {
   const user = await getUser();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("user_school_applications")
     .update({ status, updated_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("user_id", user.id);
-  if (error) throw new Error(sanitizeError(error));
+    .eq("user_id", user.id)
+    .select("id");
+  assertApplicationWritten(data, error);
 }
 
 export async function updateApplicationDeadline(
@@ -285,10 +282,11 @@ export async function updateApplicationDeadline(
   deadline_at: string | null
 ): Promise<void> {
   const user = await getUser();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("user_school_applications")
     .update({ deadline_at, updated_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("user_id", user.id);
-  if (error) throw new Error(sanitizeError(error));
+    .eq("user_id", user.id)
+    .select("id");
+  assertApplicationWritten(data, error);
 }

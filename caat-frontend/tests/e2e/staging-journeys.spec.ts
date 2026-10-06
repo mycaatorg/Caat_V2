@@ -332,3 +332,125 @@ test("school notes and application status/checklist persist across list and deta
     }
   }
 });
+
+const APPLICATION_WRITES = "**/rest/v1/user_school_applications**";
+
+function seededApplicationCard(page: Page) {
+  const schoolLink = page.getByRole("link", { name: /E2E Test University/ }).first();
+  return { schoolLink, card: page.locator("div.rounded-lg.border.p-4").filter({ has: schoolLink }).first() };
+}
+
+async function removeSeededApplication(page: Page) {
+  await page.goto("/applications");
+  await expect(page.getByRole("heading", { name: "My Applications" })).toBeVisible({ timeout: 15_000 });
+  const { schoolLink, card } = seededApplicationCard(page);
+  await schoolLink.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
+  if (!(await schoolLink.count())) return;
+  await card.getByRole("button", { name: "Remove application" }).click();
+  await card.getByRole("button", { name: "Confirm", exact: true }).click();
+  await expect(page.getByText("Application removed.", { exact: true })).toBeVisible({ timeout: 10_000 });
+}
+
+/** Abort exactly one matching write to the applications table, at the network
+ *  boundary, so the app sees a real failed request. */
+async function failNextApplicationWrite(page: Page, bodyFragment: string) {
+  const state = { failed: 0 };
+  await page.route(APPLICATION_WRITES, async (route) => {
+    const request = route.request();
+    if (state.failed === 0 && request.method() === "PATCH" && request.postData()?.includes(bodyFragment)) {
+      state.failed += 1;
+      await route.abort("failed");
+      return;
+    }
+    await route.continue();
+  });
+  return state;
+}
+
+test("application checklist edits recover from failed writes and persist after reload", async ({ page }) => {
+  test.setTimeout(90_000);
+  await signInToIsolatedStudent(page);
+  const note = marker("Recovered application note");
+  let removed = false;
+  try {
+    // Start from a clean slate even if an earlier run left the seed tracked.
+    await removeSeededApplication(page);
+    await page.goto(`/schools/${SCHOOL_ID}`);
+    await page.getByRole("button", { name: "Track Application" }).click();
+    await expect(page.getByRole("link", { name: "Researching" })).toBeVisible({ timeout: 15_000 });
+
+    await page.goto("/applications");
+    const href = await seededApplicationCard(page).card.getByRole("link", { name: /open/i }).getAttribute("href");
+    expect(href).toMatch(/^\/applications\/[0-9a-f-]+$/i);
+    await page.goto(href!);
+    await expect(page.getByRole("heading", { name: "E2E Test University", exact: true, level: 1 })).toBeVisible({ timeout: 15_000 });
+
+    const checklist = (label: string) => page.locator("li[data-state]").filter({ hasText: label });
+    const statusButton = page.getByRole("button", { name: /^(Researching|Submitted)$/ });
+    await expect(checklist("Deadline is set")).toHaveAttribute("data-state", "todo");
+    await expect(checklist("Status reached Submitted")).toHaveAttribute("data-state", "todo");
+
+    // The checklist follows a saved deadline without a reload.
+    const deadlineSaved = page.waitForResponse((r) => r.url().includes("/rest/v1/user_school_applications") && r.request().method() === "PATCH" && r.ok());
+    await page.locator("#hub-deadline").fill("2027-03-15");
+    await deadlineSaved;
+    await expect(checklist("Deadline is set")).toHaveAttribute("data-state", "done");
+
+    // A failed status write reverts the status and checklist, then a retry saves.
+    let failure = await failNextApplicationWrite(page, '"status":"submitted"');
+    await statusButton.click();
+    await page.getByRole("menuitem", { name: "Submitted", exact: true }).click();
+    await expect.poll(() => failure.failed).toBe(1);
+    await expect(page.locator("[data-sonner-toast]").filter({ hasText: /went wrong|try again/i }).first()).toBeVisible();
+    await expect(statusButton).toHaveText("Researching");
+    await expect(statusButton).toBeEnabled();
+    await expect(checklist("Status reached Submitted")).toHaveAttribute("data-state", "todo");
+
+    const statusSaved = page.waitForResponse((r) => r.url().includes("/rest/v1/user_school_applications") && r.request().method() === "PATCH" && r.ok());
+    await statusButton.click();
+    await page.getByRole("menuitem", { name: "Submitted", exact: true }).click();
+    await statusSaved;
+    await expect(checklist("Status reached Submitted")).toHaveAttribute("data-state", "done");
+    await page.unroute(APPLICATION_WRITES);
+
+    await page.reload();
+    await expect(statusButton).toHaveText("Submitted", { timeout: 15_000 });
+    await expect(page.locator("#hub-deadline")).toHaveValue("2027-03-15");
+    await expect(checklist("Deadline is set")).toHaveAttribute("data-state", "done");
+    await expect(checklist("Status reached Submitted")).toHaveAttribute("data-state", "done");
+
+    // A failed notes save keeps the text and says so; Save retries it.
+    await page.goto("/applications");
+    let { card } = seededApplicationCard(page);
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    failure = await failNextApplicationWrite(page, note);
+    await card.getByRole("button", { name: "Notes", exact: true }).click();
+    const notes = card.getByPlaceholder("Add notes about this application…");
+    await notes.fill(note);
+    await expect.poll(() => failure.failed).toBe(1);
+    await expect(card.getByText("Not saved", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(notes).toHaveValue(note);
+    await card.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(card.getByText("Saved", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.unroute(APPLICATION_WRITES);
+
+    await page.reload();
+    ({ card } = seededApplicationCard(page));
+    await expect(card.getByRole("combobox")).toContainText("Submitted", { timeout: 15_000 });
+    await expect(card.getByLabel("Application deadline for E2E Test University")).toHaveValue("2027-03-15");
+    await card.getByRole("button", { name: "Notes", exact: true }).click();
+    await expect(card.getByPlaceholder("Add notes about this application…")).toHaveValue(note);
+
+    // Removal is persisted, not just hidden.
+    await removeSeededApplication(page);
+    removed = true;
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "My Applications" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("link", { name: /E2E Test University/ })).toHaveCount(0);
+  } finally {
+    if (!page.isClosed()) {
+      await page.unroute(APPLICATION_WRITES).catch(() => {});
+      if (!removed) await removeSeededApplication(page).catch(() => {});
+    }
+  }
+});
