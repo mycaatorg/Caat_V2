@@ -104,15 +104,16 @@ export async function updateApplication(
   assertApplicationWritten(data, error);
 }
 
+/** Idempotent: a row already removed (e.g. in another tab) is the outcome the
+ *  student asked for, so zero deleted rows is not an error. */
 export async function deleteApplication(id: string): Promise<void> {
   const user = await getUser();
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("user_school_applications")
     .delete()
     .eq("id", id)
-    .eq("user_id", user.id)
-    .select("id");
-  assertApplicationWritten(data, error);
+    .eq("user_id", user.id);
+  if (error) throw new Error(sanitizeError(error));
 }
 
 /**

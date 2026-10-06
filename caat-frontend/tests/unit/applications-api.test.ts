@@ -127,6 +127,9 @@ describe("updateApplication / deleteApplication", () => {
     const patch = state.calls.find((c) => c.method === "update")!.args[0] as Record<string, unknown>;
     expect(patch).toMatchObject({ status: "applying" });
     expect(typeof patch.updated_at).toBe("string");
+    // Without a returned row the write cannot be confirmed.
+    expect(state.calls.map((c) => c.method).slice(-1)).toEqual(["select"]);
+    expect(state.calls.at(-1)!.args).toEqual(["id"]);
   });
 
   it("throws when the update errors", async () => {
@@ -146,9 +149,10 @@ describe("updateApplication / deleteApplication", () => {
     expect(state.calls.filter((c) => c.method === "eq").map((c) => c.args)).toEqual([["id", "a1"], ["user_id", "user-1"]]);
   });
 
-  it("rejects a delete that matched no owned application", async () => {
+  it("treats deleting an application that is already gone as done", async () => {
+    // Removed in another tab: the outcome the student asked for already holds.
     state.resolver = (ctx) => (ctx.op === "delete" ? { data: [], error: null } : { data: null, error: null });
-    await expect(deleteApplication("missing")).rejects.toThrow("Application not found");
+    await expect(deleteApplication("already-removed")).resolves.toBeUndefined();
   });
 
   it("throws when the delete errors", async () => {
@@ -172,6 +176,7 @@ describe("updateApplicationMajors", () => {
     await expect(updateApplicationMajors("a1", ["Law", "Commerce"])).resolves.toBeUndefined();
     const patch = state.calls.find((c) => c.method === "update")!.args[0] as { intended_majors: string[] };
     expect(patch.intended_majors).toEqual(["Law", "Commerce"]);
+    expect(state.calls.at(-1)).toEqual({ table: "user_school_applications", method: "select", args: ["id"] });
     expect(state.calls.filter((c) => c.method === "eq").map((c) => c.args)).toEqual([["id", "a1"], ["user_id", "user-1"]]);
   });
 

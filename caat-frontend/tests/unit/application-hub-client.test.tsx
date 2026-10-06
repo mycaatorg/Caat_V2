@@ -144,6 +144,36 @@ describe("deadline", () => {
     expect(score()).toBe("1");
   });
 
+  it("reverts to the saved deadline when consecutive writes all fail", async () => {
+    const partialYear = deferred();
+    const fullYear = deferred();
+    io.updateApplicationDeadline.mockReturnValueOnce(partialYear.promise).mockReturnValueOnce(fullYear.promise);
+    await mount();
+    await change(deadlineInput(), "0202-10-15");
+    await change(deadlineInput(), "2027-10-15");
+    await act(async () => partialYear.reject(new Error("offline")));
+    await flush();
+    await act(async () => fullYear.reject(new Error("offline")));
+    await flush();
+    expect(deadlineInput().value).toBe("");
+    expect(isDone("Deadline is set")).toBe(false);
+    expect(io.toast.error).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a deadline set again after an earlier identical write failed", async () => {
+    const first = deferred();
+    io.updateApplicationDeadline.mockReturnValueOnce(first.promise).mockResolvedValue(undefined);
+    await mount();
+    await change(deadlineInput(), "2027-01-01");
+    await change(deadlineInput(), "2027-02-02");
+    await change(deadlineInput(), "2027-01-01");
+    await act(async () => first.reject(new Error("offline")));
+    await flush();
+    await flush();
+    expect(deadlineInput().value).toBe("2027-01-01");
+    expect(io.toast.error).not.toHaveBeenCalled();
+  });
+
   it("restores the deadline and checklist when the write fails", async () => {
     io.updateApplicationDeadline.mockRejectedValueOnce(new Error("Application not found"));
     await mount();

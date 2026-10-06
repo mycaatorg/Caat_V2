@@ -195,6 +195,7 @@ describe("hub status and deadline writes", () => {
     await expect(updateApplicationStatus("app-1", "submitted")).resolves.toBeUndefined();
     const update = io.client.queries.find((q) => q.op === "update")!;
     expect(update.calls.find((c) => c.method === "update")!.args[0]).toMatchObject({ status: "submitted" });
+    expect(update.calls.at(-1)).toEqual({ method: "select", args: ["id"] });
     expect(update.calls.filter((c) => c.method === "eq").map((c) => c.args)).toEqual([
       ["id", "app-1"],
       ["user_id", "student-1"],
@@ -207,6 +208,7 @@ describe("hub status and deadline writes", () => {
     await updateApplicationDeadline("app-1", null);
     const patches = io.client.queries.filter((q) => q.op === "update").map((q) => q.calls.find((c) => c.method === "update")!.args[0]);
     expect(patches).toMatchObject([{ deadline_at: "2026-12-01" }, { deadline_at: null }]);
+    for (const q of io.client.queries) expect(q.calls.at(-1)).toEqual({ method: "select", args: ["id"] });
   });
 
   it.each([

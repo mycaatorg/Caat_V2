@@ -137,11 +137,11 @@ export default function ApplicationsClient() {
     return next;
   }
 
-  /** Undo one failed field write, but only if the field still holds the value
-   *  that write set: a newer edit, or another card's change, must survive. */
-  function revertField<K extends EditableField>(id: string, key: K, attempted: ApplicationRow[K], previous: ApplicationRow[K]) {
-    setApps((cur) => cur.map((a) => (a.id === id && a[key] === attempted ? { ...a, [key]: previous } : a)));
-  }
+  // Per application field: the last value the server confirmed, and the
+  // newest write. Only the newest write may undo, and it undoes to the last
+  // confirmed value, never to an earlier optimistic value that also failed.
+  const confirmedValues = useRef(new Map<string, ApplicationRow[EditableField]>());
+  const latestWrite = useRef(new Map<string, number>());
 
   const loadApplications = useCallback(() => {
     setLoading(true);
@@ -253,17 +253,39 @@ export default function ApplicationsClient() {
     value: ApplicationRow[K],
     failureMessage: string
   ): Promise<boolean> {
-    const previous = apps.find((a) => a.id === id)?.[key] ?? null;
+    const slot = `${id}:${key}`;
+    // The first write to a field starts from the loaded (server) value.
+    if (!confirmedValues.current.has(slot)) {
+      confirmedValues.current.set(slot, apps.find((a) => a.id === id)?.[key] ?? null);
+    }
+    const seq = (latestWrite.current.get(slot) ?? 0) + 1;
+    latestWrite.current.set(slot, seq);
     setApps((cur) => cur.map((a) => (a.id === id ? { ...a, [key]: value } : a)));
     try {
       await enqueueWrite(id, () => updateApplication(id, { [key]: value }));
+      confirmedValues.current.set(slot, value);
       return true;
     } catch {
-      if (removedIds.current.has(id)) return false;
+      // A newer write for this field supersedes this one; a removed row's
+      // field is restored from confirmed values if the removal fails.
+      if (removedIds.current.has(id) || latestWrite.current.get(slot) !== seq) return false;
       toast.error(failureMessage);
-      revertField(id, key, value, previous as ApplicationRow[K]);
+      const confirmed = confirmedValues.current.get(slot) as ApplicationRow[K];
+      setApps((cur) => cur.map((a) => (a.id === id ? { ...a, [key]: confirmed } : a)));
       return false;
     }
+  }
+
+  /** The row as the server has it: confirmed values over a click-time copy. */
+  function withConfirmedValues(row: ApplicationRow): ApplicationRow {
+    const restored = { ...row };
+    for (const key of ["status", "deadline_at", "notes"] as const) {
+      const slot = `${row.id}:${key}`;
+      if (confirmedValues.current.has(slot)) {
+        Object.assign(restored, { [key]: confirmedValues.current.get(slot) });
+      }
+    }
+    return restored;
   }
 
   function handleStatusChange(id: string, status: ApplicationStatus) {
@@ -289,11 +311,12 @@ export default function ApplicationsClient() {
       toast.success("Application removed.");
     } catch {
       removedIds.current.delete(id);
-      // Put the row back where it was without rolling back other cards.
+      // Put the row back where it was, as last saved, without rolling back
+      // other cards. Writes queued before the removal have settled by now.
       setApps((cur) =>
         !removed || cur.some((a) => a.id === id)
           ? cur
-          : [...cur.slice(0, index), removed, ...cur.slice(index)]
+          : [...cur.slice(0, index), withConfirmedValues(removed), ...cur.slice(index)]
       );
       toast.error("Failed to remove application.");
     }
@@ -517,6 +540,8 @@ function ApplicationCard({
 
   function handleNotesInput(val: string) {
     setLocalNotes(val);
+    // Newer unsent text makes any in-flight save's result stale.
+    notesSaveSeq.current++;
     setNotesState("saving");
     if (notesTimeout.current) clearTimeout(notesTimeout.current);
     notesTimeout.current = setTimeout(() => void saveNotes(val), 800);

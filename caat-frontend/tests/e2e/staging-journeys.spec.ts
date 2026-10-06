@@ -342,9 +342,11 @@ function seededApplicationCard(page: Page) {
 
 async function removeSeededApplication(page: Page) {
   await page.goto("/applications");
+  // The heading renders only after the list has loaded (a skeleton shows
+  // until then), so the card count below is final rather than a race.
   await expect(page.getByRole("heading", { name: "My Applications" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Couldn't load your applications.")).toHaveCount(0);
   const { schoolLink, card } = seededApplicationCard(page);
-  await schoolLink.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
   if (!(await schoolLink.count())) return;
   await card.getByRole("button", { name: "Remove application" }).click();
   await card.getByRole("button", { name: "Confirm", exact: true }).click();

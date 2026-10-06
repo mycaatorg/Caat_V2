@@ -180,6 +180,37 @@ describe("status and deadline", () => {
     ]);
   });
 
+  it("reverts to the last saved deadline when consecutive writes all fail", async () => {
+    const partialYear = deferred();
+    const fullYear = deferred();
+    io.updateApplication.mockReturnValueOnce(partialYear.promise).mockReturnValueOnce(fullYear.promise);
+    await mount();
+    await change(deadlineOf("Alpha University"), "0202-10-15");
+    await change(deadlineOf("Alpha University"), "2027-10-15");
+    await act(async () => partialYear.reject(new Error("offline")));
+    await flush();
+    await act(async () => fullYear.reject(new Error("offline")));
+    await flush();
+    expect(deadlineOf("Alpha University").value).toBe("");
+    // Only the newest failed write is reported.
+    expect(io.toast.error).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a value the student set again after an earlier identical write failed", async () => {
+    const first = deferred();
+    io.updateApplication.mockReturnValueOnce(first.promise).mockResolvedValue(undefined);
+    await mount();
+    await change(deadlineOf("Alpha University"), "2027-01-01");
+    await change(deadlineOf("Alpha University"), "2027-02-02");
+    await change(deadlineOf("Alpha University"), "2027-01-01");
+    await act(async () => first.reject(new Error("offline")));
+    await flush();
+    await flush();
+    expect(io.updateApplication).toHaveBeenLastCalledWith("app-1", { deadline_at: "2027-01-01" });
+    expect(deadlineOf("Alpha University").value).toBe("2027-01-01");
+    expect(io.toast.error).not.toHaveBeenCalled();
+  });
+
   it("restores the previous deadline when the write fails", async () => {
     io.updateApplication.mockRejectedValueOnce(new Error("offline"));
     await mount();
@@ -257,6 +288,21 @@ describe("notes", () => {
     expect(indicator("Alpha University")).toBe("Saved");
   });
 
+  it("does not show Saved while newer typing is still waiting to send", async () => {
+    const first = deferred();
+    io.updateApplication.mockReturnValueOnce(first.promise).mockResolvedValue(undefined);
+    await mount();
+    const notes = await openNotes("Alpha University");
+    await change(notes, "first");
+    await advance(800);
+    await change(notes, "first and more");
+    await act(async () => first.resolve());
+    expect(indicator("Alpha University")).toBe("Saving…");
+    await advance(800);
+    await flush();
+    expect(indicator("Alpha University")).toBe("Saved");
+  });
+
   it("clears notes immediately and cancels a pending autosave", async () => {
     await mount([alpha()]);
     const notes = await openNotes("Alpha University");
@@ -304,6 +350,22 @@ describe("removal", () => {
     expect(statusOf("Beta College").value).toBe("accepted");
     expect(io.toast.error).toHaveBeenCalledWith("Failed to remove application.");
     expect(io.toast.success).not.toHaveBeenCalled();
+  });
+
+  it("restores a failed removal with saved values, not an edit that failed meanwhile", async () => {
+    const statusWrite = deferred();
+    const removal = deferred();
+    io.updateApplication.mockReturnValueOnce(statusWrite.promise);
+    io.deleteApplication.mockReturnValueOnce(removal.promise);
+    await mount();
+    await change(statusOf("Alpha University"), "accepted");
+    await remove("Alpha University");
+    await act(async () => statusWrite.reject(new Error("offline")));
+    await flush();
+    await act(async () => removal.reject(new Error("offline")));
+    await flush();
+    expect(statusOf("Alpha University").value).toBe("researching");
+    expect(io.toast.error).toHaveBeenCalledWith("Failed to remove application.");
   });
 
   it("does not report a notes failure for an application the student just removed", async () => {

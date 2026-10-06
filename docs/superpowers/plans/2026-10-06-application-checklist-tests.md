@@ -33,11 +33,12 @@ Extend existing tests; no production writes; synthetic owner data only. Fix only
 - [x] Hub component tests: 8 red (defects 2, 6, 7), fixed by deriving the checklist from the edited application, dropping the post-save refetch, serializing writes and guarding the majors editor. Tracking button tests pass without changes.
 - [x] Mutation checks: removing either write queue fails its ordering test.
 - [x] One isolated browser journey (`staging-journeys.spec.ts`): 90/90 browser checks on the Mac mini stack; new journey 5/5 repeated runs.
-- [ ] Independent review; PR to develop; release to main; verify deployment and public checks; update Linear.
+- [x] Independent review (Claude Opus): one important finding, a revert could restore an earlier value that had also failed, or undo a value set again later. Fixed: per-field newest-write sequence and last-confirmed values in list and hub; a failed removal restores confirmed values. Minor findings fixed: delete is idempotent (already removed is success), notes indicator cannot say Saved while newer text waits, API tests assert the written-row select, journey cleanup no longer races the list load. 6 new component regressions fail on the reviewed commit and pass after. 517 unit tests; 90/90 browser checks.
+- [ ] PR to develop; release to main; verify deployment and public checks; update Linear.
 
 ## Measurement
 
-Unit tests 442 → 511. Whole-source lines 26.19% → 31.07% (2191/7051), statements 25.55% → 30.40%, branches 22.34% → 26.23%, functions 18.26% → 23.66%. Floors ratcheted to 31/30/23/26. Browser checks 89 → 90. Per file lines: list client 0 → 93%, hub client 0 → 89%, hub API 0 → 97%, list API 88 → 100%, tracking button 0 → 100%.
+Unit tests 442 → 517. Whole-source lines 26.19% → 31.24% (2209/7069), statements 25.55% → 30.63%, branches 22.34% → 26.39%, functions 18.26% → 23.66%. Floors ratcheted to 31/30/23/26. Browser checks 89 → 90. Per file lines: list client 0 → 93%, hub client 0 → 89%, hub API 0 → 97%, list API 88 → 100%, tracking button 0 → 100%.
 
 ## Residual scope
 

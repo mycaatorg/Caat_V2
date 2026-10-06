@@ -99,11 +99,15 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
   // Status and deadline writes go out in the order they were made, so the
   // saved row always matches the last thing the student chose.
   const writeChain = useRef<Promise<unknown>>(Promise.resolve());
+  // Per field: the last server-confirmed value and the newest write. Only the
+  // newest write may undo, and only back to a value the server confirmed.
+  const confirmedFields = useRef<Partial<Pick<ApplicationRow, "status" | "deadline_at">>>({});
+  const latestWrite = useRef({ status: 0, deadline_at: 0 });
 
-  /** Optimistically set one application field and persist it. On failure undo
-   *  only that field, and only if a newer edit has not replaced it. Readiness
-   *  is derived from the application at render time, so no refetch is needed
-   *  (one could also overwrite an edit that is still saving). */
+  /** Optimistically set one application field and persist it. On failure the
+   *  newest write for that field undoes it to the last confirmed value.
+   *  Readiness is derived from the application at render time, so no refetch
+   *  is needed (one could also overwrite an edit that is still saving). */
   const saveField = async <K extends "status" | "deadline_at">(
     key: K,
     value: ApplicationRow[K],
@@ -112,20 +116,19 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
   ) => {
     if (!hub) return;
     const id = hub.application.id;
-    const previous = hub.application[key];
-    const setField = (from: ApplicationRow[K] | undefined, to: ApplicationRow[K]) =>
-      setHub((cur) =>
-        cur && (from === undefined || cur.application[key] === from)
-          ? { ...cur, application: { ...cur.application, [key]: to } }
-          : cur
-      );
-    setField(undefined, value);
+    if (!(key in confirmedFields.current)) confirmedFields.current[key] = hub.application[key];
+    const seq = ++latestWrite.current[key];
+    const setField = (to: ApplicationRow[K]) =>
+      setHub((cur) => (cur ? { ...cur, application: { ...cur.application, [key]: to } } : cur));
+    setField(value);
     const pending = writeChain.current.catch(() => {}).then(() => write(id));
     writeChain.current = pending;
     try {
       await pending;
+      confirmedFields.current[key] = value;
     } catch (e) {
-      setField(value, previous);
+      if (latestWrite.current[key] !== seq) return;
+      setField(confirmedFields.current[key] as ApplicationRow[K]);
       toast.error(e instanceof Error ? e.message : fallbackMessage);
     }
   };
