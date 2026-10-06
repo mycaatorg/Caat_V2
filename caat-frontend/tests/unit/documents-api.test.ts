@@ -47,6 +47,7 @@ vi.mock("@/lib/supabase/client", () => ({
 
 import {
   deleteDocument,
+  fetchDocuments,
   getDocumentSignedUrl,
   reuploadDocument,
   uploadDocument,
@@ -330,5 +331,172 @@ describe("reuploadDocument", () => {
     ]);
     expect(io.upload).not.toHaveBeenCalled();
     expect(io.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe("upload validation and failures", () => {
+  const noWrites = () => {
+    expect(io.upload).not.toHaveBeenCalled();
+    expect(io.queryCalls.some((call) => call.op === "insert")).toBe(false);
+  };
+
+  it("refuses a signed-out caller before touching storage or the database", async () => {
+    io.userId = null;
+    await expect(uploadDocument(pdfFile(), "transcripts")).rejects.toThrow("Not authenticated");
+    expect(io.queryCalls).toHaveLength(0);
+    noWrites();
+  });
+
+  it("rejects an unsupported file type", async () => {
+    io.queryResults.push(queryResult(null, { count: 0 }));
+    const doc = fileWithBytes("essay.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", [0x50, 0x4b, 3, 4]);
+    await expect(uploadDocument(doc, "letters")).rejects.toThrow("File type not allowed");
+    noWrites();
+  });
+
+  it("rejects a file over 10 MB", async () => {
+    io.queryResults.push(queryResult(null, { count: 0 }));
+    const big = pdfFile("scan.pdf");
+    Object.defineProperty(big, "size", { value: 10 * 1024 * 1024 + 1 });
+    await expect(uploadDocument(big, "identity")).rejects.toThrow("File too large (10.0 MB). Max 10 MB.");
+    noWrites();
+  });
+
+  it.each([
+    ["PNG", fileWithBytes("photo.png", "image/png", [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
+    ["JPEG", fileWithBytes("photo.jpg", "image/jpeg", [0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0])],
+  ])("accepts a genuine %s", async (_label, file) => {
+    io.queryResults.push(queryResult(null, { count: 0 }), queryResult(documentRow()));
+    await expect(uploadDocument(file, "identity")).resolves.toBeTruthy();
+    expect(io.upload).toHaveBeenCalledWith(expect.stringMatching(/^user-1\/identity\//), file, { contentType: file.type });
+  });
+
+  it("stops at the per-student limit without uploading", async () => {
+    io.queryResults.push(queryResult(null, { count: 50 }));
+    await expect(uploadDocument(pdfFile(), "transcripts")).rejects.toThrow("Document limit reached (50 max)");
+    noWrites();
+  });
+
+  it("does not upload when the limit check itself fails", async () => {
+    io.queryResults.push({ data: null, error: { message: "count timed out" }, count: null });
+    await expect(uploadDocument(pdfFile(), "transcripts")).rejects.toThrow("Something went wrong");
+    noWrites();
+  });
+
+  it("does not create a row when the storage upload fails", async () => {
+    io.queryResults.push(queryResult(null, { count: 0 }));
+    io.uploadResults.push({ error: { message: "storage unavailable" } });
+    await expect(uploadDocument(pdfFile(), "transcripts")).rejects.toThrow("Something went wrong");
+    expect(io.queryCalls.some((call) => call.op === "insert")).toBe(false);
+    expect(io.remove).not.toHaveBeenCalled();
+  });
+
+  it("still reports the original failure when cleanup of the staged object also fails", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(321);
+    io.queryResults.push(queryResult(null, { count: 0 }), { data: null, error: { message: "insert failed" } });
+    io.removeResults.push({ error: { message: "remove failed" } });
+    await expect(uploadDocument(pdfFile(), "transcripts")).rejects.toThrow("Something went wrong");
+    expect(storagePaths("remove")).toEqual([["user-1/transcripts/321_official_transcript.pdf"]]);
+  });
+});
+
+describe("delete failures", () => {
+  it("keeps the stored file when the row delete fails", async () => {
+    io.queryResults.push(
+      queryResult({ storage_path: "user-1/transcripts/keep.pdf" }),
+      { data: null, error: { message: "delete failed" } },
+    );
+    await expect(deleteDocument(documentRow())).rejects.toThrow("Something went wrong");
+    // The row still exists, so its file must too; otherwise it points at nothing.
+    expect(io.remove).not.toHaveBeenCalled();
+  });
+
+  it("removes the stored file only after the row delete commits", async () => {
+    io.queryResults.push(queryResult({ storage_path: "user-1/transcripts/gone.pdf" }), queryResult(null));
+    await deleteDocument(documentRow());
+    expect(io.timeline.indexOf("db-done:documents:delete:then")).toBeGreaterThanOrEqual(0);
+    expect(io.timeline.indexOf("storage-remove:user-1/transcripts/gone.pdf")).toBeGreaterThan(
+      io.timeline.indexOf("db-done:documents:delete:then"),
+    );
+  });
+
+  it("does not delete anything when the ownership lookup fails", async () => {
+    io.queryResults.push({ data: null, error: { message: "lookup timed out" } });
+    await expect(deleteDocument(documentRow())).rejects.toThrow("Something went wrong");
+    expect(io.queryCalls.some((call) => call.op === "delete")).toBe(false);
+    expect(io.remove).not.toHaveBeenCalled();
+  });
+
+  it("treats a document that is already gone as deleted", async () => {
+    io.queryResults.push(queryResult(null));
+    await expect(deleteDocument(documentRow())).resolves.toBeUndefined();
+    expect(io.remove).not.toHaveBeenCalled();
+  });
+
+  it("succeeds once the row is gone even if the file removal fails", async () => {
+    io.queryResults.push(queryResult({ storage_path: "user-1/transcripts/orphan.pdf" }), queryResult(null));
+    io.removeResults.push({ error: { message: "remove failed" } });
+    await expect(deleteDocument(documentRow())).resolves.toBeUndefined();
+    expect(console.error).toHaveBeenCalledWith("Failed to remove document from storage:", "remove failed");
+  });
+
+  it("refuses a signed-out caller", async () => {
+    io.userId = null;
+    await expect(deleteDocument(documentRow())).rejects.toThrow("Not authenticated");
+    expect(io.queryCalls).toHaveLength(0);
+    expect(io.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe("replacement failures", () => {
+  it("does not touch the row or the old file when the new upload fails", async () => {
+    io.queryResults.push(queryResult({ storage_path: "user-1/identity/keep.pdf", category: "identity" }));
+    io.uploadResults.push({ error: { message: "storage unavailable" } });
+    await expect(reuploadDocument(documentRow(), pdfFile("new.pdf"))).rejects.toThrow("Something went wrong");
+    expect(io.queryCalls.some((call) => call.op === "update")).toBe(false);
+    expect(io.remove).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid replacement content before looking anything up", async () => {
+    const fake = fileWithBytes("fake.png", "image/png", [0x25, 0x50, 0x44, 0x46, 0, 0, 0, 0]);
+    await expect(reuploadDocument(documentRow(), fake)).rejects.toThrow("File content does not match");
+    expect(io.queryCalls).toHaveLength(0);
+    expect(io.upload).not.toHaveBeenCalled();
+  });
+
+  it("keeps the replacement when only the old file removal fails", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(42);
+    const saved = documentRow({ storage_path: "user-1/identity/42_new.pdf" });
+    io.queryResults.push(queryResult({ storage_path: "user-1/identity/old.pdf", category: "identity" }), queryResult(saved));
+    io.removeResults.push({ error: { message: "remove failed" } });
+    await expect(reuploadDocument(documentRow(), pdfFile("new.pdf"))).resolves.toEqual(saved);
+    expect(console.error).toHaveBeenCalledWith("Failed to remove replaced document from storage:", "remove failed");
+  });
+
+  it("reports a lookup failure as a failure, not as a missing document", async () => {
+    io.queryResults.push({ data: null, error: { message: "lookup timed out" } });
+    await expect(reuploadDocument(documentRow(), pdfFile("new.pdf"))).rejects.toThrow("Something went wrong");
+    expect(io.upload).not.toHaveBeenCalled();
+  });
+});
+
+describe("listing and access failures", () => {
+  it("lists only the caller's documents, newest first", async () => {
+    io.queryResults.push(queryResult([documentRow()]));
+    await expect(fetchDocuments()).resolves.toHaveLength(1);
+    expect(latestQuery("documents", "select").filters).toEqual([["user_id", "user-1"]]);
+  });
+
+  it("surfaces a sanitized list failure", async () => {
+    io.queryResults.push({ data: null, error: { message: "relation documents does not exist" } });
+    await expect(fetchDocuments()).rejects.toThrow("Something went wrong");
+  });
+
+  it("refuses signed links for signed-out callers and reports storage failures", async () => {
+    io.userId = null;
+    await expect(getDocumentSignedUrl("user-1/identity/passport.pdf")).rejects.toThrow("Not authenticated");
+    io.userId = "user-1";
+    io.signedResult = { data: null, error: { message: "object not found" } };
+    await expect(getDocumentSignedUrl("user-1/identity/passport.pdf")).rejects.toThrow("Could not generate URL");
   });
 });

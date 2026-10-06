@@ -72,11 +72,13 @@ export async function uploadDocument(
   } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Not authenticated");
 
-  // Enforce per-user document limit (E3)
-  const { count } = await supabase
+  // Enforce per-user document limit (E3). A failed count must not read as
+  // zero, or the limit would be skipped whenever the check errors.
+  const { count, error: countError } = await supabase
     .from("documents")
     .select("id", { count: "exact", head: true })
     .eq("user_id", user.id);
+  if (countError) throw new Error(sanitizeError(countError));
   if ((count ?? 0) >= MAX_DOCUMENTS_PER_USER) {
     throw new Error(`Document limit reached (${MAX_DOCUMENTS_PER_USER} max). Please delete old documents before uploading new ones.`);
   }
@@ -158,28 +160,30 @@ export async function deleteDocument(doc: DocumentRow): Promise<void> {
 
   // Re-fetch storage_path from DB scoped to this user — prevents client-supplied
   // path from targeting another user's storage file (B5).
-  const { data: dbDoc } = await supabase
+  const { data: dbDoc, error: lookupError } = await supabase
     .from("documents")
     .select("storage_path")
     .eq("id", doc.id)
     .eq("user_id", user.id)
     .maybeSingle();
+  if (lookupError) throw new Error(sanitizeError(lookupError));
+  // Already removed (e.g. in another tab): the student's goal already holds.
+  if (!dbDoc) return;
 
-  if (dbDoc?.storage_path) {
-    const { error: rmErr } = await supabase.storage.from(BUCKET).remove([dbDoc.storage_path]);
-    // Non-fatal (the DB row is still deleted), but log so orphaned storage
-    // objects are visible instead of silently accumulating.
-    if (rmErr && process.env.NODE_ENV !== "production")
-      console.error("Failed to remove document from storage:", rmErr.message);
-  }
-
+  // Delete the row first: if this fails the document stays intact. Removing
+  // the file first would leave a row pointing at a missing file.
   const { error } = await supabase
     .from("documents")
     .delete()
     .eq("id", doc.id)
     .eq("user_id", user.id);
-
   if (error) throw new Error(sanitizeError(error));
+
+  const { error: rmErr } = await supabase.storage.from(BUCKET).remove([dbDoc.storage_path]);
+  // Non-fatal (the row is gone, so nothing points at it), but log so orphaned
+  // storage objects are visible instead of silently accumulating.
+  if (rmErr && process.env.NODE_ENV !== "production")
+    console.error("Failed to remove document from storage:", rmErr.message);
 }
 
 export async function reuploadDocument(
@@ -207,13 +211,14 @@ export async function reuploadDocument(
 
   // Re-fetch the existing storage_path from DB scoped to this user — prevents
   // client-supplied path from removing another user's storage file (B5).
-  const { data: dbDoc } = await supabase
+  const { data: dbDoc, error: lookupError } = await supabase
     .from("documents")
     .select("storage_path, category")
     .eq("id", doc.id)
     .eq("user_id", user.id)
     .maybeSingle();
 
+  if (lookupError) throw new Error(sanitizeError(lookupError));
   if (!dbDoc) throw new Error("Document not found");
 
   const newStoragePath = `${user.id}/${dbDoc.category}/${Date.now()}_${sanitizeFileName(newFile.name)}`;

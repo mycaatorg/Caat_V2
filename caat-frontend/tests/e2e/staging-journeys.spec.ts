@@ -213,11 +213,13 @@ test("valid document upload persists file metadata after reload", async ({ page 
     });
     await page.getByRole("button", { name: "Upload", exact: true }).click();
     await expect(page.getByText(fileName, { exact: true })).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("In Review", { exact: true })).toBeVisible();
+    // Scope to this file's row: a reused isolated database may hold other documents.
+    const uploadedRow = () => page.getByText(fileName, { exact: true }).locator("xpath=../../..");
+    await expect(uploadedRow().getByText("In Review", { exact: true })).toBeVisible();
 
     await page.reload();
     await expect(page.getByText(fileName, { exact: true })).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("Transcripts", { exact: true })).toBeVisible();
+    await expect(uploadedRow().getByText("Transcripts", { exact: true })).toBeVisible();
   } finally {
     await removeDocument(page, fileName).catch(() => {});
   }
@@ -453,6 +455,105 @@ test("application checklist edits recover from failed writes and persist after r
     if (!page.isClosed()) {
       await page.unroute(APPLICATION_WRITES).catch(() => {});
       if (!removed) await removeSeededApplication(page).catch(() => {});
+    }
+  }
+});
+
+test("document upload and delete recover from failed requests, and deletion removes the stored file", async ({ page }) => {
+  test.setTimeout(90_000);
+  await signInToIsolatedStudent(page);
+  const fileName = `${marker("recovery-transcript")}.pdf`;
+  const pdfBody = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n";
+  const STORAGE_UPLOADS = "**/storage/v1/object/user-documents/**";
+  const DOCUMENT_ROWS = "**/rest/v1/documents**";
+  let deleted = false;
+  await page.goto("/documents");
+  await expect(page.getByRole("heading", { name: "Document Vault" })).toBeVisible({ timeout: 15_000 });
+
+  try {
+    // The first storage upload fails at the network boundary: no row, sheet and file kept.
+    let failedUploads = 0;
+    await page.route(STORAGE_UPLOADS, async (route) => {
+      if (failedUploads === 0 && route.request().method() === "POST") {
+        failedUploads += 1;
+        await route.abort("failed");
+        return;
+      }
+      await route.continue();
+    });
+    await page.getByRole("button", { name: "Upload New" }).click();
+    await page.locator('input[type="file"]').last().setInputFiles({ name: fileName, mimeType: "application/pdf", buffer: Buffer.from(pdfBody) });
+    const upload = page.getByRole("button", { name: "Upload", exact: true });
+    await upload.click();
+    await expect.poll(() => failedUploads).toBe(1);
+    await expect(page.locator("[data-sonner-toast]").filter({ hasText: /went wrong|try again|failed/i }).first()).toBeVisible();
+    await expect(upload).toBeEnabled();
+    await expect(page.getByRole("dialog").getByText(fileName, { exact: true })).toBeVisible();
+    await expect(page.getByText("Document uploaded successfully", { exact: true })).toHaveCount(0);
+
+    await upload.click();
+    await expect(page.getByText("Document uploaded successfully", { exact: true })).toBeVisible({ timeout: 20_000 });
+    await page.unroute(STORAGE_UPLOADS);
+    await page.reload();
+    const listed = page.getByText(fileName, { exact: true });
+    await expect(listed).toHaveCount(1, { timeout: 20_000 });
+
+    // The stored file is reachable through the owner's signed link.
+    const row = listed.locator("xpath=../../..");
+    // Headless Chromium downloads a PDF instead of displaying it, so the popup
+    // never commits a URL; read the link from the app's own signing response.
+    const popupPromise = page.waitForEvent("popup");
+    const signing = page.waitForResponse(
+      (r) => r.url().includes("/storage/v1/object/sign/user-documents/") && r.request().method() === "POST",
+    );
+    await row.getByRole("button", { name: "More options" }).click();
+    await page.getByRole("menuitem", { name: "View", exact: true }).click();
+    const signed = await signing;
+    expect(signed.ok()).toBe(true);
+    const { signedURL } = (await signed.json()) as { signedURL: string };
+    const signedUrl = new URL(`/storage/v1${signedURL}`, process.env.NEXT_PUBLIC_SUPABASE_URL).toString();
+    const popup = await popupPromise;
+    await popup.close();
+    const stored = await page.request.get(signedUrl);
+    expect(stored.status()).toBe(200);
+    expect(await stored.text()).toBe(pdfBody);
+
+    // The first row delete fails: the document and its file both survive.
+    let failedDeletes = 0;
+    await page.route(DOCUMENT_ROWS, async (route) => {
+      if (failedDeletes === 0 && route.request().method() === "DELETE") {
+        failedDeletes += 1;
+        await route.abort("failed");
+        return;
+      }
+      await route.continue();
+    });
+    await row.getByRole("button", { name: "More options" }).click();
+    await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect.poll(() => failedDeletes).toBe(1);
+    await expect(dialog.getByRole("button", { name: "Delete", exact: true })).toBeEnabled();
+    await expect(page.getByText("Document deleted", { exact: true })).toHaveCount(0);
+    expect((await page.request.get(signedUrl)).status()).toBe(200);
+
+    await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page.getByText("Document deleted", { exact: true })).toBeVisible({ timeout: 10_000 });
+    deleted = true;
+    await page.unroute(DOCUMENT_ROWS);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Document Vault" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(fileName, { exact: true })).toHaveCount(0);
+    // The object itself is gone, not just hidden from the list.
+    await expect.poll(async () => (await page.request.get(signedUrl)).status()).not.toBe(200);
+  } finally {
+    if (!page.isClosed()) {
+      await page.unroute(STORAGE_UPLOADS).catch(() => {});
+      await page.unroute(DOCUMENT_ROWS).catch(() => {});
+      if (!deleted) {
+        await page.goto("/documents").catch(() => {});
+        await removeDocument(page, fileName).catch(() => {});
+      }
     }
   }
 });
