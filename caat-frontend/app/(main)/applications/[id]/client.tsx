@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -40,6 +40,8 @@ import { SCHOLARSHIP_STATUS_LABELS } from "@/lib/scholarship-tracking";
 import {
   APPLICATION_STATUSES,
   STATUS_CONFIG,
+  isSubmittedStatus,
+  type ApplicationRow,
   type ApplicationStatus,
 } from "@/types/applications";
 
@@ -94,43 +96,56 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
     void load();
   }, [load]);
 
-  const onStatusChange = async (status: ApplicationStatus) => {
+  // Status and deadline writes go out in the order they were made, so the
+  // saved row always matches the last thing the student chose.
+  const writeChain = useRef<Promise<unknown>>(Promise.resolve());
+  // Per field: the last server-confirmed value and the newest write. Only the
+  // newest write may undo, and only back to a value the server confirmed.
+  const confirmedFields = useRef<Partial<Pick<ApplicationRow, "status" | "deadline_at">>>({});
+  const latestWrite = useRef({ status: 0, deadline_at: 0 });
+
+  /** Optimistically set one application field and persist it. On failure the
+   *  newest write for that field undoes it to the last confirmed value.
+   *  Readiness is derived from the application at render time, so no refetch
+   *  is needed (one could also overwrite an edit that is still saving). */
+  const saveField = async <K extends "status" | "deadline_at">(
+    key: K,
+    value: ApplicationRow[K],
+    write: (id: string) => Promise<void>,
+    fallbackMessage: string
+  ) => {
     if (!hub) return;
-    setSavingStatus(true);
-    const prev = hub;
-    setHub({ ...hub, application: { ...hub.application, status } });
+    const id = hub.application.id;
+    if (!(key in confirmedFields.current)) confirmedFields.current[key] = hub.application[key];
+    const seq = ++latestWrite.current[key];
+    const setField = (to: ApplicationRow[K]) =>
+      setHub((cur) => (cur ? { ...cur, application: { ...cur.application, [key]: to } } : cur));
+    setField(value);
+    const pending = writeChain.current.catch(() => {}).then(() => write(id));
+    writeChain.current = pending;
     try {
-      await updateApplicationStatus(hub.application.id, status);
-      // The write succeeded — clear any stale error and refresh derived data.
-      // A refetch failure must NOT be conflated with an update failure: it
-      // shouldn't roll back the saved status or flip the page into an error.
-      setError(null);
-      try {
-        const data = await fetchApplicationHub(applicationId);
-        setHub(data);
-      } catch {
-        // Keep the optimistic hub; the status was persisted successfully.
-      }
+      await pending;
+      confirmedFields.current[key] = value;
     } catch (e) {
-      setHub(prev);
-      toast.error(e instanceof Error ? e.message : "Could not update status");
+      if (latestWrite.current[key] !== seq) return;
+      setField(confirmedFields.current[key] as ApplicationRow[K]);
+      toast.error(e instanceof Error ? e.message : fallbackMessage);
+    }
+  };
+
+  const onStatusChange = async (status: ApplicationStatus) => {
+    setSavingStatus(true);
+    try {
+      await saveField("status", status, (id) => updateApplicationStatus(id, status), "Could not update status");
     } finally {
       setSavingStatus(false);
     }
   };
 
   // M9 — set/clear the application deadline from the hub (was read-only).
-  const onDeadlineChange = async (value: string) => {
-    if (!hub) return;
+  const onDeadlineChange = (value: string) => {
     const deadline_at = value || null;
-    const prev = hub;
-    setHub({ ...hub, application: { ...hub.application, deadline_at } });
-    try {
-      await updateApplicationDeadline(hub.application.id, deadline_at);
-    } catch (e) {
-      setHub(prev);
-      toast.error(e instanceof Error ? e.message : "Could not update deadline");
-    }
+    void saveField("deadline_at", deadline_at, (id) => updateApplicationDeadline(id, deadline_at), "Could not update deadline");
   };
 
   if (loading) {
@@ -181,7 +196,12 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
     scholarships,
   } = hub;
   const dl = deadlineParts(application.deadline_at);
-  const submitted = readiness.submitted;
+  // The checklist follows the application as edited here; essay and document
+  // signals come from the load.
+  const deadlineSet = !!application.deadline_at;
+  const submitted = isSubmittedStatus(application.status);
+  const readyScore =
+    (deadlineSet ? 1 : 0) + (readiness.essayDrafted ? 1 : 0) + (readiness.keyDocsUploaded ? 1 : 0) + (submitted ? 1 : 0);
 
   return (
     <div className="p-6">
@@ -212,20 +232,20 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
             <Card className="shadow-sm">
               <CardHeader className="flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base">Readiness</CardTitle>
-                <span className="text-sm text-muted-foreground">{readiness.score} of 4 ready</span>
+                <span className="text-sm text-muted-foreground">{readyScore} of 4 ready</span>
               </CardHeader>
               <CardContent>
                 <div className="h-1.5 w-full rounded-full bg-muted mb-5">
                   <div
                     className="h-full rounded-full bg-[#9a1a27] transition-all"
-                    style={{ width: `${(readiness.score / 4) * 100}%` }}
+                    style={{ width: `${(readyScore / 4) * 100}%` }}
                   />
                 </div>
                 <ul className="space-y-3">
-                  <ReadyItem done={readiness.deadlineSet}>Deadline is set</ReadyItem>
+                  <ReadyItem done={deadlineSet}>Deadline is set</ReadyItem>
                   <ReadyItem done={readiness.essayDrafted}>At least one essay drafted</ReadyItem>
                   <ReadyItem done={readiness.keyDocsUploaded}>Key documents uploaded</ReadyItem>
-                  <ReadyItem done={readiness.submitted}>
+                  <ReadyItem done={submitted}>
                     Status reached <span className="font-medium text-foreground">Submitted</span>
                   </ReadyItem>
                 </ul>
@@ -500,22 +520,31 @@ function MajorsEditor({
   const [majors, setMajors] = useState<string[]>(initial);
   const [editing, setEditing] = useState(false);
   const [input, setInput] = useState("");
+  // Each save writes the whole list, so one save at a time: overlapping saves
+  // could land out of order or roll back over each other.
+  const [saving, setSaving] = useState(false);
 
-  const persist = async (next: string[]) => {
+  const persist = async (next: string[], typed = "") => {
+    if (saving) return;
     const prev = majors;
+    setSaving(true);
     setMajors(next);
     try {
       await updateApplicationMajors(applicationId, next);
     } catch {
       setMajors(prev);
+      // Give back what the student typed so a retry is one keypress.
+      if (typed) setInput(typed);
       toast.error("Could not save majors.");
+    } finally {
+      setSaving(false);
     }
   };
   const add = (name: string) => {
     const v = name.trim();
-    if (!v || majors.some((m) => m.toLowerCase() === v.toLowerCase())) return;
-    void persist([...majors, v]);
+    if (saving || !v || majors.some((m) => m.toLowerCase() === v.toLowerCase())) return;
     setInput("");
+    void persist([...majors, v], v);
   };
   const remove = (name: string) => void persist(majors.filter((m) => m !== name));
 
@@ -554,7 +583,12 @@ function MajorsEditor({
         {majors.map((m) => (
           <span key={m} className="inline-flex items-center gap-1.5 text-sm rounded-md bg-muted px-2.5 py-0.5">
             {m}
-            <button onClick={() => remove(m)} className="text-muted-foreground hover:text-foreground">
+            <button
+              onClick={() => remove(m)}
+              disabled={saving}
+              aria-label={`Remove ${m}`}
+              className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
               <X className="h-3 w-3" />
             </button>
           </span>
@@ -635,7 +669,7 @@ function EssayRow({ e }: { e: { promptId: string; title: string; status: "drafte
 
 function ReadyItem({ done, children }: { done: boolean; children: React.ReactNode }) {
   return (
-    <li className="flex items-center gap-2.5 text-sm">
+    <li data-state={done ? "done" : "todo"} className="flex items-center gap-2.5 text-sm">
       {done ? (
         <CheckCircle2 className="h-[18px] w-[18px] text-[#9a1a27] dark:text-[#e06b78] shrink-0" />
       ) : (

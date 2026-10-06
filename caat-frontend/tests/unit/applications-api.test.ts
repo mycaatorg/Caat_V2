@@ -55,7 +55,9 @@ import {
   fetchApplications,
   addApplication,
   updateApplication,
+  updateApplicationMajors,
   deleteApplication,
+  fetchApplicationForSchool,
   searchSchools,
   fetchUnimportedBookmarkCount,
   importBookmarkedSchools,
@@ -111,11 +113,23 @@ describe("addApplication", () => {
 });
 
 describe("updateApplication / deleteApplication", () => {
+  // A write that matched no owned row (deleted in another tab, a foreign or
+  // stale id) must not be reported as saved.
+  const affected = (ctx: { op: string }) =>
+    ctx.op === "update" || ctx.op === "delete" ? { data: [{ id: "a1" }], error: null } : { data: null, error: null };
+
   it("scopes the update to the caller and resolves on success", async () => {
+    state.resolver = affected;
     await expect(updateApplication("a1", { status: "applying" })).resolves.toBeUndefined();
     const eqCalls = state.calls.filter((c) => c.method === "eq");
     // Every write is scoped by id AND user_id (defense in depth).
-    expect(eqCalls.some((c) => c.args[0] === "user_id")).toBe(true);
+    expect(eqCalls.map((c) => c.args)).toEqual([["id", "a1"], ["user_id", "user-1"]]);
+    const patch = state.calls.find((c) => c.method === "update")!.args[0] as Record<string, unknown>;
+    expect(patch).toMatchObject({ status: "applying" });
+    expect(typeof patch.updated_at).toBe("string");
+    // Without a returned row the write cannot be confirmed.
+    expect(state.calls.map((c) => c.method).slice(-1)).toEqual(["select"]);
+    expect(state.calls.at(-1)!.args).toEqual(["id"]);
   });
 
   it("throws when the update errors", async () => {
@@ -123,9 +137,69 @@ describe("updateApplication / deleteApplication", () => {
     await expect(updateApplication("a1", { status: "applying" })).rejects.toThrow("nope");
   });
 
+  it("rejects an update that matched no owned application", async () => {
+    state.resolver = (ctx) => (ctx.op === "update" ? { data: [], error: null } : { data: null, error: null });
+    await expect(updateApplication("someone-elses", { notes: "x" })).rejects.toThrow("Application not found");
+  });
+
   it("deletes and resolves on success", async () => {
+    state.resolver = affected;
     await expect(deleteApplication("a1")).resolves.toBeUndefined();
     expect(state.calls.some((c) => c.method === "delete")).toBe(true);
+    expect(state.calls.filter((c) => c.method === "eq").map((c) => c.args)).toEqual([["id", "a1"], ["user_id", "user-1"]]);
+  });
+
+  it("treats deleting an application that is already gone as done", async () => {
+    // Removed in another tab: the outcome the student asked for already holds.
+    state.resolver = (ctx) => (ctx.op === "delete" ? { data: [], error: null } : { data: null, error: null });
+    await expect(deleteApplication("already-removed")).resolves.toBeUndefined();
+  });
+
+  it("throws when the delete errors", async () => {
+    state.resolver = () => ({ data: null, error: { message: "delete failed" } });
+    await expect(deleteApplication("a1")).rejects.toThrow("delete failed");
+  });
+
+  it("never writes when the caller is signed out", async () => {
+    state.userId = null;
+    await expect(updateApplication("a1", { status: "applying" })).rejects.toThrow("Not authenticated");
+    await expect(deleteApplication("a1")).rejects.toThrow("Not authenticated");
+    await expect(addApplication(5)).rejects.toThrow("Not authenticated");
+    await expect(updateApplicationMajors("a1", ["Law"])).rejects.toThrow("Not authenticated");
+    expect(state.calls).toHaveLength(0);
+  });
+});
+
+describe("updateApplicationMajors", () => {
+  it("writes the trimmed list scoped to the caller", async () => {
+    state.resolver = (ctx) => (ctx.op === "update" ? { data: [{ id: "a1" }], error: null } : { data: null, error: null });
+    await expect(updateApplicationMajors("a1", ["Law", "Commerce"])).resolves.toBeUndefined();
+    const patch = state.calls.find((c) => c.method === "update")!.args[0] as { intended_majors: string[] };
+    expect(patch.intended_majors).toEqual(["Law", "Commerce"]);
+    expect(state.calls.at(-1)).toEqual({ table: "user_school_applications", method: "select", args: ["id"] });
+    expect(state.calls.filter((c) => c.method === "eq").map((c) => c.args)).toEqual([["id", "a1"], ["user_id", "user-1"]]);
+  });
+
+  it("rejects when no owned application was updated", async () => {
+    state.resolver = (ctx) => (ctx.op === "update" ? { data: [], error: null } : { data: null, error: null });
+    await expect(updateApplicationMajors("missing", ["Law"])).rejects.toThrow("Application not found");
+  });
+
+  it("throws the sanitized error on failure", async () => {
+    state.resolver = () => ({ data: null, error: { message: "majors failed" } });
+    await expect(updateApplicationMajors("a1", ["Law"])).rejects.toThrow("majors failed");
+  });
+});
+
+describe("fetchApplicationForSchool", () => {
+  it("returns null when the caller has not tracked the school", async () => {
+    expect(await fetchApplicationForSchool(5)).toBeNull();
+    expect(state.calls.filter((c) => c.method === "eq").map((c) => c.args)).toEqual([["user_id", "user-1"], ["school_id", 5]]);
+  });
+
+  it("throws the sanitized error on failure", async () => {
+    state.resolver = () => ({ data: null, error: { message: "lookup failed" } });
+    await expect(fetchApplicationForSchool(5)).rejects.toThrow("lookup failed");
   });
 });
 
@@ -191,6 +265,25 @@ describe("importBookmarkedSchools", () => {
     expect(res.skipped).toBe(1); // 3 bookmarks - 2 inserted
     const insertCall = state.calls.find((c) => c.method === "insert");
     expect((insertCall!.args[0] as unknown[]).length).toBe(2);
+  });
+});
+
+describe("importBookmarkedSchools failures", () => {
+  it("does not insert when the bookmark read fails", async () => {
+    state.resolver = (ctx) =>
+      ctx.table === "user_bookmarked_schools" ? { data: null, error: { message: "bookmarks down" } } : { data: [], error: null };
+    await expect(importBookmarkedSchools()).rejects.toThrow("bookmarks down");
+    expect(state.calls.some((c) => c.method === "insert")).toBe(false);
+  });
+
+  it("surfaces an insert failure instead of reporting an empty import", async () => {
+    state.resolver = (ctx) => {
+      if (ctx.table === "user_bookmarked_schools") return { data: [{ school_id: 1 }], error: null };
+      if (ctx.table === "user_school_applications" && ctx.op === "insert")
+        return { data: null, error: { message: "duplicate key" } };
+      return { data: [], error: null };
+    };
+    await expect(importBookmarkedSchools()).rejects.toThrow("duplicate key");
   });
 });
 

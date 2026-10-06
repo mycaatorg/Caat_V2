@@ -295,7 +295,7 @@
       "specs": [
         "tests/e2e/staging-journeys.spec.ts"
       ],
-      "reason": "PR staging creates an application from a synthetic school, changes status/checklist/notes, and verifies persistence across views."
+      "reason": "PR staging creates an application from a synthetic school, changes status/checklist/notes, and verifies persistence across views. A recovery journey aborts one real hub status write and one list notes write, checks the revert, kept text and error state, retries both, verifies the hub deadline and readiness checklist after reload, and confirms removal persists."
     },
     {
       "id": "scholarship-tracking-write",

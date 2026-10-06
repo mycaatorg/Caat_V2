@@ -34,7 +34,7 @@ import {
   fetchGlobalReadinessSignals,
 } from "./api";
 import type { ApplicationRow, ApplicationStatus } from "@/types/applications";
-import { STATUS_CONFIG, APPLICATION_STATUSES } from "@/types/applications";
+import { STATUS_CONFIG, APPLICATION_STATUSES, isSubmittedStatus } from "@/types/applications";
 
 // ---------------------------------------------------------------------------
 // Filter tabs
@@ -90,9 +90,12 @@ function deadlineLabel(dateStr: string) {
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
+type EditableField = "status" | "deadline_at" | "notes";
+
 export default function ApplicationsClient() {
   const [apps, setApps] = useState<ApplicationRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
 
   // Add-school search
@@ -120,18 +123,48 @@ export default function ApplicationsClient() {
     keyDocsUploaded: false,
   });
 
-  useEffect(() => {
+  // Writes for one application run in the order the student made them, so the
+  // database never ends on an older value than the screen shows.
+  const writeChains = useRef(new Map<string, Promise<unknown>>());
+  // Applications removed in this session: a pending autosave that lands after
+  // the removal is moot, not a failure worth reporting.
+  const removedIds = useRef(new Set<string>());
+
+  function enqueueWrite(id: string, write: () => Promise<void>): Promise<void> {
+    const previous = writeChains.current.get(id) ?? Promise.resolve();
+    const next = previous.catch(() => {}).then(write);
+    writeChains.current.set(id, next);
+    return next;
+  }
+
+  // Per application field: the last value the server confirmed, and the
+  // newest write. Only the newest write may undo, and it undoes to the last
+  // confirmed value, never to an earlier optimistic value that also failed.
+  const confirmedValues = useRef(new Map<string, ApplicationRow[EditableField]>());
+  const latestWrite = useRef(new Map<string, number>());
+
+  const loadApplications = useCallback(() => {
+    setLoading(true);
+    setLoadError(false);
     fetchApplications()
       .then(setApps)
-      .catch(() => toast.error("Failed to load applications."))
+      .catch(() => {
+        // A failed load is not an empty list: never show "No applications yet".
+        setLoadError(true);
+        toast.error("Failed to load applications.");
+      })
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    loadApplications();
     fetchUnimportedBookmarkCount()
       .then(setUnimportedCount)
       .catch(() => setUnimportedCount(0));
     fetchGlobalReadinessSignals()
       .then(setGlobalReady)
       .catch(() => {});
-  }, []);
+  }, [loadApplications]);
 
   async function handleImportBookmarks() {
     if (importing) return;
@@ -149,10 +182,17 @@ export default function ApplicationsClient() {
           { duration: 6000 }
         );
       }
-      const newCount = await fetchUnimportedBookmarkCount();
-      setUnimportedCount(newCount);
     } catch {
       toast.error("Failed to import bookmarks.");
+      setImporting(false);
+      return;
+    }
+    // The import already succeeded; a failed badge refresh must not report it
+    // as a failed import. Every bookmark was just imported, so hide the badge.
+    try {
+      setUnimportedCount(await fetchUnimportedBookmarkCount());
+    } catch {
+      setUnimportedCount(0);
     } finally {
       setImporting(false);
     }
@@ -205,61 +245,79 @@ export default function ApplicationsClient() {
     }
   }
 
-  async function handleStatusChange(id: string, status: ApplicationStatus) {
-    const prev = apps;
-    setApps((cur) =>
-      cur.map((a) => (a.id === id ? { ...a, status } : a))
-    );
-    try {
-      await updateApplication(id, { status });
-    } catch {
-      toast.error("Failed to update status.");
-      // Restore the pre-update snapshot instead of refetching: a refetch here
-      // can itself throw (leaving an unhandled rejection) and drop other
-      // in-flight optimistic edits.
-      setApps(prev);
+  /** Optimistically set one field, persist it in order, and on failure undo
+   *  only that field (a refetch could itself fail and drop other edits). */
+  async function saveField<K extends EditableField>(
+    id: string,
+    key: K,
+    value: ApplicationRow[K],
+    failureMessage: string
+  ): Promise<boolean> {
+    const slot = `${id}:${key}`;
+    // The first write to a field starts from the loaded (server) value.
+    if (!confirmedValues.current.has(slot)) {
+      confirmedValues.current.set(slot, apps.find((a) => a.id === id)?.[key] ?? null);
     }
-  }
-
-  async function handleDeadlineChange(id: string, deadline_at: string) {
-    const value = deadline_at || null;
-    const prev = apps;
-    setApps((cur) =>
-      cur.map((a) => (a.id === id ? { ...a, deadline_at: value } : a))
-    );
+    const seq = (latestWrite.current.get(slot) ?? 0) + 1;
+    latestWrite.current.set(slot, seq);
+    setApps((cur) => cur.map((a) => (a.id === id ? { ...a, [key]: value } : a)));
     try {
-      await updateApplication(id, { deadline_at: value });
-    } catch {
-      toast.error("Failed to update deadline.");
-      setApps(prev);
-    }
-  }
-
-  async function handleNotesChange(id: string, notes: string): Promise<boolean> {
-    const value = notes || null;
-    const prev = apps;
-    setApps((cur) =>
-      cur.map((a) => (a.id === id ? { ...a, notes: value } : a))
-    );
-    try {
-      await updateApplication(id, { notes: value });
+      await enqueueWrite(id, () => updateApplication(id, { [key]: value }));
+      confirmedValues.current.set(slot, value);
       return true;
     } catch {
-      toast.error("Failed to update notes.");
-      setApps(prev);
+      // A newer write for this field supersedes this one; a removed row's
+      // field is restored from confirmed values if the removal fails.
+      if (removedIds.current.has(id) || latestWrite.current.get(slot) !== seq) return false;
+      toast.error(failureMessage);
+      const confirmed = confirmedValues.current.get(slot) as ApplicationRow[K];
+      setApps((cur) => cur.map((a) => (a.id === id ? { ...a, [key]: confirmed } : a)));
       return false;
     }
   }
 
+  /** The row as the server has it: confirmed values over a click-time copy. */
+  function withConfirmedValues(row: ApplicationRow): ApplicationRow {
+    const restored = { ...row };
+    for (const key of ["status", "deadline_at", "notes"] as const) {
+      const slot = `${row.id}:${key}`;
+      if (confirmedValues.current.has(slot)) {
+        Object.assign(restored, { [key]: confirmedValues.current.get(slot) });
+      }
+    }
+    return restored;
+  }
+
+  function handleStatusChange(id: string, status: ApplicationStatus) {
+    void saveField(id, "status", status, "Failed to update status.");
+  }
+
+  function handleDeadlineChange(id: string, deadline_at: string) {
+    void saveField(id, "deadline_at", deadline_at || null, "Failed to update deadline.");
+  }
+
+  function handleNotesChange(id: string, notes: string): Promise<boolean> {
+    return saveField(id, "notes", notes || null, "Failed to update notes.");
+  }
+
   async function handleDelete(id: string) {
     setConfirmDeleteId(null);
-    const prev = apps;
+    const index = apps.findIndex((a) => a.id === id);
+    const removed = apps[index];
+    removedIds.current.add(id);
     setApps((a) => a.filter((x) => x.id !== id));
     try {
-      await deleteApplication(id);
+      await enqueueWrite(id, () => deleteApplication(id));
       toast.success("Application removed.");
     } catch {
-      setApps(prev);
+      removedIds.current.delete(id);
+      // Put the row back where it was, as last saved, without rolling back
+      // other cards. Writes queued before the removal have settled by now.
+      setApps((cur) =>
+        !removed || cur.some((a) => a.id === id)
+          ? cur
+          : [...cur.slice(0, index), withConfirmedValues(removed), ...cur.slice(index)]
+      );
       toast.error("Failed to remove application.");
     }
   }
@@ -396,7 +454,14 @@ export default function ApplicationsClient() {
       </div>
 
       {/* Applications list */}
-      {filtered.length === 0 ? (
+      {loadError ? (
+        <div role="alert" className="flex flex-col items-center justify-center py-20 text-center gap-3">
+          <p className="text-base font-medium">Couldn&apos;t load your applications.</p>
+          <Button size="sm" variant="outline" onClick={loadApplications}>
+            Try again
+          </Button>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
           <ClipboardList className="h-10 w-10 text-muted-foreground/50" />
           <p className="text-base font-medium text-muted-foreground">
@@ -460,19 +525,26 @@ function ApplicationCard({
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [localNotes, setLocalNotes] = useState(app.notes ?? "");
-  const [notesSaved, setNotesSaved] = useState(true);
+  const [notesState, setNotesState] = useState<"saved" | "saving" | "failed">("saved");
   const notesTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notesSaveSeq = useRef(0);
+
+  // B18 — mark Saved only once the write resolves; a failed save must say so
+  // rather than spin on "Saving…". Only the newest save may set the indicator.
+  async function saveNotes(val: string) {
+    const seq = ++notesSaveSeq.current;
+    setNotesState("saving");
+    const ok = await onNotesChange(app.id, val);
+    if (seq === notesSaveSeq.current) setNotesState(ok ? "saved" : "failed");
+  }
 
   function handleNotesInput(val: string) {
     setLocalNotes(val);
-    setNotesSaved(false);
+    // Newer unsent text makes any in-flight save's result stale.
+    notesSaveSeq.current++;
+    setNotesState("saving");
     if (notesTimeout.current) clearTimeout(notesTimeout.current);
-    notesTimeout.current = setTimeout(async () => {
-      // B18 — mark Saved only once the write resolves; a failed save must not
-      // display "Saved".
-      const ok = await onNotesChange(app.id, val);
-      setNotesSaved(ok);
-    }, 800);
+    notesTimeout.current = setTimeout(() => void saveNotes(val), 800);
   }
 
   const schoolName = app.schools?.name ?? "Unknown School";
@@ -481,18 +553,11 @@ function ApplicationCard({
 
   // Readiness rollup (same 4 signals as the hub): deadline set, an essay
   // drafted, a document uploaded, status advanced to submitted-or-later.
-  const SUBMITTED_PLUS = new Set<ApplicationStatus>([
-    "submitted",
-    "decision_pending",
-    "accepted",
-    "rejected",
-    "waitlisted",
-  ]);
   const readyScore =
     (app.deadline_at ? 1 : 0) +
     (globalReady.essayDrafted ? 1 : 0) +
     (globalReady.keyDocsUploaded ? 1 : 0) +
-    (SUBMITTED_PLUS.has(app.status) ? 1 : 0);
+    (isSubmittedStatus(app.status) ? 1 : 0);
 
   return (
     <div className={`rounded-lg border p-4 space-y-3 ${isFresh ? "bg-[#FFF8E1] dark:bg-amber-950/40 border-l-[3px] border-l-[#9a1a27] dark:border-l-[#e06b78]" : "bg-card"}`}>
@@ -613,8 +678,11 @@ function ApplicationCard({
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-y min-h-[60px]"
           />
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">
-              {notesSaved ? "Saved" : "Saving…"}
+            <span
+              aria-live="polite"
+              className={`text-xs ${notesState === "failed" ? "text-destructive" : "text-muted-foreground"}`}
+            >
+              {notesState === "saved" ? "Saved" : notesState === "saving" ? "Saving…" : "Not saved"}
             </span>
             <div className="flex items-center gap-2">
               {localNotes.trim() && (
@@ -628,9 +696,7 @@ function ApplicationCard({
                     // the old text and re-add the notes we just cleared.
                     if (notesTimeout.current) clearTimeout(notesTimeout.current);
                     setLocalNotes("");
-                    setNotesSaved(false);
-                    const ok = await onNotesChange(app.id, "");
-                    setNotesSaved(ok);
+                    await saveNotes("");
                   }}
                 >
                   Clear Notes
@@ -643,9 +709,7 @@ function ApplicationCard({
                 className="h-7 text-xs px-3"
                 onClick={async () => {
                   if (notesTimeout.current) clearTimeout(notesTimeout.current);
-                  setNotesSaved(false);
-                  const ok = await onNotesChange(app.id, localNotes);
-                  setNotesSaved(ok);
+                  await saveNotes(localNotes);
                 }}
               >
                 Save
