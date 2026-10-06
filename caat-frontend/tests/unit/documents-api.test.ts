@@ -11,6 +11,7 @@ type QueryCall = {
   filters: Array<[string, unknown]>;
   payload: unknown;
   selects: unknown[][];
+  orders: unknown[][];
   terminal: string;
 };
 type StorageResult = { error?: { message: string } | null };
@@ -135,10 +136,11 @@ beforeEach(() => {
       filters: [] as Array<[string, unknown]>,
       payload: undefined as unknown,
       selects: [] as unknown[][],
+      orders: [] as unknown[][],
     };
     const builder: Record<string, unknown> = {};
     const terminal = (method: string) => {
-      io.queryCalls.push({ ...context, filters: [...context.filters], selects: [...context.selects], terminal: method });
+      io.queryCalls.push({ ...context, filters: [...context.filters], selects: [...context.selects], orders: [...context.orders], terminal: method });
       io.timeline.push(`db-start:${table}:${context.op}:${method}`);
       const result = io.queryResults.shift() ?? { data: null, error: null, count: 0 };
       return Promise.resolve(result).then((value) => {
@@ -148,7 +150,7 @@ beforeEach(() => {
     };
     builder.select = (...args: unknown[]) => { context.selects.push(args); return builder; };
     builder.eq = (column: string, value: unknown) => { context.filters.push([column, value]); return builder; };
-    builder.order = () => builder;
+    builder.order = (...args: unknown[]) => { context.orders.push(args); return builder; };
     builder.insert = (payload: unknown) => { context.op = "insert"; context.payload = payload; return builder; };
     builder.update = (payload: unknown) => { context.op = "update"; context.payload = payload; return builder; };
     builder.delete = () => { context.op = "delete"; return builder; };
@@ -191,20 +193,18 @@ describe("document ownership and signed links", () => {
     expect(io.createSignedUrl).toHaveBeenCalledTimes(1);
   });
 
-  it("deletes the database-verified storage object and scopes both reads and writes to the current user", async () => {
+  it("removes the storage object named by the deleted row, scoped to the current user", async () => {
     const suppliedRow = documentRow({ storage_path: "another-user/private.pdf" });
-    io.queryResults.push(
-      queryResult({ storage_path: "user-1/transcripts/server-owned.pdf" }),
-      queryResult(null),
-    );
+    io.queryResults.push(queryResult([{ storage_path: "user-1/transcripts/server-owned.pdf" }]));
 
     await deleteDocument(suppliedRow);
 
     expect(storagePaths("remove")).toEqual([["user-1/transcripts/server-owned.pdf"]]);
-    const reads = io.queryCalls.filter((call) => call.op === "select");
     const deletes = io.queryCalls.filter((call) => call.op === "delete");
-    expect(reads[0].filters).toContainEqual(["user_id", "user-1"]);
+    expect(deletes).toHaveLength(1);
     expect(deletes[0].filters).toEqual([["id", "document-1"], ["user_id", "user-1"]]);
+    // The path comes from the row actually deleted, not a separate lookup.
+    expect(deletes[0].selects).toEqual([["storage_path"]]);
   });
 });
 
@@ -402,17 +402,14 @@ describe("upload validation and failures", () => {
 
 describe("delete failures", () => {
   it("keeps the stored file when the row delete fails", async () => {
-    io.queryResults.push(
-      queryResult({ storage_path: "user-1/transcripts/keep.pdf" }),
-      { data: null, error: { message: "delete failed" } },
-    );
+    io.queryResults.push({ data: null, error: { message: "delete failed" } });
     await expect(deleteDocument(documentRow())).rejects.toThrow("Something went wrong");
     // The row still exists, so its file must too; otherwise it points at nothing.
     expect(io.remove).not.toHaveBeenCalled();
   });
 
   it("removes the stored file only after the row delete commits", async () => {
-    io.queryResults.push(queryResult({ storage_path: "user-1/transcripts/gone.pdf" }), queryResult(null));
+    io.queryResults.push(queryResult([{ storage_path: "user-1/transcripts/gone.pdf" }]));
     await deleteDocument(documentRow());
     expect(io.timeline.indexOf("db-done:documents:delete:then")).toBeGreaterThanOrEqual(0);
     expect(io.timeline.indexOf("storage-remove:user-1/transcripts/gone.pdf")).toBeGreaterThan(
@@ -420,21 +417,22 @@ describe("delete failures", () => {
     );
   });
 
-  it("does not delete anything when the ownership lookup fails", async () => {
-    io.queryResults.push({ data: null, error: { message: "lookup timed out" } });
-    await expect(deleteDocument(documentRow())).rejects.toThrow("Something went wrong");
-    expect(io.queryCalls.some((call) => call.op === "delete")).toBe(false);
-    expect(io.remove).not.toHaveBeenCalled();
+  it("finishes removing the file when a retry finds the row already deleted", async () => {
+    // First attempt's row delete committed but its response was lost; the
+    // student retries and the row is gone. The file must not be left behind.
+    io.queryResults.push(queryResult([]));
+    await expect(deleteDocument(documentRow({ storage_path: "user-1/identity/passport.pdf" }))).resolves.toBeUndefined();
+    expect(storagePaths("remove")).toEqual([["user-1/identity/passport.pdf"]]);
   });
 
-  it("treats a document that is already gone as deleted", async () => {
-    io.queryResults.push(queryResult(null));
-    await expect(deleteDocument(documentRow())).resolves.toBeUndefined();
+  it("never removes a file outside the caller's folder when the row is already gone", async () => {
+    io.queryResults.push(queryResult([]));
+    await expect(deleteDocument(documentRow({ storage_path: "user-2/identity/passport.pdf" }))).resolves.toBeUndefined();
     expect(io.remove).not.toHaveBeenCalled();
   });
 
   it("succeeds once the row is gone even if the file removal fails", async () => {
-    io.queryResults.push(queryResult({ storage_path: "user-1/transcripts/orphan.pdf" }), queryResult(null));
+    io.queryResults.push(queryResult([{ storage_path: "user-1/transcripts/orphan.pdf" }]));
     io.removeResults.push({ error: { message: "remove failed" } });
     await expect(deleteDocument(documentRow())).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalledWith("Failed to remove document from storage:", "remove failed");
@@ -485,6 +483,7 @@ describe("listing and access failures", () => {
     io.queryResults.push(queryResult([documentRow()]));
     await expect(fetchDocuments()).resolves.toHaveLength(1);
     expect(latestQuery("documents", "select").filters).toEqual([["user_id", "user-1"]]);
+    expect(latestQuery("documents", "select").orders).toEqual([["uploaded_at", { ascending: false }]]);
   });
 
   it("surfaces a sanitized list failure", async () => {

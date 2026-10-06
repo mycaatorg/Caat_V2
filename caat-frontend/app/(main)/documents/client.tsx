@@ -458,7 +458,9 @@ export default function DocumentVaultClient({
     try {
       setIsUploading(true);
       const newDoc = await uploadDocument(uploadFile, uploadCategory, uploadSchoolId);
-      setDocs((prev) => [newDoc, ...prev]);
+      // After a failed load the local list is incomplete; reload it instead.
+      if (loadError) void loadDocs();
+      else setDocs((prev) => [newDoc, ...prev]);
       setSheetOpen(false);
       setUploadFile(null);
       toast.success("Document uploaded successfully");
@@ -572,6 +574,8 @@ export default function DocumentVaultClient({
       {/* ------------------------------------------------------------------ */}
       {/* Stats cards                                                         */}
       {/* ------------------------------------------------------------------ */}
+      {/* Zero counts would be false while the list failed to load. */}
+      {!loadError && (
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <StatCard
           label="Verified"
@@ -595,6 +599,7 @@ export default function DocumentVaultClient({
           total={total}
         />
       </div>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Filter tabs + document table                                        */}

@@ -158,28 +158,26 @@ export async function deleteDocument(doc: DocumentRow): Promise<void> {
   } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Not authenticated");
 
-  // Re-fetch storage_path from DB scoped to this user — prevents client-supplied
-  // path from targeting another user's storage file (B5).
-  const { data: dbDoc, error: lookupError } = await supabase
-    .from("documents")
-    .select("storage_path")
-    .eq("id", doc.id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (lookupError) throw new Error(sanitizeError(lookupError));
-  // Already removed (e.g. in another tab): the student's goal already holds.
-  if (!dbDoc) return;
-
-  // Delete the row first: if this fails the document stays intact. Removing
-  // the file first would leave a row pointing at a missing file.
-  const { error } = await supabase
+  // Delete the row first and take the storage path from the row actually
+  // deleted (B5: never trust a client-supplied path). If this fails the
+  // document stays intact; removing the file first would leave a row
+  // pointing at a missing file.
+  const { data: deleted, error } = await supabase
     .from("documents")
     .delete()
     .eq("id", doc.id)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("storage_path");
   if (error) throw new Error(sanitizeError(error));
 
-  const { error: rmErr } = await supabase.storage.from(BUCKET).remove([dbDoc.storage_path]);
+  let storagePath = (deleted as { storage_path: string }[] | null)?.[0]?.storage_path ?? null;
+  // No row: already deleted, e.g. an earlier attempt committed but its
+  // response was lost. Finish the job so the file is not left behind, but
+  // only inside the caller's own folder (storage RLS enforces the same).
+  if (!storagePath && doc.storage_path.startsWith(`${user.id}/`)) storagePath = doc.storage_path;
+  if (!storagePath) return;
+
+  const { error: rmErr } = await supabase.storage.from(BUCKET).remove([storagePath]);
   // Non-fatal (the row is gone, so nothing points at it), but log so orphaned
   // storage objects are visible instead of silently accumulating.
   if (rmErr && process.env.NODE_ENV !== "production")

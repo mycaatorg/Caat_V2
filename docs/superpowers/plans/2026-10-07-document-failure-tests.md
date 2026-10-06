@@ -19,7 +19,9 @@ Extend existing upload/signature and owner/peer storage tests; synthetic files o
 
 ## Defects reproduced and fixed
 1. Deleting removed the stored file before the row; if the row delete failed the document stayed listed but pointed at a missing file (unit red; browser journey red on the old code at the "file survives" check). The row is now deleted first, then the file; a file-removal failure after the row is gone is logged, not reported as a failed delete.
-2. A failed ownership lookup before delete was ignored, deleting the row and orphaning the file. It now stops with an error.
+2. A failed ownership lookup before delete was ignored, deleting the row and orphaning the file. Delete is now one owner-scoped `delete ... select("storage_path")`, so the file path comes from the row actually deleted and there is no separate lookup to fail.
+6. (Review) If a row delete committed but its response was lost, a retry found no row and left the stored file (e.g. a passport scan) behind while reporting success. When the row is already gone, delete now removes the client-held path, only inside the caller's own folder (storage RLS enforces the same). The browser journey reproduces this with a committed-then-dropped DELETE and fails on the reviewed commit at the "object is gone" check.
+7. (Review) After a failed load, a successful upload toasted success but stayed hidden behind the error, and the stat cards showed zeros. Upload now reloads the list in that state, and the stats are hidden while the load error shows.
 3. A failed per-student limit check read as zero documents, skipping the 50-document limit. It now stops the upload.
 4. A failed lookup before replacement was reported as "Document not found". It now reports a failure.
 5. A failed list load showed "No documents uploaded yet." and invited a first upload. It now shows a retryable error.
@@ -27,13 +29,14 @@ Extend existing upload/signature and owner/peer storage tests; synthetic files o
 Already correct and now covered: upload/replace/delete keep the sheet or dialog and chosen file on failure, block double submits, re-enable for retry; client-side type and size checks; compensation removal of a staged object; old file kept when a replacement's row update fails.
 
 ## Evidence
-Unit tests 517 → 552. Lines 31.24% → 33.61% (2378/7075), statements 30.63% → 32.90%, branches 26.39% → 28.63%, functions 23.66% → 25.97%; floors ratcheted to 33/32/25/28. Documents API 90% lines, documents client 0 → 83%. Browser checks 90 → 91 on the Mac mini isolated stack; new journey 5/5 repeated runs. The existing upload journey's status/category assertions are scoped to its own row so a reused isolated database cannot cause strict-mode collisions.
+Unit tests 517 → 553. Lines 31.24% → 33.62% (2379/7076), statements 30.63% → 32.92%, branches 26.39% → 28.72%, functions 23.66% → 25.97%; floors ratcheted to 33/32/25/28. Documents API 90% lines, documents client 0 → 83%. Browser checks 90 → 91 on the Mac mini isolated stack; new journey 5/5 repeated runs. The existing upload journey's status/category assertions are scoped to its own row so a reused isolated database cannot cause strict-mode collisions.
 
 ## Residual scope
 - `documents` UPDATE policy lets an owner change any column, including `status`, so a student can mark their own document "verified" through the API. Needs a reviewed migration (tracked separately).
 - View opens the signed link with `window.open` after an await; stricter popup blockers (Safari) may block it.
-- Stat cards show zero counts while the list is in its load-error state.
+- Storage removal failures are logged only outside production; there is no production error reporting yet, and storage `remove` reports an RLS-blocked object as an empty success.
 
 ## Tasks
 - [x] Inventory and red tests (API 5, UI 1), fixes, browser journey red on old code then green.
-- [ ] Independent review; PR to develop; release to main; verify deployment; update Linear.
+- [x] Independent review (Claude Opus): one important finding (lost delete response orphaning the file) and three minor (signed-URL base in the journey, untested list ordering, upload hidden behind load error). All fixed with regressions that fail on the reviewed commit.
+- [ ] PR to develop; release to main; verify deployment; update Linear.

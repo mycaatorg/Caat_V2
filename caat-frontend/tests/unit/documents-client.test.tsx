@@ -116,6 +116,21 @@ describe("loading", () => {
   });
 });
 
+describe("load error recovery", () => {
+  it("hides the stats while loading failed and shows the full list after an upload", async () => {
+    io.fetchDocuments.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([doc("doc-new", "new-transcript.pdf"), transcript()]);
+    await mount(null);
+    expect(hasText("Verified")).toBe(false);
+    await click(button(/Upload New/));
+    await chooseFile(pdf());
+    await click(button("Upload"));
+    await flush();
+    await flush();
+    expect(hasText("Couldn't load your documents.")).toBe(false);
+    expect(fileNames()).toEqual(["new-transcript.pdf", "transcript.pdf"]);
+  });
+});
+
 describe("upload", () => {
   it("uploads the chosen file, adds it to the list and closes the sheet", async () => {
     await mount();

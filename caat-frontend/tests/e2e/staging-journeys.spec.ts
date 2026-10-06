@@ -511,18 +511,22 @@ test("document upload and delete recover from failed requests, and deletion remo
     const signed = await signing;
     expect(signed.ok()).toBe(true);
     const { signedURL } = (await signed.json()) as { signedURL: string };
-    const signedUrl = new URL(`/storage/v1${signedURL}`, process.env.NEXT_PUBLIC_SUPABASE_URL).toString();
+    // Resolve against the storage origin the browser actually signed with.
+    const signedUrl = `${signed.url().split("/object/sign/")[0]}${signedURL}`;
     const popup = await popupPromise;
     await popup.close();
     const stored = await page.request.get(signedUrl);
     expect(stored.status()).toBe(200);
     expect(await stored.text()).toBe(pdfBody);
 
-    // The first row delete fails: the document and its file both survive.
+    // Delete attempt 1 never reaches the database: document and file survive.
+    // Attempt 2 commits but its response is lost; attempt 3 must still remove
+    // the file even though the row is already gone.
     let failedDeletes = 0;
     await page.route(DOCUMENT_ROWS, async (route) => {
-      if (failedDeletes === 0 && route.request().method() === "DELETE") {
+      if (route.request().method() === "DELETE" && failedDeletes < 2) {
         failedDeletes += 1;
+        if (failedDeletes === 2) await route.fetch();
         await route.abort("failed");
         return;
       }
@@ -536,6 +540,11 @@ test("document upload and delete recover from failed requests, and deletion remo
     await expect(dialog.getByRole("button", { name: "Delete", exact: true })).toBeEnabled();
     await expect(page.getByText("Document deleted", { exact: true })).toHaveCount(0);
     expect((await page.request.get(signedUrl)).status()).toBe(200);
+
+    await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect.poll(() => failedDeletes).toBe(2);
+    await expect(dialog.getByRole("button", { name: "Delete", exact: true })).toBeEnabled();
+    await expect(page.getByText("Document deleted", { exact: true })).toHaveCount(0);
 
     await dialog.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(page.getByText("Document deleted", { exact: true })).toBeVisible({ timeout: 10_000 });
