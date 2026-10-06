@@ -21,6 +21,19 @@ export interface ApplicationRow {
   schools: { id: number; name: string; country: string | null } | null;
 }
 
+/** Statuses at or past submission; one rule for every readiness checklist. */
+const SUBMITTED_OR_LATER = new Set<ApplicationStatus>([
+  "submitted",
+  "decision_pending",
+  "accepted",
+  "rejected",
+  "waitlisted",
+]);
+
+export function isSubmittedStatus(status: ApplicationStatus): boolean {
+  return SUBMITTED_OR_LATER.has(status);
+}
+
 export const APPLICATION_STATUSES: ApplicationStatus[] = [
   "researching",
   "applying",

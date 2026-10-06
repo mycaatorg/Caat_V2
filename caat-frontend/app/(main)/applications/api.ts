@@ -11,6 +11,16 @@ async function getUser(): Promise<{ id: string }> {
   return { id };
 }
 
+/** RLS turns a write to a missing or foreign row into a silent no-op, so a
+ *  write must confirm it touched the caller's row before reporting success. */
+export function assertApplicationWritten(
+  data: unknown[] | null,
+  error: Parameters<typeof sanitizeError>[0] | null
+): void {
+  if (error) throw new Error(sanitizeError(error));
+  if (!data || data.length === 0) throw new Error("Application not found");
+}
+
 /** A new application defaults its "applying for" majors from the student's
  *  profile (target_majors), which they can then trim per school. */
 async function profileMajors(userId: string): Promise<string[]> {
@@ -67,12 +77,13 @@ export async function updateApplicationMajors(
   majors: string[]
 ): Promise<void> {
   const user = await getUser();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("user_school_applications")
     .update({ intended_majors: majors, updated_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("user_id", user.id);
-  if (error) throw new Error(sanitizeError(error));
+    .eq("user_id", user.id)
+    .select("id");
+  assertApplicationWritten(data, error);
 }
 
 export async function updateApplication(
@@ -84,14 +95,17 @@ export async function updateApplication(
   }
 ): Promise<void> {
   const user = await getUser();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("user_school_applications")
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("user_id", user.id);
-  if (error) throw new Error(sanitizeError(error));
+    .eq("user_id", user.id)
+    .select("id");
+  assertApplicationWritten(data, error);
 }
 
+/** Idempotent: a row already removed (e.g. in another tab) is the outcome the
+ *  student asked for, so zero deleted rows is not an error. */
 export async function deleteApplication(id: string): Promise<void> {
   const user = await getUser();
   const { error } = await supabase
