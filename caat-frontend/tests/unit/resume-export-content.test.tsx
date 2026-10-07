@@ -42,7 +42,9 @@ function printButton() {
   return [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Print / PDF")!;
 }
 
-describe("resume Print / PDF content", () => {
+// Each test mounts the full builder with TipTap; under CI coverage one test can
+// take several seconds, and a timed-out test keeps running into the next one.
+describe("resume Print / PDF content", { timeout: 30_000 }, () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetStore();

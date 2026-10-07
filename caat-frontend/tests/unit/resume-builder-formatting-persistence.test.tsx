@@ -105,7 +105,9 @@ async function moveSection(label: string, key: "ArrowUp" | "ArrowDown") {
   await settle();
 }
 
-describe("resume formatting and section edits survive save and reload", () => {
+// Each test mounts the full builder with TipTap; under CI coverage one test can
+// take several seconds, and a timed-out test keeps running into the next one.
+describe("resume formatting and section edits survive save and reload", { timeout: 30_000 }, () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetStore();
