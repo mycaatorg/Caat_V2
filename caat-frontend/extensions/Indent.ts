@@ -29,6 +29,20 @@ export function indentFromMargin(marginLeft: string): number {
 }
 
 /**
+ * Rewrites block indents in stored HTML to the capped steps. Content saved
+ * before the cap (a pasted 36pt read as 24 steps) otherwise prints wider in
+ * the previews and PDF than the editor shows it.
+ */
+export function capIndents(root: ParentNode) {
+  root.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, h5, h6").forEach((el) => {
+    if (!el.style.marginLeft) return;
+    const level = indentFromMargin(el.style.marginLeft);
+    el.style.marginLeft = level > 0 ? `${level * STEP_EM}em` : "";
+    if (!el.getAttribute("style")) el.removeAttribute("style");
+  });
+}
+
+/**
  * Adds an `indent` level (0..MAX_INDENT) to block nodes, rendered as an inline
  * `margin-left` so it carries into the preview + printed PDF. The toolbar's
  * indent/outdent buttons read the current level and updateAttributes.

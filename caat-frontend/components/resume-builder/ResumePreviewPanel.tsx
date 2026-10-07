@@ -1,5 +1,6 @@
 "use client";
 
+import { capIndents } from "@/extensions/Indent";
 import React, {
   useEffect,
   useLayoutEffect,
@@ -81,6 +82,7 @@ function getTopLevelBlocks(
 
   const container = document.createElement("div");
   container.innerHTML = html || "";
+  capIndents(container);
 
   const nodes = Array.from(container.childNodes);
   const blocks: RenderBlock[] = [];

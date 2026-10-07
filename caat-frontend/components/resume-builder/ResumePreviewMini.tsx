@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { capIndents } from "@/extensions/Indent";
 import type { ResumeSection } from "./types";
 import {
   ResumePage,
@@ -47,6 +48,7 @@ function getTopLevelBlocks(
 
   const container = document.createElement("div");
   container.innerHTML = html || "";
+  capIndents(container);
 
   const nodes = Array.from(container.childNodes);
   const blocks: RenderBlock[] = [];

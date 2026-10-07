@@ -49,7 +49,12 @@ function itemNumbers(root: ParentNode) {
 }
 
 describe("resume builder follow-ups", () => {
-  afterEach(() => unmountAll());
+  // Toolbar clicks focus the editor, which schedules a scroll that needs layout.
+  beforeEach(() => installLayoutStubs());
+  afterEach(() => {
+    unmountAll();
+    restoreLayoutStubs();
+  });
 
   describe("toolbar state follows the cursor", () => {
     it("enables List style as soon as the cursor moves into a saved list", async () => {
@@ -99,18 +104,15 @@ describe("resume builder follow-ups", () => {
       ]);
     });
 
-    it("does not step past the cap from the toolbar", async () => {
-      const { container, editor } = await mountEditor('<p style="margin-left: 12em">Max SYN</p>');
-      await placeCursor(editor, "Max SYN");
+    it("steps on from a pasted Word indent instead of jumping to the cap", async () => {
+      const { container, editor } = await mountEditor('<p style="margin-left: 36pt">Word SYN</p>');
+      await placeCursor(editor, "Word SYN");
       await act(async () => toolbarButton(container, "Increase indent").click());
-      expect(margins(editor.getHTML())).toEqual(["Max SYN:12em"]);
+      expect(margins(editor.getHTML())).toEqual(["Word SYN:4.5em"]);
     });
   });
 
-  describe("mini preview keeps list numbering", () => {
-    beforeEach(() => installLayoutStubs());
-    afterEach(() => restoreLayoutStubs());
-
+  describe("mini preview keeps list numbering and capped indents", () => {
     const section = (contentHtml: string): ResumeSection => ({
       id: "projects",
       type: "custom",
@@ -134,6 +136,14 @@ describe("resume builder follow-ups", () => {
         "decimal",
         "decimal",
         "decimal",
+      ]);
+    });
+
+    it("caps indents saved before the cap, as the editor shows them", async () => {
+      const page = await renderMini('<p style="margin-left: 36em">Legacy SYN</p><p style="margin-left: 3em; text-align: center">Kept SYN</p>');
+      expect([...page.querySelectorAll<HTMLElement>("p")].map((p) => `${p.textContent}:${p.style.marginLeft}`)).toEqual([
+        "Legacy SYN:12em",
+        "Kept SYN:3em",
       ]);
     });
 
