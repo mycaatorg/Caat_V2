@@ -7,29 +7,39 @@ type Supabase = Awaited<ReturnType<typeof createServerClient>>;
 // Buckets holding a student's own files, each under a `<user id>/` folder.
 const USER_BUCKETS = ["user-documents", "profile-avatars"] as const;
 
-/** Every object path under `folder`, walking subfolders (list is one level). */
+const PAGE = 1000;
+
+/** Every object path under `folder`, walking subfolders (list is one level)
+ *  and paging (list returns at most `limit` entries per call). */
 async function listAll(supabase: Supabase, bucket: string, folder: string): Promise<string[]> {
-  const { data, error } = await supabase.storage.from(bucket).list(folder, { limit: 1000 });
-  if (error) throw new Error(`list ${bucket}`);
   const paths: string[] = [];
-  for (const entry of data ?? []) {
-    const path = `${folder}/${entry.name}`;
-    // Folders come back with no id.
-    if (entry.id == null) paths.push(...(await listAll(supabase, bucket, path)));
-    else paths.push(path);
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase.storage.from(bucket).list(folder, { limit: PAGE, offset });
+    if (error) throw new Error(`list ${bucket}`);
+    for (const entry of data ?? []) {
+      const path = `${folder}/${entry.name}`;
+      // Folders come back with no id.
+      if (entry.id == null) paths.push(...(await listAll(supabase, bucket, path)));
+      else paths.push(path);
+    }
+    if ((data ?? []).length < PAGE) return paths;
   }
-  return paths;
 }
 
 /** Remove the student's uploaded files with their own session (storage RLS
- *  limits removal to their folder). Throws if anything could not be removed. */
+ *  limits removal to their folder), then list again: a remove that RLS hid,
+ *  a page that was missed or an upload from another tab would otherwise go
+ *  unnoticed. Throws unless nothing is left. */
 async function removeOwnFiles(supabase: Supabase, userId: string): Promise<void> {
   for (const bucket of USER_BUCKETS) {
-    const paths = (await listAll(supabase, bucket, userId)).filter((p) => p.startsWith(`${userId}/`));
+    const paths = await listAll(supabase, bucket, userId);
     for (let i = 0; i < paths.length; i += 100) {
       const { error } = await supabase.storage.from(bucket).remove(paths.slice(i, i + 100));
       if (error) throw new Error(`remove ${bucket}`);
     }
+  }
+  for (const bucket of USER_BUCKETS) {
+    if ((await listAll(supabase, bucket, userId)).length > 0) throw new Error(`files remain in ${bucket}`);
   }
 }
 
@@ -56,13 +66,17 @@ export async function deleteMyAccount(): Promise<
   } catch {
     return {
       ok: false,
-      error: "Could not delete your uploaded files. Your account has not been deleted. Please try again.",
+      error:
+        "Could not delete all of your uploaded files, so your account has not been deleted. Some files may already be gone. Please try again.",
     };
   }
 
   const { error } = await supabase.rpc("delete_own_account");
   if (error) {
-    return { ok: false, error: "Could not delete your account. Please try again." };
+    return {
+      ok: false,
+      error: "Your uploaded files were removed, but your account could not be deleted. Please try again.",
+    };
   }
 
   // The auth user is gone; clear the session cookies too. Ignore errors here

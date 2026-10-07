@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
   removed: [] as { bucket: string; paths: string[] }[],
   removeError: null as null | { message: string },
   listError: null as null | { message: string },
+  hidden: new Set<string>(),
   timeline: [] as string[],
 }));
 
@@ -21,13 +22,27 @@ vi.mock("@/lib/supabase/server", () => ({
     rpc: state.rpc,
     storage: {
       from: (bucket: string) => ({
-        list: async (folder: string) =>
-          state.listError ? { data: null, error: state.listError } : { data: state.objects[bucket]?.[folder] ?? [], error: null },
+        // Honours limit/offset like storage-js, so missing pagination shows up.
+        list: async (folder: string, opts: { limit?: number; offset?: number } = {}) => {
+          if (state.listError) return { data: null, error: state.listError };
+          const all = state.objects[bucket]?.[folder] ?? [];
+          const offset = opts.offset ?? 0;
+          return { data: all.slice(offset, offset + (opts.limit ?? 100)), error: null };
+        },
+        // Removes what RLS allows; hidden paths report no error but stay, as
+        // storage-js does for objects a policy hides.
         remove: async (paths: string[]) => {
           state.timeline.push(`remove:${bucket}`);
           if (state.removeError) return { data: null, error: state.removeError };
-          state.removed.push({ bucket, paths });
-          return { data: paths.map((name) => ({ name })), error: null };
+          const gone = paths.filter((p) => !state.hidden.has(p));
+          state.removed.push({ bucket, paths: gone });
+          for (const p of gone) {
+            const folder = p.slice(0, p.lastIndexOf("/"));
+            const name = p.slice(p.lastIndexOf("/") + 1);
+            const entries = state.objects[bucket]?.[folder];
+            if (entries) state.objects[bucket][folder] = entries.filter((e) => e.name !== name);
+          }
+          return { data: gone.map((name) => ({ name })), error: null };
         },
       }),
     },
@@ -47,6 +62,7 @@ beforeEach(() => {
   state.removed = [];
   state.removeError = null;
   state.listError = null;
+  state.hidden = new Set();
   state.timeline = [];
   state.rpc.mockImplementation(async () => {
     state.timeline.push("rpc");
@@ -74,7 +90,7 @@ describe("deleteMyAccount server action", () => {
 
     await expect(deleteMyAccount()).resolves.toEqual({
       ok: false,
-      error: "Could not delete your account. Please try again.",
+      error: "Your uploaded files were removed, but your account could not be deleted. Please try again.",
     });
     expect(state.rpc).toHaveBeenCalledExactlyOnceWith("delete_own_account");
     expect(state.signOut).not.toHaveBeenCalled();
@@ -106,7 +122,7 @@ describe("deleteMyAccount uploaded files", () => {
     state.removeError = { message: "storage unavailable" };
     await expect(deleteMyAccount()).resolves.toEqual({
       ok: false,
-      error: "Could not delete your uploaded files. Your account has not been deleted. Please try again.",
+      error: "Could not delete all of your uploaded files, so your account has not been deleted. Some files may already be gone. Please try again.",
     });
     expect(state.rpc).not.toHaveBeenCalled();
     expect(state.signOut).not.toHaveBeenCalled();
@@ -118,9 +134,28 @@ describe("deleteMyAccount uploaded files", () => {
     expect(state.rpc).not.toHaveBeenCalled();
   });
 
-  it("only touches the signed-in student's own folders", async () => {
-    state.objects = { "user-documents": { "user-1": [{ name: "a.pdf", id: "1" }], "user-2": [{ name: "x.pdf", id: "9" }] } };
-    await deleteMyAccount();
-    expect(state.removed.flatMap((r) => r.paths).every((p) => p.startsWith("user-1/"))).toBe(true);
+  it("pages through folders with more than 1,000 entries", async () => {
+    const many = Array.from({ length: 1205 }, (_, i) => ({ name: `f${i}.pdf`, id: String(i) }));
+    state.objects = { "user-documents": { "user-1": many } };
+    await expect(deleteMyAccount()).resolves.toEqual({ ok: true });
+    expect(state.removed.flatMap((r) => r.paths)).toHaveLength(1205);
+    expect(state.rpc).toHaveBeenCalledOnce();
+  });
+
+  it("does not delete the account when a removal silently leaves files behind", async () => {
+    state.objects = { "user-documents": { "user-1": [{ name: "a.pdf", id: "1" }, { name: "b.pdf", id: "2" }] } };
+    state.hidden = new Set(["user-1/b.pdf"]);
+    await expect(deleteMyAccount()).resolves.toMatchObject({ ok: false });
+    expect(state.rpc).not.toHaveBeenCalled();
+    expect(state.signOut).not.toHaveBeenCalled();
+  });
+
+  it("says the files are gone when only the account deletion fails", async () => {
+    state.objects = { "user-documents": { "user-1": [{ name: "a.pdf", id: "1" }] } };
+    state.rpcResult = { error: { message: "rpc failed" } };
+    await expect(deleteMyAccount()).resolves.toEqual({
+      ok: false,
+      error: "Your uploaded files were removed, but your account could not be deleted. Please try again.",
+    });
   });
 });
