@@ -171,7 +171,7 @@ export function chooseNextStep(input: TodayInput, tasks: TodayTask[] = deriveTas
     return {
       kind: "save-university",
       title: "Add a university you are considering",
-      body: "Scholarships often belong to a university. Save the universities on your list to track their applications and deadlines.",
+      body: "Save the universities you might apply to. Each one can become an application with its own deadline and checklist.",
       cta: "Browse universities",
       href: "/schools",
     };
