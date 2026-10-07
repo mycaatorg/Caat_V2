@@ -8,7 +8,9 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
-import { localDatabaseUrl, runLocalPsql } from './local-db.mjs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { checkLocalPsql, localDatabaseUrl, runLocalPsql, startLocalPsql } from './local-db.mjs';
 import { assertLocalApiUrl } from './safety.mjs';
 
 const apiUrl = process.env.SUPABASE_URL;
@@ -18,6 +20,8 @@ const password = process.env.E2E_TEST_PASSWORD;
 if (!apiUrl || !anonKey || !serviceKey || !password) throw new Error('Local Supabase test settings are required.');
 assertLocalApiUrl(apiUrl);
 const dbUrl = localDatabaseUrl();
+const migrationFile = join(dirname(fileURLToPath(import.meta.url)),
+  '../../supabase/migrations/20261007140000_community_notification_triggers.sql');
 
 const options = { auth: { persistSession: false, autoRefreshToken: false } };
 const admin = createClient(apiUrl, serviceKey, options);
@@ -77,11 +81,60 @@ const exists = async (table, filters) => {
 };
 const comment = async (user, postId, content, parentId = null) => required(await user.client.from('community_comments')
   .insert({ post_id: postId, user_id: user.id, content, parent_comment_id: parentId }).select('id').single(), `comment: ${content}`).id;
+const sql = (query) => checkLocalPsql(dbUrl, ['-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c', query]);
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+const notificationFunctions = `array[
+  to_regprocedure('public.community_deliver_notification(uuid,uuid,text,uuid,uuid,text,boolean)'),
+  to_regprocedure('public.community_notify_post_like()'), to_regprocedure('public.community_notify_comment()'),
+  to_regprocedure('public.community_notify_comment_like()'), to_regprocedure('public.community_notify_follow()'),
+  to_regprocedure('public.community_notify_request_approved()')]::oid[]`;
 const approve = async (owner, requesterId) => required(await owner.client.rpc('approve_group_join_request', {
   p_group_id: ids.group, p_requester_user_id: requesterId,
 }), 'approve request');
 
 try {
+  // 0. Delivery depends on the trigger functions' owner writing notifications
+  // and reading what delivery checks past RLS; a later ownership or RLS
+  // change would otherwise only raise warnings.
+  check(sql(`select count(*) from pg_proc p join pg_roles r on r.oid = p.proowner
+    where p.oid = any(${notificationFunctions}) and p.prosecdef
+      and has_table_privilege(r.oid, 'public.notifications', 'INSERT')
+      and has_table_privilege(r.oid, 'public.notifications', 'UPDATE')
+      and has_table_privilege(r.oid, 'public.notifications', 'SELECT')
+      and not exists (
+        select 1 from pg_class c
+        where c.oid in ('public.notifications'::regclass, 'public.community_blocks'::regclass,
+          'public.community_posts'::regclass, 'public.community_groups'::regclass,
+          'public.community_group_members'::regclass, 'public.community_comments'::regclass)
+          and (not has_table_privilege(r.oid, c.oid, 'SELECT')
+            or (c.relrowsecurity and not (r.rolbypassrls or r.rolsuper)
+              and (c.relforcerowsecurity or c.relowner <> r.oid)))
+      )`) === '5', 'the trigger functions\' owner can write notifications and read delivery checks past RLS');
+  check(sql(`select count(*) || '|' || count(*) filter (where has_function_privilege('anon', p.oid, 'execute')
+      or has_function_privilege('authenticated', p.oid, 'execute'))
+    from pg_proc p where p.oid = any(${notificationFunctions})`) === '6|0',
+  'the trigger and delivery functions are not executable by anon or authenticated');
+
+  // Reapplying the migration while a post deletion holds comment locks and
+  // then wants community_likes (delete_post_children's order) must not
+  // deadlock either side: the migration never waits while holding a lock.
+  const deletion = startLocalPsql(dbUrl, ['-q', '-v', 'ON_ERROR_STOP=1', '-c', `
+    begin;
+    lock table public.community_comment_likes, public.community_comments in row exclusive mode;
+    select pg_sleep(2);
+    lock table public.community_likes in row exclusive mode;
+    commit;
+  `]);
+  for (let waited = 0; sql(`select count(*) from pg_locks l where l.granted and l.mode = 'RowExclusiveLock'
+    and l.relation = 'public.community_comments'::regclass and l.pid <> pg_backend_pid()`) === '0'; waited += 50) {
+    if (waited > 5000) throw new Error('simulated post deletion never took its locks');
+    await sleep(50);
+  }
+  const reapplied = startLocalPsql(dbUrl, ['-q', '-v', 'ON_ERROR_STOP=1', '-f', migrationFile]);
+  const [deleted, migrated] = await Promise.all([deletion, reapplied]);
+  check(deleted.status === 0 && migrated.status === 0,
+    `reapplying the migration during a post deletion deadlocks neither side ${(deleted.stderr + migrated.stderr).trim()}`.trim());
+
   const author = await disposableUser('author', 'E2E', `Author ${tag}`);
   const peer = await disposableUser('peer', 'E2E', `Peer ${tag}`);
   const third = await disposableUser('third', 'E2E', `Third ${tag}`);
@@ -106,6 +159,11 @@ try {
   }
   check((await fromActor(peer.id)).length === 0 && (await fromActor(third.id)).length === 0 && (await fromActor(author.id)).length === 0,
     'refused direct inserts left no notification rows');
+  const forgedCall = await peer.client.rpc('community_deliver_notification', {
+    p_recipient: author.id, p_actor: third.id, p_type: 'follow', p_post_id: null, p_comment_id: null,
+    p_message: 'forged', p_resurface: true,
+  });
+  check(!!forgedCall.error && (await fromActor(third.id)).length === 0, 'signed-in users cannot call the delivery function');
 
   // 2. Post likes: one notification for the author, none for self-likes, no stacking.
   required(await peer.client.from('community_likes').insert({ post_id: ids.publicPost, user_id: peer.id }), 'peer likes post');
@@ -149,6 +207,14 @@ try {
   await comment(author, ids.publicPost, 'author reply to peer', peerComment);
   check((await delivered(peer.id, author.id, 'reply', ids.publicPost)).length === 1, 'the post author replying notifies the commenter');
   check((await delivered(author.id, author.id, 'reply')).length === 0, 'replying in your own thread creates no self notification');
+  const doomed = await comment(peer, ids.publicPost, 'peer comment to delete');
+  required(await peer.client.from('community_comments').update({ is_deleted: true, content: '[deleted]' })
+    .eq('id', doomed), 'peer soft-deletes a comment');
+  await comment(third, ids.publicPost, 'third reply to a deleted comment', doomed);
+  check((await delivered(peer.id, third.id, 'reply', ids.publicPost))[0]?.comment_id === thirdReply,
+    'a reply to a deleted comment does not notify its author');
+  required(await outsider.client.from('community_comment_likes').insert({ comment_id: doomed, user_id: outsider.id }), 'like deleted comment');
+  check((await delivered(peer.id, outsider.id, 'comment_like')).length === 0, 'a like on a deleted comment notifies nobody');
 
   // 4. Comment likes (a new notification type) notify the comment author once.
   required(await third.client.from('community_comment_likes').insert({ comment_id: peerComment, user_id: third.id }), 'third likes comment');
@@ -161,6 +227,15 @@ try {
   required(await third.client.from('community_comment_likes').insert({ comment_id: peerComment, user_id: third.id }), 'like comment again');
   const commentReliked = await delivered(peer.id, third.id, 'comment_like', ids.publicPost);
   check(commentReliked.length === 1 && commentReliked[0].is_read === true, 're-liking a comment does not stack or resurface');
+  for (let round = 0; round < 3; round++) {
+    required(await third.client.from('community_comment_likes').delete().eq('comment_id', peerComment).eq('user_id', third.id), 'unlike first');
+    required(await third.client.from('community_comment_likes').insert({ comment_id: peerSecond, user_id: third.id }), 'like second');
+    required(await third.client.from('community_comment_likes').delete().eq('comment_id', peerSecond).eq('user_id', third.id), 'unlike second');
+    required(await third.client.from('community_comment_likes').insert({ comment_id: peerComment, user_id: third.id }), 'like first');
+  }
+  const cycled = await delivered(peer.id, third.id, 'comment_like', ids.publicPost);
+  check(cycled.length === 1 && cycled[0].is_read === true && cycled[0].comment_id === peerComment,
+    'cycling likes across two comments never flips a read notification back to unread');
 
   // 5. Follows notify the followed user once.
   required(await peer.client.from('community_follows').insert({ follower_id: peer.id, followee_id: author.id }), 'peer follows');

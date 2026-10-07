@@ -22,12 +22,22 @@
 --   * skips self-notifications and pairs where either user blocked the other;
 --   * skips posts the recipient cannot read (hidden posts, private communities
 --     they are not in), mirroring can_read_community_post for that recipient;
---   * relies on idx_notifications_dedup: likes and follows never stack or
---     resurface (like/unlike/like is one row), a new comment, reply or liked
---     comment refreshes the single row as unread, and an approval resurfaces
---     its row;
+--   * relies on idx_notifications_dedup (one row per recipient, actor, type
+--     and post): post likes, comment likes and follows insert once and never
+--     update or resurface that row, so like/unlike loops (even across two
+--     comments) cannot re-alert; a new comment or reply, and a new approval,
+--     refresh the row as unread, since each is new activity;
 --   * swallows any failure with a WARNING, so a notification problem never
---     blocks the like, comment, follow or approval itself.
+--     blocks the like, comment, follow or approval itself. Because a failure
+--     is otherwise quiet, the final self-check proves the trigger owner can
+--     write notifications and read every table delivery consults past RLS.
+--
+-- Locks: post deletion locks comment_likes, comments, notifications (via the
+-- comment FK cascade) then likes, while comment deletion locks comments,
+-- notifications, then comment_likes, so no fixed order can match every
+-- writer. Every table lock this migration needs is therefore taken in one
+-- all-or-nothing NOWAIT step, retried for up to 5s: the migration never
+-- waits while holding a lock, so it cannot join a deadlock.
 --
 -- 'comment_like' is added to notifications_type_check (the UI already renders
 -- it). Anonymity: only community_posts has is_anonymous; comments always show
@@ -103,11 +113,41 @@ begin
 end;
 $$;
 
+-- Take every lock up front, all or nothing. A failed NOWAIT attempt rolls
+-- back its subtransaction, releasing any lock it got, before retrying, so
+-- this transaction never waits while holding a lock. SHARE ROW EXCLUSIVE is
+-- what CREATE TRIGGER needs; ACCESS EXCLUSIVE on notifications only when the
+-- type constraint still needs replacing (a reapply takes no lock there).
+do $$
+declare
+  v_swap boolean := not exists (
+    select 1 from pg_constraint c
+    where c.conrelid = 'public.notifications'::regclass and c.conname = 'notifications_type_check'
+      and pg_get_constraintdef(c.oid) like '%''comment_like''::text%'
+  );
+begin
+  for v_attempt in 1..200 loop
+    begin
+      lock table public.community_comment_likes, public.community_comments, public.community_likes,
+        public.community_group_requests, public.community_follows
+        in share row exclusive mode nowait;
+      if v_swap then
+        lock table public.notifications in access exclusive mode nowait;
+      end if;
+      return;
+    exception when lock_not_available then
+      perform pg_sleep(0.025);
+    end;
+  end loop;
+  raise exception 'PROD-100 could not take its table locks within 5s; retry when writes are quieter'
+    using errcode = '55P03';
+end;
+$$;
+
 -- Allow 'comment_like'. Only the reviewed baseline is replaced; a reapply
 -- finds the target set and does nothing. The new set is a superset, so
--- validation cannot fail. NOT VALID + VALIDATE does not shorten the lock
--- inside this one transaction; the ACCESS EXCLUSIVE lock lasts as long as a
--- scan of a table whose app writes have all been refused until now.
+-- validation cannot fail. The lock is already held, for as long as one scan
+-- of a table whose app writes have all been refused until now.
 do $$
 declare
   v_def text;
@@ -173,12 +213,18 @@ begin
     return;
   end if;
 
-  insert into public.notifications as n (user_id, actor_id, type, post_id, comment_id, message)
-    values (p_recipient, p_actor, p_type, p_post_id, p_comment_id, p_message)
-    on conflict (user_id, actor_id, type, (coalesce(post_id, '00000000-0000-0000-0000-000000000000'::uuid)))
-    do update set comment_id = excluded.comment_id, message = excluded.message,
-      is_read = false, created_at = now()
-    where p_resurface or n.comment_id is distinct from excluded.comment_id;
+  if p_resurface then
+    insert into public.notifications (user_id, actor_id, type, post_id, comment_id, message)
+      values (p_recipient, p_actor, p_type, p_post_id, p_comment_id, p_message)
+      on conflict (user_id, actor_id, type, (coalesce(post_id, '00000000-0000-0000-0000-000000000000'::uuid)))
+      do update set comment_id = excluded.comment_id, message = excluded.message,
+        is_read = false, created_at = now();
+  else
+    insert into public.notifications (user_id, actor_id, type, post_id, comment_id, message)
+      values (p_recipient, p_actor, p_type, p_post_id, p_comment_id, p_message)
+      on conflict (user_id, actor_id, type, (coalesce(post_id, '00000000-0000-0000-0000-000000000000'::uuid)))
+      do nothing;
+  end if;
 exception when others then
   raise warning 'community % notification not delivered: % (SQLSTATE %)', p_type, sqlerrm, sqlstate;
 end;
@@ -205,17 +251,19 @@ returns trigger language plpgsql security definer set search_path = ''
 as $$
 declare
   v_post_author uuid;
-  v_parent_author uuid;
+  v_reply_to uuid;
 begin
   begin
     select p.user_id into v_post_author from public.community_posts p where p.id = new.post_id;
+    -- Nobody is told about replies to a comment they deleted.
     if new.parent_comment_id is not null then
-      select c.user_id into v_parent_author from public.community_comments c where c.id = new.parent_comment_id;
-      perform public.community_deliver_notification(v_parent_author, new.user_id, 'reply', new.post_id, new.id, null, false);
+      select c.user_id into v_reply_to from public.community_comments c
+        where c.id = new.parent_comment_id and not c.is_deleted;
+      perform public.community_deliver_notification(v_reply_to, new.user_id, 'reply', new.post_id, new.id, null, true);
     end if;
     -- A post author who wrote the parent already received the reply.
-    if new.parent_comment_id is null or v_post_author is distinct from v_parent_author then
-      perform public.community_deliver_notification(v_post_author, new.user_id, 'comment', new.post_id, new.id, null, false);
+    if v_post_author is distinct from v_reply_to then
+      perform public.community_deliver_notification(v_post_author, new.user_id, 'comment', new.post_id, new.id, null, true);
     end if;
   exception when others then
     raise warning 'community comment notification not delivered: % (SQLSTATE %)', sqlerrm, sqlstate;
@@ -350,6 +398,27 @@ begin
       );
   if v_count <> 6 then
     raise exception 'PROD-100 notification functions differ from the reviewed ownership, rights or grants';
+  end if;
+
+  -- Delivery failures are only warnings, so prove now that the owner the
+  -- triggers run as can write notifications and read what delivery checks,
+  -- past RLS (no FORCE ROW LEVEL SECURITY unless the owner bypasses RLS).
+  select count(*) into v_count from pg_roles r
+    where r.rolname = current_user
+      and has_table_privilege(r.oid, 'public.notifications', 'INSERT')
+      and has_table_privilege(r.oid, 'public.notifications', 'UPDATE')
+      and has_table_privilege(r.oid, 'public.notifications', 'SELECT')
+      and not exists (
+        select 1 from pg_class c
+        where c.oid in ('public.notifications'::regclass, 'public.community_blocks'::regclass,
+          'public.community_posts'::regclass, 'public.community_groups'::regclass,
+          'public.community_group_members'::regclass, 'public.community_comments'::regclass)
+          and (not has_table_privilege(r.oid, c.oid, 'SELECT')
+            or (c.relrowsecurity and not (r.rolbypassrls or r.rolsuper)
+              and (c.relforcerowsecurity or c.relowner <> r.oid)))
+      );
+  if v_count <> 1 then
+    raise exception 'PROD-100 trigger owner cannot write notifications or read delivery checks past RLS';
   end if;
 
   select count(*) into v_count from pg_trigger t
