@@ -215,6 +215,26 @@ test("new account signs up, logs out, logs in, and can delete its own account", 
   await expectSignedInToday(page, FULL_NAME);
   await expect(page.getByText(EMAIL, { exact: true })).toBeVisible();
 
+  // Upload a synthetic document and keep its signed link, so deletion can be
+  // proven to remove the stored file and not only the account rows (PROD-96).
+  const fileName = `deleted-account-${RUN_ID}.pdf`;
+  const pdfBody = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n";
+  await page.goto("/documents");
+  await page.getByRole("button", { name: "Upload New" }).click();
+  await page.locator('input[type="file"]').last().setInputFiles({ name: fileName, mimeType: "application/pdf", buffer: Buffer.from(pdfBody) });
+  await page.getByRole("button", { name: "Upload", exact: true }).click();
+  await expect(page.getByText("Document uploaded successfully", { exact: true })).toBeVisible({ timeout: 20_000 });
+  const docRow = page.getByText(fileName, { exact: true }).locator("xpath=../../..");
+  const signing = page.waitForResponse((r) => r.url().includes("/storage/v1/object/sign/user-documents/") && r.request().method() === "POST");
+  const popup = page.waitForEvent("popup");
+  await docRow.getByRole("button", { name: "More options" }).click();
+  await page.getByRole("menuitem", { name: "View", exact: true }).click();
+  const signed = await signing;
+  const { signedURL } = (await signed.json()) as { signedURL: string };
+  const signedUrl = `${signed.url().split("/object/sign/")[0]}${signedURL}`;
+  await (await popup).close();
+  expect((await page.request.get(signedUrl)).status()).toBe(200);
+
   // Delete only this newly-created synthetic account through the real settings UI.
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: settingsRoute.expected!, exact: true })).toBeVisible({ timeout: 15_000 });
@@ -224,6 +244,8 @@ test("new account signs up, logs out, logs in, and can delete its own account", 
   await confirmDialog.getByPlaceholder("DELETE").fill("DELETE");
   await confirmDialog.getByRole("button", { name: "Delete my account", exact: true }).click();
   await expect(page.getByText("Your account has been deleted.", { exact: true })).toBeVisible({ timeout: 10_000 });
+  // The uploaded file went with the account.
+  await expect.poll(async () => (await page.request.get(signedUrl)).status()).not.toBe(200);
 
   await page.goto("/dashboard");
   await page.waitForURL(/\/login(?:$|\?)/, { timeout: 15_000 });

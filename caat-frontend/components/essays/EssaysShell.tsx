@@ -63,6 +63,7 @@ export default function EssaysShell({
   const [promptsLoading, setPromptsLoading] = useState(!hasInitialPrompts);
 
   const [customPrompts, setCustomPrompts] = useState<CustomEssayPrompt[]>([]);
+  const [customPromptsError, setCustomPromptsError] = useState(false);
   const [creatingCustomPrompt, setCreatingCustomPrompt] = useState(false);
   const [newCustomTitle, setNewCustomTitle] = useState("");
   const [savingCustomPrompt, setSavingCustomPrompt] = useState(false);
@@ -228,12 +229,46 @@ export default function EssaysShell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Essays created or deleted while a list load is in flight are newer than its
+  // response. The response is authoritative for everything else, so a later
+  // reload still drops rows deleted elsewhere (or another account's rows).
+  const createdDuringLoad = useRef(new Set<string>());
+  const deletedDuringLoad = useRef(new Set<string>());
+  // Only the newest load may apply its response; an older, slower one (or one
+  // from before a sign-out) is discarded.
+  const customLoadSeq = useRef(0);
+  const loadCustomPrompts = useCallback(() => {
+    const seq = ++customLoadSeq.current;
+    createdDuringLoad.current = new Set();
+    deletedDuringLoad.current = new Set();
+    setCustomPromptsError(false);
+    fetchCustomPrompts()
+      .then((loaded) => {
+        if (seq !== customLoadSeq.current) return;
+        setCustomPrompts((prev) => {
+          const kept = loaded.filter((p) => !deletedDuringLoad.current.has(p.id));
+          const keptIds = new Set(kept.map((p) => p.id));
+          const created = prev.filter((p) => createdDuringLoad.current.has(p.id) && !keptIds.has(p.id));
+          return [...kept, ...created];
+        });
+      })
+      // A failed load is shown as an error, not as "No custom essays yet".
+      .catch(() => {
+        if (seq === customLoadSeq.current) setCustomPromptsError(true);
+      });
+  }, []);
+
   // Load custom prompts when authenticated
   useEffect(() => {
-    if (!isAuthenticated) return;
-    fetchCustomPrompts().then(setCustomPrompts).catch(() => {});
+    if (!isAuthenticated) {
+      customLoadSeq.current += 1;
+      setCustomPrompts([]);
+      setCustomPromptsError(false);
+      return;
+    }
+    loadCustomPrompts();
     fetchMySchools().then(setMySchools).catch(() => {});
-  }, [isAuthenticated]);
+  }, [isAuthenticated, loadCustomPrompts]);
 
   // Keep the school selector in sync with whichever draft is active. A loaded
   // draft shows its own tag; with no draft we fall back to the URL-armed school
@@ -467,7 +502,9 @@ export default function EssaysShell({
     setSavingCustomPrompt(true);
     try {
       const cp = await createCustomPrompt(title);
-      setCustomPrompts((prev) => [...prev, cp]);
+      createdDuringLoad.current.add(cp.id);
+      // A list load that read after the insert may already include it.
+      setCustomPrompts((prev) => (prev.some((p) => p.id === cp.id) ? prev : [...prev, cp]));
       setNewCustomTitle("");
       setCreatingCustomPrompt(false);
       setSelectedPromptId(cp.id);
@@ -515,6 +552,7 @@ export default function EssaysShell({
           }
         }
         await deleteCustomPrompt(id);
+        deletedDuringLoad.current.add(id);
         // Delete all drafts for this custom prompt from local state
         setCustomPrompts((prev) => prev.filter((p) => p.id !== id));
         if (deletingActivePrompt) {
@@ -862,10 +900,20 @@ export default function EssaysShell({
                   </div>
                 )}
 
+                {customPromptsError ? (
+                  <div role="alert" className="flex items-center justify-between gap-2 px-1 py-1">
+                    <p className="text-xs text-muted-foreground">Couldn&apos;t load your essays.</p>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={loadCustomPrompts}>
+                      Try again
+                    </Button>
+                  </div>
+                ) : null}
                 {customPrompts.length === 0 && !creatingCustomPrompt ? (
-                  <p className="text-xs text-muted-foreground px-1 py-1">
-                    No custom essays yet. Click + to add one.
-                  </p>
+                  customPromptsError ? null : (
+                    <p className="text-xs text-muted-foreground px-1 py-1">
+                      No custom essays yet. Click + to add one.
+                    </p>
+                  )
                 ) : (
                   customPrompts.map((cp) => (
                     <div key={cp.id} className="group flex items-center gap-1">
