@@ -33,7 +33,7 @@ export default async function GroupsDiscoverPage() {
       </header>
 
       <div className="p-6">
-        <main className="max-w-3xl mx-auto space-y-6">
+        <div className="max-w-3xl mx-auto space-y-6">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-lg font-semibold">Communities</h1>
@@ -84,7 +84,7 @@ export default async function GroupsDiscoverPage() {
               ))}
             </div>
           )}
-        </main>
+        </div>
       </div>
     </>
   );

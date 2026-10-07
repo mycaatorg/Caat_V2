@@ -160,6 +160,17 @@ test("custom essay draft content autosaves and reloads from the real account", {
   }
 });
 
+/** Opens a resume section. Below the lg breakpoint (1024px) the builder shows
+ *  Sections / Edit / Preview tabs, and the section list sits behind Sections. */
+async function openResumeSection(page: Page, label: string) {
+  if ((page.viewportSize()?.width ?? 1280) < 1024) {
+    const sectionsTab = page.getByRole("button", { name: "Sections", exact: true });
+    await sectionsTab.click();
+    await expect(sectionsTab).toHaveAttribute("aria-pressed", "true");
+  }
+  await page.getByRole("button", { name: label, exact: true }).filter({ visible: true }).first().click();
+}
+
 test("resume section content is saved and restored after reloading the builder", { tag: "@phone" }, async ({ page }) => {
   await signInToIsolatedStudent(page);
   const content = marker("Persisted resume education");
@@ -169,8 +180,9 @@ test("resume section content is saved and restored after reloading the builder",
   const saveButton = page.getByRole("button", { name: "Save", exact: true });
   await expect(saveButton).toBeEnabled({ timeout: 15_000 });
 
-  await page.getByRole("button", { name: "Education", exact: true }).first().click();
-  const editor = page.locator(".ProseMirror").first();
+  await openResumeSection(page, "Education");
+  // The builder keeps its hidden desktop panels in the page on a phone.
+  const editor = page.locator(".ProseMirror:visible").first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
   const persistedSectionWrite = page.waitForResponse((response) => {
     const request = response.request();
@@ -187,8 +199,8 @@ test("resume section content is saved and restored after reloading the builder",
 
   await page.reload();
   await expect(resumeBreadcrumb.getByText("Resume Builder", { exact: true })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Education", exact: true }).first().click();
-  await expect(page.locator(".ProseMirror").first()).toContainText(content, { timeout: 15_000 });
+  await openResumeSection(page, "Education");
+  await expect(page.locator(".ProseMirror:visible").first()).toContainText(content, { timeout: 15_000 });
 });
 
 /** content_html the builder upserted for one section, from the request body. */

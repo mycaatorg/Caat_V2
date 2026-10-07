@@ -27,7 +27,11 @@ test("a phone visitor can open the menu and reach log in and sign up", async ({ 
   await expect(page.getByRole("heading", { name: "Create account" })).toBeVisible();
 });
 
-test("the sign-in form can be reached from the keyboard alone", async ({ page }) => {
+test("the sign-in form can be reached from the keyboard alone", async ({ page, browserName }) => {
+  // Unverified on WebKit: Safari's Tab key skips links and buttons unless the
+  // user turns on "Press Tab to highlight each item", so this would test a
+  // browser preference rather than the page.
+  test.skip(browserName === "webkit", "Safari skips links and buttons on Tab by default");
   await page.goto("/login");
   const email = page.getByLabel("Email", { exact: true });
   await email.focus();

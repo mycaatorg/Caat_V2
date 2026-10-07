@@ -30,7 +30,8 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarGroupLabel
+  SidebarGroupLabel,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { NavUser } from "./nav-user"
 import { useAuth } from "@/components/providers/AuthContext"
@@ -61,6 +62,13 @@ export function AppSidebar({
   // sidebar's own getUser() + profile fetch on every navigation. The avatar is
   // resolved once server-side and passed in.
   const { user: authUser } = useAuth()
+
+  // On phones the menu is an overlay over the page; close it once a link has
+  // navigated, so the student lands on the page they chose.
+  const { isMobile, setOpenMobile } = useSidebar()
+  React.useEffect(() => {
+    if (isMobile) setOpenMobile(false)
+  }, [pathname, isMobile, setOpenMobile])
 
   // NavUser mounts a Radix dropdown; render it only after hydration so it never
   // SSRs. The sidebar's collapsed-state tooltips make Radix's useId sequence

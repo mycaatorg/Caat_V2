@@ -53,7 +53,7 @@ export default async function SavedPostsPage() {
       </header>
 
       <div className="p-6">
-        <main className="max-w-2xl mx-auto space-y-4">
+        <div className="max-w-2xl mx-auto space-y-4">
           <div className="flex items-center gap-2 mb-2">
             <Bookmark className="size-4" />
             <h1 className="text-base font-semibold">Saved Posts</h1>
@@ -66,7 +66,7 @@ export default async function SavedPostsPage() {
             initialLikedIds={likedIds}
             initialSavedIds={savedIds}
           />
-        </main>
+        </div>
       </div>
     </>
   );

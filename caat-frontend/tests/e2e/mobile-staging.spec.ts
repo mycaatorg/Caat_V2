@@ -4,22 +4,14 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { sidewaysOverflow } from "./phone";
+import routeCoverage from "./route-coverage.json";
 
 const STUDENT_EMAIL = "e2e.student@caat.local.test";
 
-const STUDENT_PAGES: Array<[string, RegExp]> = [
-  ["/dashboard", /dashboard|welcome/i],
-  ["/profile", /profile/i],
-  ["/schools", /schools|universities/i],
-  ["/applications", /my applications/i],
-  ["/majors", /majors|courses/i],
-  ["/resume-builder", /resume/i],
-  ["/essays", /essay/i],
-  ["/scholarships", /scholarship/i],
-  ["/documents", /documents/i],
-  ["/communities", /community|campus/i],
-  ["/settings", /settings/i],
-];
+// Every signed-in page in the route manifest.
+const STUDENT_PAGES = routeCoverage.routes
+  .filter((entry) => entry.kind === "static" && entry.access === "authenticated")
+  .map((entry) => entry.route);
 
 test.beforeAll(() => {
   if (process.env.CAAT_ISOLATED_E2E !== "1") {
@@ -44,9 +36,9 @@ async function signIn(page: Page) {
 test("every student page fits a phone screen without sideways scrolling", { tag: "@phone" }, async ({ page }) => {
   await signIn(page);
   const problems: string[] = [];
-  for (const [route, heading] of STUDENT_PAGES) {
+  for (const route of STUDENT_PAGES) {
     await page.goto(route);
-    await expect(page.getByRole("heading", { name: heading }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("main").first()).toBeVisible({ timeout: 15_000 });
     // Let late content (lists, images) settle before measuring.
     await page.waitForLoadState("networkidle").catch(() => {});
     const overflow = await sidewaysOverflow(page);
