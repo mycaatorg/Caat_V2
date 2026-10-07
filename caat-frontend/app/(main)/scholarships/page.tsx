@@ -11,7 +11,9 @@ import ScholarshipsClient from "./client";
 
 // One page of cards. Was filtered/paginated client-side from the full 4,224-row
 // table; now the server asks Postgres for exactly one page (C1/M2).
-export const ITEMS_PER_PAGE = 6;
+// PROD-72: 12 per page (as on the public directory). Measured on a 4,200-row
+// catalogue, page size does not change query time; filtering dominates.
+export const ITEMS_PER_PAGE = 12;
 
 function parseArrayParam(val: string | undefined): string[] {
   if (!val) return [];

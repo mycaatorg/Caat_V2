@@ -695,8 +695,11 @@ export default function ScholarshipsClient({
               <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
                 <p className="text-lg font-medium">No scholarships found</p>
                 <p className="text-sm mt-1">
-                  Try adjusting your search or filters.
+                  Try a broader search, or clear your filters to see everything again.
                 </p>
+                <Button variant="outline" className="mt-4 rounded-none" onClick={clearAll}>
+                  Clear search and filters
+                </Button>
               </div>
             )}
 
