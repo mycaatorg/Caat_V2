@@ -169,14 +169,14 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
         </div>
       ) : (
         <>
-          <div role="group" aria-label="Filter shortlist" className="inline-flex flex-wrap border self-start">
+          <div role="group" aria-label="Filter shortlist" className="flex max-w-full overflow-x-auto border self-start">
             {FILTERS.map((f) => (
               <button
                 key={f.key}
                 type="button"
                 aria-pressed={filter === f.key}
                 onClick={() => setFilter(f.key)}
-                className={`px-4 py-2 font-code text-[11px] uppercase tracking-[0.12em] ${
+                className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 font-code text-[11px] uppercase tracking-[0.1em] sm:tracking-[0.12em] ${
                   filter === f.key ? "bg-[#9a1a27] text-white" : "text-muted-foreground hover:bg-muted"
                 }`}
               >
