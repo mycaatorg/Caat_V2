@@ -191,6 +191,186 @@ test("resume section content is saved and restored after reloading the builder",
   await expect(page.locator(".ProseMirror").first()).toContainText(content, { timeout: 15_000 });
 });
 
+/** content_html the builder upserted for one section, from the request body. */
+function upsertedSectionHtml(postData: string | null, label: string): string | null {
+  try {
+    const rows = JSON.parse(postData ?? "[]") as Array<{ label?: string; content_html?: string }>;
+    return rows.find((row) => row.label === label)?.content_html ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Page count from a PDF's page tree: trailer /Root -> catalog /Pages -> /Count. */
+function pdfPageCount(pdf: Buffer): number {
+  const text = pdf.toString("latin1");
+  const ref = (source: string, key: string) => {
+    const match = new RegExp(`/${key}\\s+(\\d+)\\s+(\\d+)\\s+R`).exec(source);
+    if (!match) throw new Error(`PDF has no /${key} reference`);
+    return `${match[1]} ${match[2]}`;
+  };
+  const object = (id: string) => {
+    const match = new RegExp(`(?:^|[^\\d])${id} obj([\\s\\S]*?)endobj`).exec(text);
+    if (!match) throw new Error(`PDF object ${id} not found`);
+    return match[1];
+  };
+  const catalog = object(ref(text.slice(text.lastIndexOf("/Root")), "Root"));
+  const count = /\/Count\s+(\d+)/.exec(object(ref(catalog, "Pages")))?.[1];
+  if (!count) throw new Error("PDF page tree has no /Count");
+  return Number(count);
+}
+
+async function openResumeBuilder(page: Page) {
+  await page.goto("/resume-builder");
+  const breadcrumb = page.getByRole("main").getByRole("navigation", { name: "breadcrumb" });
+  await expect(breadcrumb.getByText("Resume Builder", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled({ timeout: 15_000 });
+}
+
+async function removeResumeSection(page: Page, label: string) {
+  await openResumeBuilder(page);
+  const row = page.getByRole("button", { name: label, exact: true });
+  if (!(await row.count())) return;
+  page.once("dialog", (dialog) => dialog.accept());
+  const deleted = page.waitForResponse((r) => r.request().method() === "DELETE"
+    && new URL(r.url()).pathname.endsWith("/rest/v1/resume_sections") && r.ok(), { timeout: 15_000 });
+  await row.locator("xpath=..").getByRole("button", { name: "Delete section" }).click();
+  await deleted;
+}
+
+test("rich resume formatting survives a reload and is what Print / PDF exports", async ({ page }) => {
+  // Two builder reloads, a PDF render and cleanup: allow more than the 30s default.
+  test.setTimeout(90_000);
+  await signInToIsolatedStudent(page);
+  // A run-unique custom section, so the journey never edits seeded content.
+  const label = marker("E2E Formatting");
+  const [lead, detail, first, second] = ["Lead", "Detail", "First", "Second"].map((name) => marker(name));
+  const tag = `lw${RUN_ID.replace(/\W/g, "").slice(-6)}`;
+  // Long enough to break across printed pages.
+  const longText = Array.from({ length: 400 }, (_, i) => `${tag}${i}`).join(" ");
+  await openResumeBuilder(page);
+
+  try {
+    await page.getByRole("button", { name: "+ Add Section" }).click();
+    await page.getByRole("button", { name: /^Custom\s*Custom Section$/ }).click();
+    const renameInput = page.locator("input:focus");
+    await expect(renameInput).toHaveValue("Custom Section");
+    await renameInput.fill(label);
+    await renameInput.press("Enter");
+    await expect(page.getByRole("button", { name: label, exact: true })).toBeVisible();
+
+    const editor = page.locator(".ProseMirror").first();
+    const toolbar = page.getByRole("toolbar", { name: "Text formatting" });
+    const tool = (name: string) => toolbar.getByRole("button", { name, exact: true });
+    const pick = async (combobox: string, option: string) => {
+      await toolbar.getByRole("combobox", { name: combobox }).click();
+      await page.getByRole("option", { name: option, exact: true }).click();
+    };
+    await editor.click();
+    for (const line of [lead, detail, first, second]) {
+      await page.keyboard.type(line);
+      await page.keyboard.press("Enter");
+    }
+    await page.keyboard.insertText(longText);
+
+    await editor.locator("p", { hasText: lead }).click({ clickCount: 3 });
+    await tool("Bold").click();
+    await tool("Align center").click();
+    await editor.locator("p", { hasText: detail }).click({ clickCount: 3 });
+    await tool("Italic").click();
+    await pick("Font size", "18");
+    await pick("Line spacing", "1.5");
+    await tool("Increase indent").click();
+    await editor.locator("p", { hasText: tag }).click({ clickCount: 3 });
+    await tool("Bold").click();
+    await tool("Justify").click();
+    await editor.locator("p", { hasText: first }).click();
+    await editor.locator("p", { hasText: second }).click({ modifiers: ["Shift"] });
+    await tool("Numbered list").click();
+
+    const persisted = page.waitForResponse((response) => {
+      const request = response.request();
+      if (request.method() !== "POST" || !new URL(response.url()).pathname.endsWith("/rest/v1/resume_sections")) return false;
+      const html = upsertedSectionHtml(request.postData(), label);
+      return response.ok() && html !== null && [
+        `<strong>${lead}</strong>`, "text-align: center", "<em>", "font-size: 18px", "line-height: 1.5",
+        "margin-left: 1.5em", "text-align: justify", longText, "list-style-type: lower-roman", first, second,
+      ].every((fragment) => html.includes(fragment));
+    }, { timeout: 20_000 });
+    await tool("List style").click();
+    await page.getByRole("menuitem", { name: /Roman/ }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await persisted;
+
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled({ timeout: 15_000 });
+    await page.getByRole("button", { name: label, exact: true }).click();
+    const reloaded = page.locator(".ProseMirror").first();
+    await expect(reloaded.locator('p[style*="text-align: center"] strong')).toHaveText(lead, { timeout: 15_000 });
+    const detailParagraph = reloaded.locator('p[style*="line-height: 1.5"][style*="margin-left: 1.5em"]');
+    await expect(detailParagraph).toHaveText(detail);
+    await expect(detailParagraph.locator("em")).toHaveText(detail);
+    await expect(detailParagraph.locator('span[style*="font-size: 18px"]')).toHaveText(detail);
+    await expect(reloaded.locator('p[style*="text-align: justify"] strong')).toHaveText(longText);
+    await expect(reloaded.locator('ol[style*="list-style-type: lower-roman"] > li')).toHaveText([first, second]);
+
+    // Export: the browser prints only the [data-print-resume] portal. Capture
+    // it at the moment Print / PDF hands it to window.print().
+    await page.evaluate(() => {
+      const w = window as Window & { __printed?: string[] };
+      w.__printed = [];
+      w.print = () => { w.__printed!.push(document.querySelector("[data-print-resume]")?.innerHTML ?? ""); };
+    });
+    await page.getByRole("button", { name: "Print / PDF" }).click();
+    await expect.poll(() => page.evaluate(() => (window as Window & { __printed?: string[] }).__printed?.length)).toBe(1);
+    const printedHtml = await page.evaluate(() => (window as Window & { __printed?: string[] }).__printed![0]);
+    for (const text of [label.toUpperCase(), lead, detail, first, second, `${tag}0 `, `${tag}399`]) {
+      expect(printedHtml).toContain(text);
+    }
+
+    await page.emulateMedia({ media: "print" });
+    const printRoot = page.locator("[data-print-resume]");
+    await expect(printRoot).toBeVisible();
+    await expect(editor).toBeHidden();
+    const printedLead = printRoot.locator("p", { hasText: lead });
+    await expect(printedLead).toHaveCSS("text-align", "center");
+    await expect(printedLead.locator("strong")).toHaveCSS("font-weight", "700");
+    const printedDetail = printRoot.locator("p", { hasText: detail });
+    // Preview/print body text is 21px: 1.5 line spacing and one indent step.
+    await expect(printedDetail).toHaveCSS("line-height", "31.5px");
+    await expect(printedDetail).toHaveCSS("margin-left", "31.5px");
+    await expect(printedDetail.locator("em")).toHaveCSS("font-style", "italic");
+    await expect(printedDetail.locator('span[style*="font-size"]')).toHaveCSS("font-size", "18px");
+    const printedItems = printRoot.locator('ol[style*="list-style-type: lower-roman"]').filter({ hasText: RUN_ID });
+    await expect(printedItems).toHaveText([first, second]);
+    await expect(printedItems.nth(1)).toHaveAttribute("start", "2");
+    await expect(printedItems.first()).toHaveCSS("list-style-type", "lower-roman");
+    // The long paragraph breaks across pages; every part keeps its formatting.
+    const longParts = printRoot.locator("p").filter({ hasText: tag });
+    expect(await longParts.count()).toBeGreaterThan(1);
+    for (const part of await longParts.all()) {
+      await expect(part).toHaveCSS("text-align", "justify");
+      await expect(part.locator("strong")).toHaveCount(1);
+    }
+    expect((await longParts.allTextContents()).join(" ").replace(/\s+/g, " ").trim()).toBe(longText);
+
+    const printPages = await printRoot.locator(".resume-print-page").count();
+    const pdf = await page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true, margin: { top: "0", right: "0", bottom: "0", left: "0" } });
+    expect(pdf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    // One PDF page per printed resume page: no clipped or overflowing pages.
+    expect(pdfPageCount(pdf)).toBe(printPages);
+    await page.emulateMedia({ media: "screen" });
+
+    await removeResumeSection(page, label);
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: label, exact: true })).toHaveCount(0);
+  } finally {
+    await page.emulateMedia({ media: "screen" }).catch(() => {});
+    await removeResumeSection(page, label).catch(() => {});
+  }
+});
+
 test("seeded major detail bookmark persists after reload and appears in the bookmarked list", async ({ page }) => {
   await signInToIsolatedStudent(page);
   const detailPath = `/majors/${MAJOR_ID}`;

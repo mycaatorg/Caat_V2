@@ -260,7 +260,10 @@ export async function deleteSection(sectionId: string): Promise<void> {
                 .eq("id", sectionId)
                 .maybeSingle();
 
-        if (fetchErr || !section) throw new Error("Section not found");
+        if (fetchErr) throw new Error(sanitizeError(fetchErr));
+        // No row: the section was never saved (removed inside the autosave
+        // window, or after its save failed). There is nothing left to delete.
+        if (!section) return;
 
         const { data: resume, error: resumeErr } = await supabase
                 .from("resumes")
