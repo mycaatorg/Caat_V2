@@ -161,7 +161,7 @@ describe("resume Print / PDF content", () => {
     expect(pages()).toHaveLength(2);
     const [first, second] = pages().map((page) => page.querySelector<HTMLElement>(".resume-preview-content p")!);
     for (const part of [first, second]) {
-      expect([part.style.textAlign, part.style.lineHeight]).toEqual(["center", "1.5"]);
+      expect([part.style.textAlign, part.style.lineHeight, part.style.textAlignLast]).toEqual(["center", "1.5", ""]);
     }
     expect(first.querySelector("strong")?.textContent).toBe(lead);
     expect(first.querySelector("em")?.textContent).toBe(words("Tail", 5));
@@ -197,6 +197,58 @@ describe("resume Print / PDF content", () => {
     // The continuation is the same item, so it must not print a second marker.
     expect(head.querySelector<HTMLElement>("li")!.style.listStyleType).toBe("");
     expect(rest.querySelector<HTMLElement>("li")!.style.listStyleType).toBe("none");
+  });
+
+  it("continues a nested list item across a page without a repeated or restarted number", async () => {
+    const long = words("Long", 60);
+    seedResume([
+      personal,
+      {
+        id: "projects",
+        type: "custom",
+        label: "Projects",
+        mode: "free",
+        contentHtml:
+          "<ol><li><p>Parent SYN</p><ol><li><p>a</p></li><li><p>b</p></li>" +
+          `<li><p><strong>${long}</strong></p></li><li><p>Next SYN</p></li></ol></li></ol>`,
+      },
+    ]);
+    await mountBuilder();
+
+    // 35 words fit on page one. Text from adjacent blocks has no space between
+    // it ("SYN" "a" "b" "Long1" count as one word), so that is Long1-Long34.
+    expect(pages()).toHaveLength(2);
+    const [head, rest] = pages().map((page) => [...page.querySelectorAll<HTMLElement>(".resume-preview-content > *")].at(-1)!);
+    const nested = (part: HTMLElement) => part.querySelector<HTMLOListElement>(":scope > li > ol")!;
+    const items = (part: HTMLElement) => [...nested(part).querySelectorAll<HTMLElement>(":scope > li")];
+
+    expect(nested(head).getAttribute("start")).toBeNull();
+    expect(items(head).map((li) => [li.textContent, li.style.listStyleType])).toEqual([
+      ["a", ""], ["b", ""], [words("Long", 34), ""],
+    ]);
+    // Page two: the parent and the third sub-item are continuations (no
+    // markers); the next sub-item is still number 4.
+    expect(rest.querySelector<HTMLElement>(":scope > li")!.style.listStyleType).toBe("none");
+    expect(nested(rest).getAttribute("start")).toBe("3");
+    expect(items(rest).map((li) => [li.textContent?.trim(), li.style.listStyleType])).toEqual([
+      [long.split(" ").slice(34).join(" "), "none"],
+      ["Next SYN", ""],
+    ]);
+  });
+
+  it("justifies the last line of a justified paragraph's first half", async () => {
+    const text = words("Just", 60);
+    seedResume([
+      personal,
+      { id: "profile", type: "custom", label: "Profile", mode: "free", contentHtml: `<p style="text-align: justify;">${text}</p>` },
+    ]);
+    await mountBuilder();
+
+    expect(pages()).toHaveLength(2);
+    const [first, second] = pages().map((page) => page.querySelector<HTMLElement>(".resume-preview-content p")!);
+    expect([first.style.textAlign, first.style.textAlignLast]).toEqual(["justify", "justify"]);
+    // The paragraph really ends on page two, so its last line stays ragged.
+    expect([second.style.textAlign, second.style.textAlignLast]).toEqual(["justify", ""]);
   });
 
   it("saves pending edits before printing, so the printout matches what was saved", async () => {

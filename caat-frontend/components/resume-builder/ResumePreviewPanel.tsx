@@ -154,8 +154,8 @@ function escapeHtml(text: string) {
  * way as `words(textContent)`). Both halves keep every wrapper and inline
  * mark — list type, numbering and style; paragraph alignment, spacing and
  * indent; bold, italic, font size, colour, links — so a block that breaks
- * across a page prints the same formatting on both pages. The continuation of
- * a list item hides its marker, since it is the same item.
+ * across a page prints the same formatting on both pages. Continued list items
+ * (nested ones too) hide their marker and keep their numbering.
  */
 function splitHtmlAtWord(html: string, wordCount: number): { head: string; tail: string } {
   const container = document.createElement("div");
@@ -196,9 +196,41 @@ function splitHtmlAtWord(html: string, wordCount: number): { head: string; tail:
   tailRange.setStart(splitNode, splitOffset);
   tailRange.setEnd(container, container.childNodes.length);
 
+  const head = serialize(headRange);
   const tail = serialize(tailRange);
-  tail.querySelector<HTMLElement>("li")?.style.setProperty("list-style-type", "none");
-  return { head: serialize(headRange).innerHTML, tail: tail.innerHTML };
+
+  // Elements enclosing the split point, outermost first. In the clones they are
+  // the head's last-child chain and the tail's first-child chain.
+  const enclosing: HTMLElement[] = [];
+  for (let el = splitNode.parentElement; el && el !== container; el = el.parentElement) enclosing.unshift(el);
+  const chain = (root: Element, next: "firstElementChild" | "lastElementChild") => {
+    const out: HTMLElement[] = [];
+    for (let el = root[next]; el && out.length < enclosing.length; el = el[next]) out.push(el as HTMLElement);
+    return out;
+  };
+  const headChain = chain(head, "lastElementChild");
+  const tailChain = chain(tail, "firstElementChild");
+
+  enclosing.forEach((original, depth) => {
+    // A justified block continues on the next page, so its first half's last
+    // line is a full line, not the paragraph's ragged final line.
+    if (original.style.textAlign === "justify") headChain[depth]?.style.setProperty("text-align-last", "justify");
+    const continued = tailChain[depth];
+    if (!continued) return;
+    // Every list item around the split continues on the next page: no new marker.
+    if (original.tagName === "LI") continued.style.setProperty("list-style-type", "none");
+    // Keep numbering: the tail's list starts at the item that was split.
+    if (original.tagName === "OL") {
+      const items = Array.from(original.children).filter((child) => child.tagName === "LI");
+      const index = items.indexOf(enclosing[depth + 1]);
+      if (index > 0) {
+        const start = Number.parseInt(original.getAttribute("start") ?? "1", 10);
+        continued.setAttribute("start", String((Number.isNaN(start) ? 1 : start) + index));
+      }
+    }
+  });
+
+  return { head: head.innerHTML, tail: tail.innerHTML };
 }
 
 function words(text: string) {
