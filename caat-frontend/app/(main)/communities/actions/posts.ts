@@ -292,19 +292,21 @@ export async function toggleLikeAction(
   const rl = await gate(ratelimits.likeAction, `like:${user.id}`);
   if (!rl.ok) return { liked: false, error: rl.error };
 
-  const { data: existing } = await supabase
+  const { data: existing, error: lookupError } = await supabase
     .from("community_likes")
     .select("post_id")
     .eq("post_id", postId)
     .eq("user_id", user.id)
     .maybeSingle();
+  if (lookupError) return { liked: false, error: sanitizeError(lookupError, "Could not update like.") };
 
   if (existing) {
-    await supabase
+    const { error: unlikeError } = await supabase
       .from("community_likes")
       .delete()
       .eq("post_id", postId)
       .eq("user_id", user.id);
+    if (unlikeError) return { liked: true, error: sanitizeError(unlikeError, "Could not update like.") };
     revalidatePostSurfaces(postId);
     return { liked: false, error: null };
   }
@@ -317,9 +319,12 @@ export async function toggleLikeAction(
   if (await isBlockedBetween(supabase, user.id, post?.user_id as string))
     return { liked: false, error: "This post isn't available" };
 
-  await supabase
+  const { error: likeError } = await supabase
     .from("community_likes")
     .insert({ post_id: postId, user_id: user.id });
+  // A duplicate means it is already liked (a double tap or another tab).
+  if (likeError && likeError.code !== "23505")
+    return { liked: false, error: sanitizeError(likeError, "Could not update like.") };
 
   if (post && post.user_id !== user.id) {
     await supabase
