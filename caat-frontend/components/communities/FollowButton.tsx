@@ -1,7 +1,8 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
+import { useOptimistic, useTransition } from "react";
 import { toast } from "sonner";
+import { usePropBackedState } from "@/lib/use-prop-backed-state";
 import { Button } from "@/components/ui/button";
 import {
   followUserAction,
@@ -20,7 +21,7 @@ export function FollowButton({
   const [, startTransition] = useTransition();
   // Some callers never refresh initialIsFollowing (the sidebar suggestions),
   // so keep what the server confirmed and show a pending click on top of it.
-  const [confirmed, setConfirmed] = useState(initialIsFollowing);
+  const [confirmed, setConfirmed] = usePropBackedState(initialIsFollowing);
   const [isFollowing, setIsFollowing] = useOptimistic(
     confirmed,
     (_, next: boolean) => next,

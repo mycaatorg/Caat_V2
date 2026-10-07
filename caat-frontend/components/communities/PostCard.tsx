@@ -15,6 +15,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator";
 import dynamic from "next/dynamic";
 import { postBodyHtml, htmlToText } from "@/lib/html-text";
+import { usePropBackedState } from "@/lib/use-prop-backed-state";
 
 // The tiptap editor (StarterKit + 5 extensions) is only needed while editing a
 // post, so keep it out of the /communities feed bundle and load it on demand (C4).
@@ -75,9 +76,12 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
 
   // Like / save optimistic state
   // The feeds never refresh a card's props, so keep what the server confirmed
-  // and show pending clicks on top of it. Actions set a target rather than
+  // (a newer prop still wins) and show pending clicks on top of it. Actions set a target rather than
   // toggle, so a pending click re-applied to the confirmed state is a no-op.
-  const [confirmed, setConfirmed] = useState({ isLiked: initialIsLiked, likeCount: post.likes_count, isSaved: initialIsSaved });
+  const [confirmed, setConfirmed] = usePropBackedState(
+    { isLiked: initialIsLiked, likeCount: post.likes_count, isSaved: initialIsSaved },
+    (a, b) => a.isLiked === b.isLiked && a.likeCount === b.likeCount && a.isSaved === b.isSaved,
+  );
   const [optimistic, setOptimistic] = useOptimistic(
     confirmed,
     (state, action: { liked: boolean } | { saved: boolean }) => {

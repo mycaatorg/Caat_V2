@@ -2,6 +2,7 @@
 // PROD-102: in the feeds the card's props are never refreshed, so the buttons
 // must keep a successful like, save or follow and undo only a failed one.
 import React, { act } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PostCard } from "@/components/communities/PostCard";
 import { CommentItem } from "@/components/communities/CommentItem";
@@ -93,6 +94,26 @@ describe("community buttons keep what was saved", () => {
     actions.toggleCommentLike.mockResolvedValueOnce({ liked: true, error: "Could not update like." });
     await click(commentLike());
     expect(commentLike().textContent).toBe("2");
+  });
+
+  it("still shows newer values when a page refreshes the props", async () => {
+    // The post and profile pages re-render with fresh server values.
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<>
+      <PostCard post={post} currentUser={viewer} initialIsLiked={false} initialIsSaved={false} />
+      <FollowButton targetUserId={author.id} initialIsFollowing={false} />
+    </>));
+    expect(likeButton().getAttribute("aria-label")).toBe("Like post, 2 likes");
+    await act(async () => root.render(<>
+      <PostCard post={{ ...post, likes_count: 5 }} currentUser={viewer} initialIsLiked={true} initialIsSaved={true} />
+      <FollowButton targetUserId={author.id} initialIsFollowing={true} />
+    </>));
+    expect(likeButton().getAttribute("aria-label")).toBe("Unlike post, 5 likes");
+    expect(saveButton().getAttribute("aria-pressed")).toBe("true");
+    expect(followButton().textContent).toMatch(/following/i);
+    await act(async () => root.unmount());
   });
 
   it("keeps a successful follow and undoes a failed unfollow", async () => {
