@@ -67,17 +67,21 @@ function OptionCard<T extends string>({
   selected,
   onSelect,
   multi = false,
+  tabIndex,
 }: {
   option: Option<T>;
   selected: boolean;
   onSelect: () => void;
   multi?: boolean;
+  tabIndex?: number;
 }) {
   return (
     <button
       type="button"
       role={multi ? "checkbox" : "radio"}
       aria-checked={selected}
+      tabIndex={tabIndex}
+      data-value={option.value}
       onClick={onSelect}
       className={`w-full text-left border px-4 py-3 flex items-start gap-3 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[#9a1a27] ${
         selected ? "border-[#9a1a27] bg-[#9a1a27]/5 dark:border-[#e06b78]" : "hover:bg-muted/60"
@@ -112,6 +116,36 @@ function Chip({ label, selected, onToggle }: { label: string; selected: boolean;
     >
       {label}
     </button>
+  );
+}
+
+/** WAI-ARIA radio group: one tab stop; arrow keys move and select. */
+function RadioOptions<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: Option<T>[];
+  value: T | null;
+  onChange: (v: T) => void;
+}) {
+  const current = Math.max(0, options.findIndex((o) => o.value === value));
+  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const delta = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
+    if (!delta) return;
+    e.preventDefault();
+    const next = options[(current + delta + options.length) % options.length];
+    onChange(next.value);
+    e.currentTarget.querySelector<HTMLButtonElement>(`[data-value="${next.value}"]`)?.focus();
+  }
+  return (
+    <div role="radiogroup" aria-label={label} className="grid gap-2" onKeyDown={onKeyDown}>
+      {options.map((o, i) => (
+        <OptionCard key={o.value} option={o} selected={value === o.value} onSelect={() => onChange(o.value)} tabIndex={i === current ? 0 : -1} />
+      ))}
+    </div>
   );
 }
 
@@ -200,11 +234,7 @@ export function WelcomeFlow({ initial }: { initial: OnboardingProfile }) {
       title: <>Which year are you in <span className={`italic ${MAROON}`}>now</span>?</>,
       why: "Scholarships and application dates depend on when you finish school.",
       body: (
-        <div role="radiogroup" aria-label="Year level" className="grid gap-2">
-          {YEAR_LEVELS.map((o) => (
-            <OptionCard key={o.value} option={o} selected={yearLevel === o.value} onSelect={() => setYearLevel(o.value)} />
-          ))}
-        </div>
+        <RadioOptions label="Year level" options={YEAR_LEVELS} value={yearLevel} onChange={setYearLevel} />
       ),
       answer: () =>
         yearLevel
@@ -217,11 +247,7 @@ export function WelcomeFlow({ initial }: { initial: OnboardingProfile }) {
       title: <>Will you study as a <span className={`italic ${MAROON}`}>domestic</span> student?</>,
       why: "Many Australian scholarships are only open to domestic students, and fees differ.",
       body: (
-        <div role="radiogroup" aria-label="Study status" className="grid gap-2">
-          {STATUSES.map((o) => (
-            <OptionCard key={o.value} option={o} selected={status === o.value} onSelect={() => setStatus(o.value)} />
-          ))}
-        </div>
+        <RadioOptions label="Study status" options={STATUSES} value={status} onChange={setStatus} />
       ),
       answer: () => (status ? { student_status: status } : null),
       ready: status !== null,
@@ -259,11 +285,7 @@ export function WelcomeFlow({ initial }: { initial: OnboardingProfile }) {
       title: <>Where are you in the <span className={`italic ${MAROON}`}>process</span>?</>,
       why: "This decides what we put first on your Today page.",
       body: (
-        <div role="radiogroup" aria-label="Where you are up to" className="grid gap-2">
-          {STAGES.map((o) => (
-            <OptionCard key={o.value} option={o} selected={stage === o.value} onSelect={() => setStage(o.value)} />
-          ))}
-        </div>
+        <RadioOptions label="Where you are up to" options={STAGES} value={stage} onChange={setStage} />
       ),
       answer: () => (stage ? { journey_stage: stage } : null),
       ready: stage !== null,

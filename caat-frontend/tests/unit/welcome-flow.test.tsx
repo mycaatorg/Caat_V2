@@ -63,6 +63,19 @@ describe("onboarding", () => {
     expect(io.track).toHaveBeenCalledWith("onboarding_step_completed", { step: 1, skipped: false });
   });
 
+  it("supports arrow keys with a single tab stop in single-choice questions", async () => {
+    await mountComponent(<WelcomeFlow initial={blank()} />);
+    const radios = [...document.querySelectorAll<HTMLButtonElement>('[role="radio"]')];
+    expect(radios.map((r) => r.tabIndex)).toEqual([0, -1, -1, -1, -1]);
+    const group = document.querySelector('[role="radiogroup"]')!;
+    await act(async () => { group.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); });
+    expect(option(/Year 11/).getAttribute("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(option(/Year 11/));
+    await act(async () => { group.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })); });
+    await act(async () => { group.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })); });
+    expect(option(/Not sure/).getAttribute("aria-checked")).toBe("true");
+  });
+
   it("keeps an existing graduation year rather than overwriting it", async () => {
     await mountComponent(<WelcomeFlow initial={blank({ graduation_year: 2030 })} />);
     await click(option(/Year 10/));
