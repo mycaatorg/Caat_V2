@@ -213,8 +213,12 @@ function splitHtmlAtWord(html: string, wordCount: number): { head: string; tail:
 
   enclosing.forEach((original, depth) => {
     // A justified block continues on the next page, so its first half's last
-    // line is a full line, not the paragraph's ragged final line.
-    if (original.style.textAlign === "justify") headChain[depth]?.style.setProperty("text-align-last", "justify");
+    // line is a full line, not the paragraph's ragged final line. Not when the
+    // half has hard line breaks: text-align-last would stretch those lines too.
+    const headPart = headChain[depth];
+    if (original.style.textAlign === "justify" && headPart && !headPart.querySelector("br")) {
+      headPart.style.setProperty("text-align-last", "justify");
+    }
     const continued = tailChain[depth];
     if (!continued) return;
     // Every list item around the split continues on the next page: no new marker.

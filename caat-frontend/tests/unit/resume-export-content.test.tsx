@@ -251,6 +251,21 @@ describe("resume Print / PDF content", () => {
     expect([second.style.textAlign, second.style.textAlignLast]).toEqual(["justify", ""]);
   });
 
+  it("does not stretch hard line breaks in a justified paragraph's first half", async () => {
+    const text = `Responsibilities:<br>${words("Just", 60)}`;
+    seedResume([
+      personal,
+      { id: "profile", type: "custom", label: "Profile", mode: "free", contentHtml: `<p style="text-align: justify;">${text}</p>` },
+    ]);
+    await mountBuilder();
+
+    expect(pages()).toHaveLength(2);
+    const first = pages()[0].querySelector<HTMLElement>(".resume-preview-content p")!;
+    expect(first.querySelector("br")).not.toBeNull();
+    // text-align-last would also stretch "Responsibilities:" across the line.
+    expect([first.style.textAlign, first.style.textAlignLast]).toEqual(["justify", ""]);
+  });
+
   it("saves pending edits before printing, so the printout matches what was saved", async () => {
     seedResume([personal, { id: "profile", type: "custom", label: "Profile", mode: "free", contentHtml: "<p>Print SYN text</p>" }]);
     const printed: Array<{ html: string; saved: string | undefined }> = [];
