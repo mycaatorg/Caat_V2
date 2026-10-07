@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { getInitials } from "@/lib/user-utils";
+import { usePropBackedState } from "@/lib/use-prop-backed-state";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -34,9 +35,15 @@ export function CommentItem({ comment, currentUser, isReply = false, onReplyAdde
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const [likeOptimistic, setLikeOptimistic] = useOptimistic(
+  // Comment props are not refreshed after a like, so keep what the server
+  // confirmed; a pending click sets a target, so re-applying it is a no-op.
+  const [likeConfirmed, setLikeConfirmed] = usePropBackedState(
     { isLiked: comment.is_liked_by_user, count: comment.likes_count },
-    (state) => ({ isLiked: !state.isLiked, count: state.isLiked ? state.count - 1 : state.count + 1 })
+    (a, b) => a.isLiked === b.isLiked && a.count === b.count,
+  );
+  const [likeOptimistic, setLikeOptimistic] = useOptimistic(
+    likeConfirmed,
+    (state, liked: boolean) => (state.isLiked === liked ? state : { isLiked: liked, count: Math.max(0, state.count + (liked ? 1 : -1)) })
   );
 
   const isOwn = !!currentUser && currentUser.id === comment.user_id;
@@ -47,10 +54,14 @@ export function CommentItem({ comment, currentUser, isReply = false, onReplyAdde
 
   function handleLike() {
     if (!currentUser) { toast.error("Sign in to like comments"); return; }
+    const target = !likeOptimistic.isLiked;
     startTransition(async () => {
-      setLikeOptimistic(undefined);
-      const { error } = await toggleCommentLikeAction(comment.id);
-      if (error) toast.error("Could not update like.");
+      setLikeOptimistic(target);
+      const { liked, error } = await toggleCommentLikeAction(comment.id);
+      if (error) { toast.error("Could not update like."); return; }
+      startTransition(() => setLikeConfirmed((c) => (c.isLiked === liked ? c : {
+        isLiked: liked, count: Math.max(0, c.count + (liked ? 1 : -1)),
+      })));
     });
   }
 

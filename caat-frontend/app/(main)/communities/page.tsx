@@ -37,7 +37,7 @@ export default async function CommunitiesPage() {
       <div className="p-6">
         <div className="max-w-5xl mx-auto flex gap-6 items-start">
           {/* Feed */}
-          <main className="flex-1 min-w-0 space-y-4">
+          <div className="flex-1 min-w-0 space-y-4">
             {/* M4 — the sidebar is desktop-only, so give phone users a way to
                 reach browse / join / manage communities from the feed. */}
             <Button asChild variant="outline" className="w-full gap-2 lg:hidden">
@@ -54,7 +54,7 @@ export default async function CommunitiesPage() {
               initialSavedIds={savedIds}
               initialError={feedError ?? false}
             />
-          </main>
+          </div>
 
           {/* Sidebar */}
           <aside className="w-72 shrink-0 sticky top-6 hidden lg:block">

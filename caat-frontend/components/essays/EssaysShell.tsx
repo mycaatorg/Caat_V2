@@ -801,7 +801,7 @@ export default function EssaysShell({
         </p>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
         {/* Left: essay prompts + my essays */}
         <Card className="h-fit rounded-xl">
           <CardHeader>

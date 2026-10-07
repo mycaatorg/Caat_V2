@@ -585,7 +585,8 @@ function ApplicationCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+        {/* min-w-0 (not shrink-0) lets the controls wrap on a phone. */}
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           {/* Status select */}
           <div className="relative">
             <Select

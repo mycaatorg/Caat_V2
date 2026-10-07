@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { gate, ratelimits } from "@/lib/rate-limit";
+import { sanitizeError } from "@/lib/safe-error";
 import type { PostAuthor } from "@/types/community";
 import { CAPS } from "./_shared";
 
@@ -32,9 +33,12 @@ export async function followUserAction(
   }
 
   // PROD-100: the database notifies the followed user from the follow row.
-  await supabase
+  const { error: followError } = await supabase
     .from("community_follows")
     .insert({ follower_id: user.id, followee_id: targetUserId });
+  // A duplicate means already following (a double tap or another tab).
+  if (followError && followError.code !== "23505")
+    return { error: sanitizeError(followError, "Could not follow this person.") };
   // Refresh both the target's profile (their follower_count + is_following)
   // and the viewer's own profile (their following_count) so the UI updates
   // without a hard refresh after the server action returns.
@@ -53,11 +57,12 @@ export async function unfollowUserAction(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
-  await supabase
+  const { error: unfollowError } = await supabase
     .from("community_follows")
     .delete()
     .eq("follower_id", user.id)
     .eq("followee_id", targetUserId);
+  if (unfollowError) return { error: sanitizeError(unfollowError, "Could not unfollow this person.") };
   revalidatePath(`/communities/profile/${targetUserId}`);
   revalidatePath(`/communities/profile/${user.id}`);
   revalidatePath("/communities");

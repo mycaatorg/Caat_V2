@@ -319,19 +319,21 @@ export async function toggleCommentLikeAction(
   } = await supabase.auth.getUser();
   if (!user) return { liked: false, error: "Not signed in" };
 
-  const { data: existing } = await supabase
+  const { data: existing, error: lookupError } = await supabase
     .from("community_comment_likes")
     .select("comment_id")
     .eq("comment_id", commentId)
     .eq("user_id", user.id)
     .maybeSingle();
+  if (lookupError) return { liked: false, error: sanitizeError(lookupError, "Could not update like.") };
 
   if (existing) {
-    await supabase
+    const { error: unlikeError } = await supabase
       .from("community_comment_likes")
       .delete()
       .eq("comment_id", commentId)
       .eq("user_id", user.id);
+    if (unlikeError) return { liked: true, error: sanitizeError(unlikeError, "Could not update like.") };
     return { liked: false, error: null };
   }
 
@@ -345,8 +347,11 @@ export async function toggleCommentLikeAction(
     return { liked: false, error: "This comment isn't available" };
 
   // PROD-100: the database notifies the comment author from the like row.
-  await supabase
+  const { error: likeError } = await supabase
     .from("community_comment_likes")
     .insert({ comment_id: commentId, user_id: user.id });
+  // A duplicate means it is already liked (a double tap or another tab).
+  if (likeError && likeError.code !== "23505")
+    return { liked: false, error: sanitizeError(likeError, "Could not update like.") };
   return { liked: true, error: null };
 }

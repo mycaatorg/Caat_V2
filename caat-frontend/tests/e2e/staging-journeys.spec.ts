@@ -101,7 +101,7 @@ async function removeCustomEssay(page: Page, title: string) {
   await expect(page.getByText(title, { exact: true })).toHaveCount(0, { timeout: 10_000 });
 }
 
-test("custom essay draft content autosaves and reloads from the real account", async ({ page }) => {
+test("custom essay draft content autosaves and reloads from the real account", { tag: "@phone" }, async ({ page }) => {
   await signInToIsolatedStudent(page);
   const title = marker("E2E essay");
   const content = marker("Persisted essay response");
@@ -160,7 +160,18 @@ test("custom essay draft content autosaves and reloads from the real account", a
   }
 });
 
-test("resume section content is saved and restored after reloading the builder", async ({ page }) => {
+/** Opens a resume section. Below the lg breakpoint (1024px) the builder shows
+ *  Sections / Edit / Preview tabs, and the section list sits behind Sections. */
+async function openResumeSection(page: Page, label: string) {
+  if ((page.viewportSize()?.width ?? 1280) < 1024) {
+    const sectionsTab = page.getByRole("button", { name: "Sections", exact: true });
+    await sectionsTab.click();
+    await expect(sectionsTab).toHaveAttribute("aria-pressed", "true");
+  }
+  await page.getByRole("button", { name: label, exact: true }).filter({ visible: true }).first().click();
+}
+
+test("resume section content is saved and restored after reloading the builder", { tag: "@phone" }, async ({ page }) => {
   await signInToIsolatedStudent(page);
   const content = marker("Persisted resume education");
   await page.goto("/resume-builder");
@@ -169,8 +180,9 @@ test("resume section content is saved and restored after reloading the builder",
   const saveButton = page.getByRole("button", { name: "Save", exact: true });
   await expect(saveButton).toBeEnabled({ timeout: 15_000 });
 
-  await page.getByRole("button", { name: "Education", exact: true }).first().click();
-  const editor = page.locator(".ProseMirror").first();
+  await openResumeSection(page, "Education");
+  // The builder keeps its hidden desktop panels in the page on a phone.
+  const editor = page.locator(".ProseMirror:visible").first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
   const persistedSectionWrite = page.waitForResponse((response) => {
     const request = response.request();
@@ -187,8 +199,8 @@ test("resume section content is saved and restored after reloading the builder",
 
   await page.reload();
   await expect(resumeBreadcrumb.getByText("Resume Builder", { exact: true })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Education", exact: true }).first().click();
-  await expect(page.locator(".ProseMirror").first()).toContainText(content, { timeout: 15_000 });
+  await openResumeSection(page, "Education");
+  await expect(page.locator(".ProseMirror:visible").first()).toContainText(content, { timeout: 15_000 });
 });
 
 /** content_html the builder upserted for one section, from the request body. */
@@ -473,7 +485,7 @@ test("scholarship status persists on detail and tracked-list views after reload"
   }
 });
 
-test("school notes and application status/checklist persist across list and detail reloads", async ({ page }) => {
+test("school notes and application status/checklist persist across list and detail reloads", { tag: "@phone" }, async ({ page }) => {
   await signInToIsolatedStudent(page);
   const schoolNote = marker("School note");
   const applicationNote = marker("Application note");
@@ -576,7 +588,7 @@ async function failNextApplicationWrite(page: Page, bodyFragment: string) {
   return state;
 }
 
-test("application checklist edits recover from failed writes and persist after reload", async ({ page }) => {
+test("application checklist edits recover from failed writes and persist after reload", { tag: "@phone" }, async ({ page }) => {
   test.setTimeout(90_000);
   await signInToIsolatedStudent(page);
   const note = marker("Recovered application note");

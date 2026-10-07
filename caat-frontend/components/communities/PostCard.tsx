@@ -15,6 +15,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator";
 import dynamic from "next/dynamic";
 import { postBodyHtml, htmlToText } from "@/lib/html-text";
+import { usePropBackedState } from "@/lib/use-prop-backed-state";
 
 // The tiptap editor (StarterKit + 5 extensions) is only needed while editing a
 // post, so keep it out of the /communities feed bundle and load it on demand (C4).
@@ -74,11 +75,21 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
   const [isPending, startTransition] = useTransition();
 
   // Like / save optimistic state
-  const [optimistic, setOptimistic] = useOptimistic(
+  // The feeds never refresh a card's props, so keep what the server confirmed
+  // (a newer prop still wins) and show pending clicks on top of it. Actions set a target rather than
+  // toggle, so a pending click re-applied to the confirmed state is a no-op.
+  const [confirmed, setConfirmed] = usePropBackedState(
     { isLiked: initialIsLiked, likeCount: post.likes_count, isSaved: initialIsSaved },
-    (state, action: "like" | "save") => {
-      if (action === "like") return { ...state, isLiked: !state.isLiked, likeCount: state.isLiked ? state.likeCount - 1 : state.likeCount + 1 };
-      return { ...state, isSaved: !state.isSaved };
+    (a, b) => a.isLiked === b.isLiked && a.likeCount === b.likeCount && a.isSaved === b.isSaved,
+  );
+  const [optimistic, setOptimistic] = useOptimistic(
+    confirmed,
+    (state, action: { liked: boolean } | { saved: boolean }) => {
+      if ("liked" in action) {
+        if (state.isLiked === action.liked) return state;
+        return { ...state, isLiked: action.liked, likeCount: Math.max(0, state.likeCount + (action.liked ? 1 : -1)) };
+      }
+      return { ...state, isSaved: action.saved };
     }
   );
 
@@ -106,20 +117,25 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
   const [canEdit] = useState(() => isOwnPost && (Date.now() - new Date(post.created_at).getTime()) < 24 * 3_600_000);
 
   function handleLike() {
+    const target = !optimistic.isLiked;
     startTransition(async () => {
-      setOptimistic("like");
-      const { error } = await toggleLikeAction(post.id);
-      if (error) toast.error("Could not update like.");
+      setOptimistic({ liked: target });
+      const { liked, error } = await toggleLikeAction(post.id);
+      if (error) { toast.error("Could not update like."); return; }
+      startTransition(() => setConfirmed((c) => (c.isLiked === liked ? c : {
+        ...c, isLiked: liked, likeCount: Math.max(0, c.likeCount + (liked ? 1 : -1)),
+      })));
     });
   }
 
   function handleSave() {
+    const target = !optimistic.isSaved;
     startTransition(async () => {
-      const willSave = !optimistic.isSaved;
-      setOptimistic("save");
-      const { error } = await toggleSaveAction(post.id);
+      setOptimistic({ saved: target });
+      const { saved, error } = await toggleSaveAction(post.id);
       if (error) { toast.error("Could not save post."); return; }
-      if (willSave) {
+      startTransition(() => setConfirmed((c) => ({ ...c, isSaved: saved })));
+      if (saved) {
         toast.success("Post saved");
       } else {
         toast("Post unsaved");
@@ -207,7 +223,8 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
   return (
     <Card className="w-full">
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
+        {/* min-w-0: CardHeader is a grid, so a long author name would widen it. */}
+        <div className="flex items-start justify-between gap-3 min-w-0">
           {/* Author */}
           {post.is_anonymous ? (
             <div className="flex items-center gap-3 min-w-0">
@@ -228,8 +245,8 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0">
-                <div className="flex items-center gap-1">
-                  <p className="text-sm font-medium leading-none truncate">{authorName}</p>
+                <div className="flex items-center gap-1 min-w-0">
+                  <p className="text-sm font-medium leading-none truncate min-w-0">{authorName}</p>
                   {post.author?.is_verified && (
                     <BadgeCheck className="size-3.5 text-blue-500 shrink-0" />
                   )}
