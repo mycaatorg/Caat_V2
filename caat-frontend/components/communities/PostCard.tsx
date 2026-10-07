@@ -74,11 +74,18 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
   const [isPending, startTransition] = useTransition();
 
   // Like / save optimistic state
+  // The feeds never refresh a card's props, so keep what the server confirmed
+  // and show pending clicks on top of it. Actions set a target rather than
+  // toggle, so a pending click re-applied to the confirmed state is a no-op.
+  const [confirmed, setConfirmed] = useState({ isLiked: initialIsLiked, likeCount: post.likes_count, isSaved: initialIsSaved });
   const [optimistic, setOptimistic] = useOptimistic(
-    { isLiked: initialIsLiked, likeCount: post.likes_count, isSaved: initialIsSaved },
-    (state, action: "like" | "save") => {
-      if (action === "like") return { ...state, isLiked: !state.isLiked, likeCount: state.isLiked ? state.likeCount - 1 : state.likeCount + 1 };
-      return { ...state, isSaved: !state.isSaved };
+    confirmed,
+    (state, action: { liked: boolean } | { saved: boolean }) => {
+      if ("liked" in action) {
+        if (state.isLiked === action.liked) return state;
+        return { ...state, isLiked: action.liked, likeCount: Math.max(0, state.likeCount + (action.liked ? 1 : -1)) };
+      }
+      return { ...state, isSaved: action.saved };
     }
   );
 
@@ -106,20 +113,25 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
   const [canEdit] = useState(() => isOwnPost && (Date.now() - new Date(post.created_at).getTime()) < 24 * 3_600_000);
 
   function handleLike() {
+    const target = !optimistic.isLiked;
     startTransition(async () => {
-      setOptimistic("like");
-      const { error } = await toggleLikeAction(post.id);
-      if (error) toast.error("Could not update like.");
+      setOptimistic({ liked: target });
+      const { liked, error } = await toggleLikeAction(post.id);
+      if (error) { toast.error("Could not update like."); return; }
+      startTransition(() => setConfirmed((c) => (c.isLiked === liked ? c : {
+        ...c, isLiked: liked, likeCount: Math.max(0, c.likeCount + (liked ? 1 : -1)),
+      })));
     });
   }
 
   function handleSave() {
+    const target = !optimistic.isSaved;
     startTransition(async () => {
-      const willSave = !optimistic.isSaved;
-      setOptimistic("save");
-      const { error } = await toggleSaveAction(post.id);
+      setOptimistic({ saved: target });
+      const { saved, error } = await toggleSaveAction(post.id);
       if (error) { toast.error("Could not save post."); return; }
-      if (willSave) {
+      startTransition(() => setConfirmed((c) => ({ ...c, isSaved: saved })));
+      if (saved) {
         toast.success("Post saved");
       } else {
         toast("Post unsaved");

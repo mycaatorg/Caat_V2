@@ -355,25 +355,30 @@ export async function toggleSaveAction(
   const rl = await gate(ratelimits.saveAction, `save:${user.id}`);
   if (!rl.ok) return { saved: false, error: rl.error };
 
-  const { data: existing } = await supabase
+  const { data: existing, error: lookupError } = await supabase
     .from("community_saves")
     .select("post_id")
     .eq("post_id", postId)
     .eq("user_id", user.id)
     .maybeSingle();
+  if (lookupError) return { saved: false, error: sanitizeError(lookupError, "Could not save post.") };
 
   if (existing) {
-    await supabase
+    const { error: unsaveError } = await supabase
       .from("community_saves")
       .delete()
       .eq("post_id", postId)
       .eq("user_id", user.id);
+    if (unsaveError) return { saved: true, error: sanitizeError(unsaveError, "Could not save post.") };
     revalidatePostSurfaces(postId);
     return { saved: false, error: null };
   }
-  await supabase
+  const { error: saveError } = await supabase
     .from("community_saves")
     .insert({ post_id: postId, user_id: user.id });
+  // A duplicate means it is already saved (a double tap or another tab).
+  if (saveError && saveError.code !== "23505")
+    return { saved: false, error: sanitizeError(saveError, "Could not save post.") };
   revalidatePostSurfaces(postId);
   return { saved: true, error: null };
 }
