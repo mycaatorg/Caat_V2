@@ -41,6 +41,7 @@ export default defineConfig({
         /public-smoke\.spec\.ts/,
         /route-guard\.spec\.ts/,
         /staging-(?:journeys|community|auth)\.spec\.ts/,
+        /mobile-(?:public|staging)\.spec\.ts/,
       ],
       dependencies: ["setup"],
     },
@@ -58,6 +59,25 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
       testMatch: [/staging-journeys\.spec\.ts/, /staging-community\.spec\.ts/, /staging-auth\.spec\.ts/],
     },
+    // Phones (PROD-91): Android-sized Chromium and iPhone-sized WebKit. Not part
+    // of the PR gate; run with npm run test:e2e:phone:public / test:e2e:phone.
+    ...([
+      ["chromium", devices["Pixel 7"]],
+      ["webkit", devices["iPhone 13"]],
+    ] as const).flatMap(([engine, device]) => [
+      {
+        name: `phone-public-${engine}`,
+        use: { ...device },
+        testMatch: [/public-smoke\.spec\.ts/, /route-guard\.spec\.ts/, /mobile-public\.spec\.ts/],
+      },
+      {
+        // The isolated journeys tagged @phone, plus the phone-only checks.
+        name: `phone-staging-${engine}`,
+        use: { ...device },
+        testMatch: [/staging-journeys\.spec\.ts/, /mobile-staging\.spec\.ts/],
+        grep: /@phone/,
+      },
+    ]),
     // Unauthenticated tests (route protection, public pages)
     {
       name: "e2e-unauth",

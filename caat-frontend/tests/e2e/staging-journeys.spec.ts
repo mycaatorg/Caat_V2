@@ -101,7 +101,7 @@ async function removeCustomEssay(page: Page, title: string) {
   await expect(page.getByText(title, { exact: true })).toHaveCount(0, { timeout: 10_000 });
 }
 
-test("custom essay draft content autosaves and reloads from the real account", async ({ page }) => {
+test("custom essay draft content autosaves and reloads from the real account", { tag: "@phone" }, async ({ page }) => {
   await signInToIsolatedStudent(page);
   const title = marker("E2E essay");
   const content = marker("Persisted essay response");
@@ -160,7 +160,7 @@ test("custom essay draft content autosaves and reloads from the real account", a
   }
 });
 
-test("resume section content is saved and restored after reloading the builder", async ({ page }) => {
+test("resume section content is saved and restored after reloading the builder", { tag: "@phone" }, async ({ page }) => {
   await signInToIsolatedStudent(page);
   const content = marker("Persisted resume education");
   await page.goto("/resume-builder");
@@ -473,7 +473,7 @@ test("scholarship status persists on detail and tracked-list views after reload"
   }
 });
 
-test("school notes and application status/checklist persist across list and detail reloads", async ({ page }) => {
+test("school notes and application status/checklist persist across list and detail reloads", { tag: "@phone" }, async ({ page }) => {
   await signInToIsolatedStudent(page);
   const schoolNote = marker("School note");
   const applicationNote = marker("Application note");
@@ -576,7 +576,7 @@ async function failNextApplicationWrite(page: Page, bodyFragment: string) {
   return state;
 }
 
-test("application checklist edits recover from failed writes and persist after reload", async ({ page }) => {
+test("application checklist edits recover from failed writes and persist after reload", { tag: "@phone" }, async ({ page }) => {
   test.setTimeout(90_000);
   await signInToIsolatedStudent(page);
   const note = marker("Recovered application note");
