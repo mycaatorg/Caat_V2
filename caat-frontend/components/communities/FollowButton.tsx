@@ -2,6 +2,7 @@
 
 import { useOptimistic, useTransition } from "react";
 import { toast } from "sonner";
+import { usePropBackedState } from "@/lib/use-prop-backed-state";
 import { Button } from "@/components/ui/button";
 import {
   followUserAction,
@@ -18,17 +19,22 @@ export function FollowButton({
   initialIsFollowing,
 }: FollowButtonProps) {
   const [, startTransition] = useTransition();
+  // Some callers never refresh initialIsFollowing (the sidebar suggestions),
+  // so keep what the server confirmed and show a pending click on top of it.
+  const [confirmed, setConfirmed] = usePropBackedState(initialIsFollowing);
   const [isFollowing, setIsFollowing] = useOptimistic(
-    initialIsFollowing,
+    confirmed,
     (_, next: boolean) => next,
   );
 
   function handleClick() {
+    const target = !isFollowing;
     startTransition(async () => {
-      setIsFollowing(!isFollowing);
-      const action = isFollowing ? unfollowUserAction : followUserAction;
+      setIsFollowing(target);
+      const action = target ? followUserAction : unfollowUserAction;
       const { error } = await action(targetUserId);
-      if (error) toast.error(error);
+      if (error) { toast.error(error); return; }
+      startTransition(() => setConfirmed(target));
     });
   }
 
