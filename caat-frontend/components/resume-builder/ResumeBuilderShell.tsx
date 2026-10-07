@@ -874,10 +874,12 @@ export default function ResumeBuilderShell() {
         {(["structure", "editor", "preview"] as const).map((tab) => (
           <button
             key={tab}
+            type="button"
+            aria-pressed={mobileTab === tab}
             onClick={() => setMobileTab(tab)}
             className={`flex-1 py-2 text-sm capitalize font-medium ${
               mobileTab === tab
-                ? "border-b-2 border-blue-600 text-blue-600"
+                ? "border-b-2 border-[#9a1a27] text-[#9a1a27] dark:border-[#e06b78] dark:text-[#e06b78]"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >

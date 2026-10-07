@@ -83,12 +83,12 @@ export default async function SchoolsPage({
         <PageHeader title="Schools" />
 
         <div className="p-6">
-          <main className="max-w-5xl mx-auto">
+          <div className="max-w-5xl mx-auto">
             <div className="mb-6">
               <SchoolFilterBarClient activeFilter="Bookmarked" />
             </div>
             <BookmarkedSchoolsList />
-          </main>
+          </div>
         </div>
       </>
     );
@@ -215,7 +215,7 @@ export default async function SchoolsPage({
       <PageHeader title="Schools" />
 
       <div className="p-6">
-        <main className="max-w-5xl mx-auto">
+        <div className="max-w-5xl mx-auto">
 
           {/* Filter chips */}
           <div className="mb-4">
@@ -341,7 +341,7 @@ export default async function SchoolsPage({
               )}
             </div>
           )}
-        </main>
+        </div>
       </div>
     </>
   );

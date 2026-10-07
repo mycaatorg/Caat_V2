@@ -207,7 +207,8 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
   return (
     <Card className="w-full">
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
+        {/* min-w-0: CardHeader is a grid, so a long author name would widen it. */}
+        <div className="flex items-start justify-between gap-3 min-w-0">
           {/* Author */}
           {post.is_anonymous ? (
             <div className="flex items-center gap-3 min-w-0">
@@ -228,8 +229,8 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0">
-                <div className="flex items-center gap-1">
-                  <p className="text-sm font-medium leading-none truncate">{authorName}</p>
+                <div className="flex items-center gap-1 min-w-0">
+                  <p className="text-sm font-medium leading-none truncate min-w-0">{authorName}</p>
                   {post.author?.is_verified && (
                     <BadgeCheck className="size-3.5 text-blue-500 shrink-0" />
                   )}
