@@ -141,6 +141,13 @@
       "expectedRole": "text"
     },
     {
+      "route": "/communities/requests",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Join requests"
+    },
+    {
       "route": "/communities/saved",
       "access": "authenticated",
       "kind": "static",
@@ -259,6 +266,14 @@
         "tests/e2e/community-features.spec.ts"
       ],
       "reason": "PR staging creates a synthetic group post, follows its permalink, adds a comment, saves it, verifies persistence, and deletes it from the disposable local database."
+    },
+    {
+      "id": "community-private-join-request",
+      "coverage": "isolated-ci",
+      "specs": [
+        "tests/e2e/staging-community.spec.ts"
+      ],
+      "reason": "PR staging creates a private community as the seeded student, opens its link as the seeded peer (minimal join card: name only), sends one join request, then signs in as the owner, follows the join request notification to the review queue, approves it, and verifies the peer can open the community before the owner deletes it. One deduplicated owner notification row remains and is refreshed by the next run; the browser process has no service-role key to delete it."
     },
     {
       "id": "resume-editor-autosave-formatting",

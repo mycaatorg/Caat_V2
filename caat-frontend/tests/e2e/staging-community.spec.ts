@@ -10,6 +10,7 @@ declare global {
 }
 
 const STUDENT_EMAIL = "e2e.student@caat.local.test";
+const PEER_EMAIL = "e2e.peer@caat.local.test";
 const GROUP_SLUG = "e2e-test-community";
 const RUN_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const GROUP_URL = `/communities/c/${GROUP_SLUG}`;
@@ -43,12 +44,16 @@ test.beforeAll(() => {
 });
 
 async function signInToLocalStudent(page: Page) {
+  await signInAs(page, STUDENT_EMAIL);
+}
+
+async function signInAs(page: Page, email: string) {
   await page.context().clearCookies();
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.context().clearCookies();
   await page.goto("/login");
-  await page.getByLabel("Email", { exact: true }).fill(STUDENT_EMAIL);
+  await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_TEST_PASSWORD!);
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL(/\/dashboard(?:$|\?)/, { timeout: 20_000 });
@@ -206,5 +211,76 @@ test("community post draft survives a failed request and retry persists once", a
   } finally {
     await page.unroute("**/communities/**");
     if (!page.isClosed()) await removeSyntheticPost(page, content);
+  }
+});
+
+test("private community join request reaches the owner and is approved from the review queue", async ({ page }) => {
+  const groupName = `E2E Private ${RUN_ID}`;
+  const description = `E2E private description ${RUN_ID}`;
+  let groupPath: string | null = null;
+
+  await signInToLocalStudent(page);
+  try {
+    await page.goto("/communities/groups");
+    await page.getByRole("button", { name: "Create community", exact: true }).click();
+    const createSheet = page.getByRole("dialog");
+    await createSheet.getByLabel("Name", { exact: true }).fill(groupName);
+    await createSheet.getByLabel(/Description/).fill(description);
+    await createSheet.getByRole("button", { name: /Private/ }).click();
+    await createSheet.getByRole("button", { name: "Create community", exact: true }).click();
+    await page.waitForURL(/\/communities\/c\/e2e-private-[a-z0-9-]+$/, { timeout: 20_000 });
+    groupPath = new URL(page.url()).pathname;
+
+    // A non-member following the link gets only the minimal join card.
+    await signInAs(page, PEER_EMAIL);
+    await page.goto(groupPath);
+    const card = page.getByRole("main").last();
+    await expect(card.getByRole("heading", { name: groupName, exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(card.getByText("This is a private community", { exact: true })).toBeVisible();
+    await expect(page.getByText(description)).toHaveCount(0);
+    await expect(card.getByText(/^(Members|Posts)$|^Created /)).toHaveCount(0);
+    await expect(card.locator("div.cursor-text").filter({ hasText: "Share your experience" })).toHaveCount(0);
+
+    await card.getByRole("button", { name: "Request to Join", exact: true }).click();
+    await card.locator("span", { hasText: "Send request?" }).locator("..").getByRole("button").first().click();
+    await expect(page.getByText("Join request sent to community owner", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(card.getByRole("button", { name: "Requested", exact: true })).toBeDisabled();
+    await page.reload();
+    await expect(page.getByRole("main").last().getByRole("button", { name: "Requested", exact: true })).toBeDisabled({ timeout: 15_000 });
+
+    // The owner is notified and reviews the request from the notification.
+    await signInToLocalStudent(page);
+    await page.goto("/communities/notifications");
+    const notice = page.getByRole("main").last().getByRole("link")
+      .filter({ hasText: "requested to join your community" }).filter({ hasText: "E2E Peer" }).first();
+    await expect(notice).toBeVisible({ timeout: 15_000 });
+    await notice.click();
+    await page.waitForURL(/\/communities\/requests$/, { timeout: 15_000 });
+    const queue = page.getByRole("region", { name: groupName, exact: true });
+    const request = queue.getByRole("listitem").filter({ hasText: "E2E Peer" });
+    await expect(request).toHaveCount(1, { timeout: 15_000 });
+    await request.getByRole("button", { name: "Approve", exact: true }).click();
+    await expect(page.getByText("Request approved.", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(queue).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Join requests", exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("region", { name: groupName, exact: true })).toHaveCount(0);
+
+    // The approved requester now opens the full community.
+    await signInAs(page, PEER_EMAIL);
+    await page.goto(groupPath);
+    await expect(page.getByRole("button", { name: "Joined", exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(description)).toBeVisible();
+  } finally {
+    if (!page.isClosed() && groupPath) {
+      await signInToLocalStudent(page);
+      await page.goto(groupPath);
+      await page.getByRole("button", { name: "Manage community", exact: true }).click();
+      await page.getByRole("button", { name: "Delete community", exact: true }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
+      await page.waitForURL(/\/communities\/groups$/, { timeout: 20_000 });
+      await page.goto(groupPath);
+      await expect(page.getByText(groupName, { exact: true })).toHaveCount(0);
+    }
   }
 });
