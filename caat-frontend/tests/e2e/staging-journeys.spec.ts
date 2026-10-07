@@ -201,6 +201,25 @@ function upsertedSectionHtml(postData: string | null, label: string): string | n
   }
 }
 
+/** Page count from a PDF's page tree: trailer /Root -> catalog /Pages -> /Count. */
+function pdfPageCount(pdf: Buffer): number {
+  const text = pdf.toString("latin1");
+  const ref = (source: string, key: string) => {
+    const match = new RegExp(`/${key}\\s+(\\d+)\\s+(\\d+)\\s+R`).exec(source);
+    if (!match) throw new Error(`PDF has no /${key} reference`);
+    return `${match[1]} ${match[2]}`;
+  };
+  const object = (id: string) => {
+    const match = new RegExp(`(?:^|[^\\d])${id} obj([\\s\\S]*?)endobj`).exec(text);
+    if (!match) throw new Error(`PDF object ${id} not found`);
+    return match[1];
+  };
+  const catalog = object(ref(text.slice(text.lastIndexOf("/Root")), "Root"));
+  const count = /\/Count\s+(\d+)/.exec(object(ref(catalog, "Pages")))?.[1];
+  if (!count) throw new Error("PDF page tree has no /Count");
+  return Number(count);
+}
+
 async function openResumeBuilder(page: Page) {
   await page.goto("/resume-builder");
   const breadcrumb = page.getByRole("main").getByRole("navigation", { name: "breadcrumb" });
@@ -339,7 +358,7 @@ test("rich resume formatting survives a reload and is what Print / PDF exports",
     const pdf = await page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true, margin: { top: "0", right: "0", bottom: "0", left: "0" } });
     expect(pdf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     // One PDF page per printed resume page: no clipped or overflowing pages.
-    expect(pdf.toString("latin1").match(/\/Type\s*\/Page(?![A-Za-z])/g)?.length).toBe(printPages);
+    expect(pdfPageCount(pdf)).toBe(printPages);
     await page.emulateMedia({ media: "screen" });
 
     await removeResumeSection(page, label);
