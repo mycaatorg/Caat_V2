@@ -61,7 +61,7 @@ While PROD-85 awaits its live database gate, `vercel.json` disables automatic de
 
 ## Phone checks (PROD-91)
 
-Two phone engines run outside the PR gate: Android-sized Chromium (Pixel 7, 412px) and iPhone-sized WebKit (iPhone 13, 390px). Install the WebKit build once with `npx playwright install webkit`.
+Two phone engines run outside the PR gate, only when `CAAT_PHONE=1` is set (the npm scripts set it): Android-sized Chromium (Pixel 7, 412px) and iPhone-sized WebKit (iPhone 13, 390px). Install the WebKit build once with `npx playwright install webkit`.
 
 - `npm run test:e2e:phone:public`: the read-only public checks, plus no sideways scrolling on every public page, the landing menu (`aria-expanded`) and keyboard access to sign in. It is safe against production with `PLAYWRIGHT_BASE_URL=https://mycaat.com`. Measured on the Mac mini: 96 tests in about 30 s.
 - `npm run test:e2e:phone`: isolated stack only (it needs `CAAT_ISOLATED_E2E=1` and loopback URLs). It checks that every signed-in page in the route manifest fits the screen, that the phone menu opens, reaches a tool, takes focus and closes on Escape and after navigating, and it runs the four journeys tagged `@phone`: essay autosave, resume reload, application tracking and failed-save recovery. Measured: 14 tests in about 1.2 min. It passed three runs in a row with no retries.

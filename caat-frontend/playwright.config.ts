@@ -59,12 +59,13 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
       testMatch: [/staging-journeys\.spec\.ts/, /staging-community\.spec\.ts/, /staging-auth\.spec\.ts/],
     },
-    // Phones (PROD-91): Android-sized Chromium and iPhone-sized WebKit. Not part
-    // of the PR gate; run with npm run test:e2e:phone:public / test:e2e:phone.
-    ...([
+    // Phones (PROD-91): Android-sized Chromium and iPhone-sized WebKit. Opt-in
+    // with CAAT_PHONE=1 (npm run test:e2e:phone:public / test:e2e:phone), so a
+    // bare run or the nightly never needs the WebKit download.
+    ...(process.env.CAAT_PHONE === "1" ? [
       ["chromium", devices["Pixel 7"]],
       ["webkit", devices["iPhone 13"]],
-    ] as const).flatMap(([engine, device]) => [
+    ] as const : []).flatMap(([engine, device]) => [
       {
         name: `phone-public-${engine}`,
         use: { ...device },

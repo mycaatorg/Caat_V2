@@ -19,8 +19,8 @@
     "test:e2e:smoke": "playwright test public-smoke.spec.ts route-guard.spec.ts --project=public-smoke",
     "test:e2e:public": "playwright test public-smoke.spec.ts route-guard.spec.ts --project=public-smoke",
     "test:e2e:ci": "node ../.github/scripts/assert-isolated-e2e.js && playwright test runtime-smoke.spec.ts route-guard.spec.ts public-smoke.spec.ts navigation.spec.ts browsing-schools.spec.ts browsing-majors.spec.ts documents.spec.ts staging-journeys.spec.ts staging-community.spec.ts staging-auth.spec.ts --project=e2e --project=public-smoke --project=staging --max-failures=5",
-    "test:e2e:phone:public": "playwright test --project=phone-public-chromium --project=phone-public-webkit",
-    "test:e2e:phone": "node ../.github/scripts/assert-isolated-e2e.js && playwright test --project=phone-staging-chromium --project=phone-staging-webkit",
+    "test:e2e:phone:public": "CAAT_PHONE=1 playwright test --project=phone-public-chromium --project=phone-public-webkit",
+    "test:e2e:phone": "node ../.github/scripts/assert-isolated-e2e.js && CAAT_PHONE=1 playwright test --project=phone-staging-chromium --project=phone-staging-webkit",
     "test:e2e:ui": "node ../.github/scripts/assert-isolated-e2e.js && playwright test --ui"
   },
   "dependencies": {

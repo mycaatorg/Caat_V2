@@ -34,6 +34,8 @@ async function signIn(page: Page) {
 }
 
 test("every student page fits a phone screen without sideways scrolling", { tag: "@phone" }, async ({ page }) => {
+  // Sign-in plus every signed-in page; a cold dev server compiles each route.
+  test.setTimeout(120_000);
   await signIn(page);
   const problems: string[] = [];
   for (const route of STUDENT_PAGES) {
@@ -54,7 +56,8 @@ test("the phone menu opens, reaches a tool and closes again", { tag: "@phone" },
   await toggle.click();
   const menu = page.getByRole("dialog");
   await expect(menu).toBeVisible();
-  await menu.getByRole("link", { name: "Applications", exact: true }).click();
+  // "Applications" today, "My applications" once M2 lands.
+  await menu.getByRole("link", { name: /^(my )?applications$/i }).click();
   await expect(page).toHaveURL(/\/applications$/);
   await expect(page.getByRole("heading", { name: "My Applications" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("dialog")).toHaveCount(0);
