@@ -13,6 +13,7 @@ import {
   dismissOnboarding,
   fetchTrackedIds,
   graduationYearFor,
+  mayDeriveGraduationYear,
   mergeUnique,
   rankOnboardingMatches,
   saveOnboardingAnswers,
@@ -242,7 +243,7 @@ export function WelcomeFlow({ initial }: { initial: OnboardingProfile }) {
       // and re-derive it if they go back and change their year level.
       answer: () =>
         yearLevel
-          ? { year_level: yearLevel, ...(initial.graduation_year ? {} : { graduation_year: graduationYearFor(yearLevel) }) }
+          ? { year_level: yearLevel, ...(mayDeriveGraduationYear(initial) ? { graduation_year: graduationYearFor(yearLevel) } : {}) }
           : null,
       ready: yearLevel !== null,
     },
@@ -358,21 +359,30 @@ function Results({ profile }: { profile: OnboardingProfile }) {
   useEffect(() => {
     let active = true;
     (async () => {
-      // Open, active awards in the chosen places, closing soonest first.
-      const { data, error } = await supabase
-        .from("scholarships")
-        .select("*")
-        .eq("is_active", true)
-        .in("country", countries)
-        .or(`deadline_at.is.null,deadline_at.gte.${new Date().toISOString()}`)
-        .order("deadline_at", { ascending: true, nullsFirst: false })
-        .limit(300);
+      // Candidates: open, active awards in the chosen places that mention the
+      // student's interests, plus a general set so a narrow interest list
+      // still gets results. Ranking happens on the combined set.
+      const open = `deadline_at.is.null,deadline_at.gte.${new Date().toISOString()}`;
+      const base = () =>
+        supabase.from("scholarships").select("*").eq("is_active", true).in("country", countries).or(open);
+      const terms = profile.target_majors.map((m) => m.replace(/[^\p{L}\p{N} ]/gu, "").trim()).filter(Boolean).slice(0, 8);
+      const [byInterest, general] = await Promise.all([
+        terms.length
+          ? base().or(terms.map((t) => `title.ilike.%${t}%`).join(",")).limit(200)
+          : Promise.resolve({ data: [], error: null }),
+        base().order("deadline_at", { ascending: true, nullsFirst: false }).limit(200),
+      ]);
       if (!active) return;
-      if (error) {
+      if (byInterest.error || general.error) {
         setFailed(true);
         return;
       }
-      const ranked = rankOnboardingMatches(profile, (data ?? []) as unknown as ScholarshipRow[]);
+      const seen = new Set<string>();
+      const candidates = [...(byInterest.data ?? []), ...(general.data ?? [])].filter((s) => {
+        const id = (s as { id: string }).id;
+        return seen.has(id) ? false : (seen.add(id), true);
+      });
+      const ranked = rankOnboardingMatches(profile, candidates as unknown as ScholarshipRow[]);
       setMatches(ranked);
       try {
         const tracked = await fetchTrackedIds(ranked.map((m) => m.scholarship.id));

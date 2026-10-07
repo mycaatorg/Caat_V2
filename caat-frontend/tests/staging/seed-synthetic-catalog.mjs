@@ -33,7 +33,8 @@ const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 21474836
 const pick = (list) => list[Math.floor(rand() * list.length)];
 
 const rows = [];
-for (let i = 0; i < count; i += 1) {
+const titles = new Set();
+for (let i = 0; rows.length < count && i < count * 20; i += 1) {
   const domestic = rand() < 0.85;
   const [country, school] = domestic ? ['Australia', pick(AU)] : pick(OTHER);
   const field = pick(FIELDS);
@@ -42,10 +43,15 @@ for (let i = 0; i < count; i += 1) {
   const currency = country === 'Australia' ? 'AUD' : country === 'United Kingdom' ? 'GBP' : 'USD';
   const deadline = new Date(Date.UTC(2026, 9, 7) + Math.floor(rand() * 400 - 30) * 86_400_000);
   const domesticOnly = country === 'Australia' && rand() < 0.6;
+  // Distinct titles, like a real catalogue.
+  const cohort = pick(['', 'First Year ', 'Continuing ', 'Commencing ', 'Honours ', 'Postgraduate Pathway ', 'Foundation ']);
+  const title = `${school} ${cohort}${field} ${kind}`;
+  if (titles.has(title)) continue;
+  titles.add(title);
   rows.push({
-    external_id: `${PREFIX}${i}`,
-    slug: `${PREFIX}${i}`,
-    title: `${school} ${field} ${kind}`,
+    external_id: `${PREFIX}${rows.length}`,
+    slug: `${PREFIX}${rows.length}`,
+    title,
     provider_name: school,
     school_name: school,
     description: `Synthetic test scholarship for ${field.toLowerCase()} students at ${school}. Not a real award.`,

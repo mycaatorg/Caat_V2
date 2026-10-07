@@ -1161,8 +1161,8 @@ function SecurityBanner() {
               Your essays, documents and applications are private to your
               account, and the site only loads over HTTPS. We don&apos;t sell
               your data, share it with advertisers, or use it to train AI. You
-              can export all your data, or delete your account and everything
-              tied to it, from your account settings.
+              can export all your data, or delete your account and the work
+              saved in it, from your account settings.
             </p>
 
             <div className="flex flex-wrap gap-3">

@@ -2,7 +2,8 @@
 -- Additive and nullable: existing profiles are unaffected, and the existing
 -- owner-only profiles RLS policies cover the new columns.
 -- Fail fast rather than queue behind long transactions on a busy table.
-SET lock_timeout = '5s';
+-- LOCAL: scoped to this migration's transaction, not the whole session.
+SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS year_level text,

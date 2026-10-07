@@ -77,6 +77,13 @@ export function dismissOnboarding(): Promise<void> {
   return writeProfile({ onboarding_dismissed_at: new Date().toISOString() });
 }
 
+/** Whether onboarding may set the final school year: none is stored, or the
+ *  stored one is exactly what an earlier onboarding answer derived. */
+export function mayDeriveGraduationYear(initial: Pick<OnboardingProfile, "graduation_year" | "year_level">, now: Date = new Date()): boolean {
+  if (initial.graduation_year == null) return true;
+  return initial.year_level != null && initial.graduation_year === graduationYearFor(initial.year_level, now);
+}
+
 /** Year level → expected final school year, only used when none is set. */
 export function graduationYearFor(level: YearLevel, now: Date = new Date()): number | null {
   const year = now.getFullYear();
@@ -107,7 +114,7 @@ export interface RankedScholarship {
  *  Domestic students are matched as Australian; awards limited to Australian
  *  citizens and permanent residents are left out for international students.
  *  Nothing here is written back to the profile. */
-export function rankOnboardingMatches(answers: OnboardingProfile, rows: ScholarshipRow[], take = 6): RankedScholarship[] {
+export function rankOnboardingMatches(answers: OnboardingProfile, rows: ScholarshipRow[], take = 6, perProvider = 2): RankedScholarship[] {
   const scoring = {
     target_majors: answers.target_majors,
     preferred_countries: answers.preferred_countries,
@@ -116,12 +123,23 @@ export function rankOnboardingMatches(answers: OnboardingProfile, rows: Scholars
   } as unknown as ProfileRow;
   return rows
     .filter((s) => {
-      if (answers.student_status !== "international") return true;
       const cits = Array.isArray(s.citizenships) ? (s.citizenships as string[]) : [];
-      return !(cits.length > 0 && cits.every((c) => DOMESTIC_ONLY.has(c)));
+      if (cits.length === 0) return true;
+      // Awards only for Australian citizens and permanent residents are left
+      // out for international students; awards only for international
+      // students are left out for domestic students.
+      if (answers.student_status === "international") return !cits.every((c) => DOMESTIC_ONLY.has(c));
+      if (answers.student_status === "domestic") return !cits.every((c) => c === "INTERNATIONAL");
+      return true;
     })
     .map((s) => ({ scholarship: s, ...matchScholarship(scoring, s) }))
     .sort((a, b) => b.score - a.score || (a.scholarship.deadline_at ?? "9").localeCompare(b.scholarship.deadline_at ?? "9"))
+    // A spread of providers is more useful than six awards from one place.
+    .filter(function spread(this: Map<string, number>, r) {
+      const n = this.get(r.scholarship.provider_name) ?? 0;
+      this.set(r.scholarship.provider_name, n + 1);
+      return n < perProvider;
+    }, new Map<string, number>())
     .slice(0, take);
 }
 

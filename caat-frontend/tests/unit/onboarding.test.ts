@@ -11,6 +11,7 @@ import {
   dismissOnboarding,
   fetchOnboardingProfile,
   graduationYearFor,
+  mayDeriveGraduationYear,
   mergeUnique,
   rankOnboardingMatches,
   saveOnboardingAnswers,
@@ -65,6 +66,18 @@ describe("onboarding answers", () => {
   });
 });
 
+describe("graduation year derivation", () => {
+  const now = new Date("2026-10-07T00:00:00Z");
+  it("derives when none is stored, or when the stored year came from the stored year level", () => {
+    expect(mayDeriveGraduationYear({ graduation_year: null, year_level: null }, now)).toBe(true);
+    expect(mayDeriveGraduationYear({ graduation_year: 2026, year_level: "year_12" }, now)).toBe(true);
+  });
+  it("keeps a year the student entered themselves", () => {
+    expect(mayDeriveGraduationYear({ graduation_year: 2030, year_level: "year_12" }, now)).toBe(false);
+    expect(mayDeriveGraduationYear({ graduation_year: 2026, year_level: null }, now)).toBe(false);
+  });
+});
+
 describe("onboarding helpers", () => {
   it("derives the final school year from the year level", () => {
     const now = new Date("2026-10-07T00:00:00Z");
@@ -102,12 +115,14 @@ describe("onboarding scholarship ranking", () => {
     target_majors: [], graduation_year: 2026, onboarding_completed_at: null, ...patch,
   });
   const row = (id: string, citizenships: string[] | null, tags: string[] = []) =>
-    ({ id, title: `Award ${id}`, description: null, tags, country: "Australia", citizenships, study_level: ["undergraduate"], deadline_at: null }) as unknown as ScholarshipRow;
+    ({ id, title: `Award ${id}`, provider_name: `Provider ${id}`, description: null, tags, country: "Australia", citizenships, study_level: ["undergraduate"], deadline_at: null }) as unknown as ScholarshipRow;
   const rows = [row("open", null), row("domestic", ["AU", "AU-PR"]), row("intl", ["INTERNATIONAL"])];
 
-  it("ranks domestic-only awards up for domestic students", () => {
-    const ranked = rankOnboardingMatches(answers({ student_status: "domestic" }), rows);
-    expect(ranked[0].scholarship.id).toBe("domestic");
+  it("ranks domestic-only awards above open ones for domestic students and leaves out international-only awards", () => {
+    // Put the domestic award last so a tie could not explain the order.
+    const ranked = rankOnboardingMatches(answers({ student_status: "domestic" }), [row("open", null), row("intl", ["INTERNATIONAL"]), row("domestic", ["AU", "AU-PR"])]);
+    expect(ranked.map((r) => r.scholarship.id)).toEqual(["domestic", "open"]);
+    expect(ranked[0].score).toBeGreaterThan(ranked[1].score);
     expect(ranked[0].reason).toMatch(/citizenship|nationality/);
   });
 
@@ -115,6 +130,13 @@ describe("onboarding scholarship ranking", () => {
     const ids = rankOnboardingMatches(answers({ student_status: "international" }), rows).map((r) => r.scholarship.id);
     expect(ids).not.toContain("domestic");
     expect(ids).toEqual(expect.arrayContaining(["open", "intl"]));
+  });
+
+  it("shows at most two awards from one provider", () => {
+    const many = ["a", "b", "c", "d"].map((id) => ({ ...row(id, null), provider_name: "Harbourside University" }) as unknown as ScholarshipRow);
+    const other = { ...row("e", null), provider_name: "Banksia College" } as unknown as ScholarshipRow;
+    const ids = rankOnboardingMatches(answers({}), [...many, other]).map((r) => r.scholarship.id);
+    expect(ids).toEqual(["a", "b", "e"]);
   });
 
   it("keeps everything when the student is not sure, and prefers their interests", () => {
