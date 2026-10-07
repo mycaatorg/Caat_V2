@@ -3,6 +3,9 @@
 -- owner-only profiles RLS policies cover the new columns.
 -- Fail fast rather than queue behind long transactions on a busy table.
 -- LOCAL: scoped to this migration's transaction, not the whole session.
+-- One transaction: SET LOCAL takes effect, and a failed check below leaves
+-- nothing behind.
+begin;
 SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE public.profiles
@@ -27,3 +30,4 @@ BEGIN
       CHECK (journey_stage IS NULL OR journey_stage IN ('exploring', 'shortlisting', 'applying', 'waiting'));
   END IF;
 END $$;
+commit;
