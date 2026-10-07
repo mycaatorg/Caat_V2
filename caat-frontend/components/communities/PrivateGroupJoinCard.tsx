@@ -37,7 +37,7 @@ export function PrivateGroupJoinCard({ groupId, name, slug, hasRequested }: Priv
         </Breadcrumb>
         <NotificationBell />
       </header>
-      <main className="flex flex-col items-center justify-center py-32 text-muted-foreground gap-4">
+      <div className="flex flex-col items-center justify-center py-32 text-muted-foreground gap-4">
         <div className="size-14 rounded-full bg-gradient-to-br from-zinc-200 to-zinc-300 dark:from-zinc-700 dark:to-zinc-800 flex items-center justify-center text-base font-bold text-zinc-600 dark:text-zinc-300">
           {name.slice(0, 2).toUpperCase()}
         </div>
@@ -62,7 +62,7 @@ export function PrivateGroupJoinCard({ groupId, name, slug, hasRequested }: Priv
         <Link href="/communities/groups" className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
           <ArrowLeft className="size-3" /> Browse communities
         </Link>
-      </main>
+      </div>
     </>
   );
 }

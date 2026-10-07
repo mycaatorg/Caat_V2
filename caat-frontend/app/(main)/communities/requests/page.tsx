@@ -32,7 +32,7 @@ export default async function JoinRequestsPage() {
       </header>
 
       <div className="p-6">
-        <main className="max-w-2xl mx-auto space-y-4">
+        <div className="max-w-2xl mx-auto space-y-4">
           <div className="space-y-1 mb-2">
             <div className="flex items-center gap-2">
               <DoorOpen className="size-4" />
@@ -46,7 +46,7 @@ export default async function JoinRequestsPage() {
           ) : (
             <JoinRequestReview groups={groups} />
           )}
-        </main>
+        </div>
       </div>
     </>
   );

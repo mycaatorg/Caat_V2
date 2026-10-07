@@ -285,7 +285,8 @@ test("private community join request reaches the owner and is approved from the 
     await signInAs(page, PEER_EMAIL);
     await page.goto(groupPath);
     await expect(page.getByRole("button", { name: "Joined", exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(description)).toBeVisible();
+    // Scope to the sidebar: a streamed render can briefly hold a hidden copy.
+    await expect(page.getByRole("complementary").getByText(description)).toBeVisible();
   } finally {
     if (!page.isClosed() && groupPath) {
       await signInToLocalStudent(page);
