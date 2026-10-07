@@ -59,14 +59,14 @@ async function signInWithNewAccount(page: Page) {
   await page.getByLabel("Email", { exact: true }).fill(EMAIL);
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_TEST_PASSWORD!);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.waitForURL(/\/dashboard(?:$|\?)/, { timeout: 20_000 });
+  await page.waitForURL(/\/today(?:$|\?)/, { timeout: 20_000 });
 }
 
-async function expectSignedInDashboard(page: Page, dashboardLabel: string) {
-  // The dashboard's h1 is personalized (for example, "Good afternoon, Ada");
-  // its stable route label is the breadcrumb, not a literal h1 named Dashboard.
-  await expect(page.getByRole("navigation", { name: "breadcrumb" }).getByRole("link", { name: dashboardLabel, exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole("heading", { level: 1 })).toContainText(FULL_NAME, { timeout: 15_000 });
+async function expectSignedInToday(page: Page, name: string) {
+  // Today's h1 greets by first name (for example, "Good afternoon, Ada"); its
+  // stable route label is the breadcrumb.
+  await expect(page.getByRole("navigation", { name: "breadcrumb" }).getByRole("link", { name: "Today", exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(name.split(" ")[0], { timeout: 15_000 });
 }
 
 function safeLocalRecoveryLink(href: string): string {
@@ -159,7 +159,8 @@ async function createAccount(page: Page, email: string, fullName: string, passwo
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByLabel("Confirm Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Create Account", exact: true }).click();
-  await page.waitForURL(/\/dashboard(?:$|\?)/, { timeout: 20_000 });
+  // A new account starts the short onboarding (PROD-73).
+  await page.waitForURL(/\/welcome(?:$|\?)/, { timeout: 20_000 });
 }
 
 async function signInWithPassword(page: Page, email: string, password: string) {
@@ -198,8 +199,12 @@ test("new account signs up, logs out, logs in, and can delete its own account", 
 
   // Local Supabase is configured with confirmations disabled, so a real signup
   // must establish a session. A confirmation screen is deliberately a failure.
-  await page.waitForURL(/\/dashboard(?:$|\?)/, { timeout: 20_000 });
-  await expectSignedInDashboard(page, dashboardRoute.expected!);
+  // A new account starts onboarding; skipping it lands on Today.
+  await page.waitForURL(/\/welcome(?:$|\?)/, { timeout: 20_000 });
+  await expect(page.getByText("Step 1 of 5", { exact: false })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Skip for now", exact: true }).click();
+  await page.waitForURL(/\/today(?:$|\?)/, { timeout: 20_000 });
+  await expectSignedInToday(page, FULL_NAME);
   await expect(page.getByText(EMAIL, { exact: true })).toBeVisible();
 
   await signOutFromSidebar(page, EMAIL);
@@ -207,7 +212,7 @@ test("new account signs up, logs out, logs in, and can delete its own account", 
   await page.waitForURL(/\/login(?:$|\?)/, { timeout: 15_000 });
 
   await signInWithNewAccount(page);
-  await expectSignedInDashboard(page, dashboardRoute.expected!);
+  await expectSignedInToday(page, FULL_NAME);
   await expect(page.getByText(EMAIL, { exact: true })).toBeVisible();
 
   // Delete only this newly-created synthetic account through the real settings UI.
@@ -235,7 +240,8 @@ test.describe("password recovery", () => {
     try {
       accountCreated = true;
       await createAccount(page, email, fullName, oldPassword);
-      await expect(page.getByRole("heading", { level: 1 })).toContainText(fullName);
+      await page.goto("/today");
+      await expectSignedInToday(page, fullName);
       await signOutFromSidebar(page, email);
 
       await page.goto("/forgot-password");
@@ -254,8 +260,8 @@ test.describe("password recovery", () => {
       await page.getByLabel("New Password", { exact: true }).fill(newPassword);
       await page.getByLabel("Confirm Password", { exact: true }).fill(newPassword);
       await page.getByRole("button", { name: "Update password", exact: true }).click();
-      await page.waitForURL(/\/dashboard(?:$|\?)/, { timeout: 20_000 });
-      await expect(page.getByRole("heading", { level: 1 })).toContainText(fullName);
+      await page.waitForURL(/\/today(?:$|\?)/, { timeout: 20_000 });
+      await expectSignedInToday(page, fullName);
 
       await signOutFromSidebar(page, email);
       await signInWithPassword(page, email, oldPassword);
@@ -263,8 +269,8 @@ test.describe("password recovery", () => {
       await expect(page).toHaveURL(/\/login(?:$|\?)/);
 
       await signInWithPassword(page, email, newPassword);
-      await page.waitForURL(/\/dashboard(?:$|\?)/, { timeout: 20_000 });
-      await expect(page.getByRole("heading", { level: 1 })).toContainText(fullName);
+      await page.waitForURL(/\/today(?:$|\?)/, { timeout: 20_000 });
+      await expectSignedInToday(page, fullName);
       await deleteAccountThroughSettings(page);
       accountCreated = false;
       await page.goto("/dashboard");
@@ -274,13 +280,13 @@ test.describe("password recovery", () => {
         // Recover access with either known password so a failed assertion still
         // gets a best-effort deletion through the user's own settings UI.
         try {
-          if (!/\/dashboard(?:$|\?)/.test(page.url())) {
+          if (!/\/today(?:$|\?)/.test(page.url())) {
             await signInWithPassword(page, email, newPassword);
             try {
-              await page.waitForURL(/\/dashboard(?:$|\?)/, { timeout: 8_000 });
+              await page.waitForURL(/\/today(?:$|\?)/, { timeout: 8_000 });
             } catch {
               await signInWithPassword(page, email, oldPassword);
-              await page.waitForURL(/\/dashboard(?:$|\?)/, { timeout: 8_000 });
+              await page.waitForURL(/\/today(?:$|\?)/, { timeout: 8_000 });
             }
           }
           await deleteAccountThroughSettings(page);
@@ -291,4 +297,60 @@ test.describe("password recovery", () => {
       }
     }
   });
+});
+
+test("a new student completes onboarding, saves a first scholarship and sees it on Today", async ({ page }) => {
+  test.setTimeout(90_000);
+  const email = `e2e.onboard.${RUN_ID}@caat.local.test`;
+  const fullName = `Mia Onboard ${RUN_ID}`;
+  let accountCreated = false;
+  try {
+    await createAccount(page, email, fullName, process.env.E2E_TEST_PASSWORD!);
+    accountCreated = true;
+    const routeExpected = routeContract("/welcome").expected!;
+    await expect(page.getByText(new RegExp(routeExpected)).first()).toBeVisible({ timeout: 15_000 });
+
+    // Each answer is saved as it is given.
+    await page.getByRole("radio", { name: /Year 12/ }).click();
+    await page.getByRole("button", { name: /Continue/ }).click();
+    await page.getByRole("radio", { name: /Domestic student/ }).click();
+    await page.getByRole("button", { name: /Continue/ }).click();
+    await expect(page.getByRole("checkbox", { name: "Australia", exact: true })).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("button", { name: /Continue/ }).click();
+    await page.getByRole("checkbox", { name: "Engineering", exact: true }).click();
+    await page.getByRole("button", { name: /Continue/ }).click();
+
+    // Leaving midway keeps progress: a reload resumes at the last question.
+    await page.reload();
+    await expect(page.getByText("Step 5 of 5", { exact: false })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("radio", { name: /Preparing applications/ }).click();
+    await page.getByRole("button", { name: /Continue/ }).click();
+
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Scholarships that could fit", { timeout: 15_000 });
+    const card = page.locator("li").filter({ hasText: "E2E Test Scholarship" });
+    await card.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByText("Saved to your shortlist", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: "Go to Today", exact: true }).click();
+    await page.waitForURL(/\/today(?:$|\?)/, { timeout: 20_000 });
+
+    // Today moves on to the next real step and shows the saved item.
+    await expect(page.getByRole("heading", { level: 2, name: "Add a university you are considering" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("link", { name: /E2E Test Scholarship/ })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 2, name: "Add a university you are considering" })).toBeVisible({ timeout: 15_000 });
+    await page.goto("/shortlist");
+    await expect(page.getByRole("link", { name: "E2E Test Scholarship", exact: true })).toBeVisible({ timeout: 15_000 });
+
+    await deleteAccountThroughSettings(page);
+    accountCreated = false;
+  } finally {
+    if (accountCreated && !page.isClosed()) {
+      try {
+        if (!/\/(today|welcome|shortlist|settings)/.test(page.url())) await signInWithPassword(page, email, process.env.E2E_TEST_PASSWORD!);
+        await deleteAccountThroughSettings(page);
+      } catch {
+        // Preserve the journey's original failure; cleanup uses the real UI.
+      }
+    }
+  }
 });

@@ -148,6 +148,30 @@
       "expected": "Saved Posts"
     },
     {
+      "route": "/today",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Your next step",
+      "expectedRole": "text"
+    },
+    {
+      "route": "/shortlist",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Everything you have saved"
+    },
+    {
+      "route": "/welcome",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Step \\d of 5|Scholarships that could",
+      "expectedRole": "text",
+      "limitation": "Shows the first unanswered question, or the matched scholarships once every question is answered."
+    },
+    {
       "route": "/dashboard",
       "access": "authenticated",
       "kind": "static",

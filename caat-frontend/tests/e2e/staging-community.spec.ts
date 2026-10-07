@@ -51,7 +51,7 @@ async function signInToLocalStudent(page: Page) {
   await page.getByLabel("Email", { exact: true }).fill(STUDENT_EMAIL);
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_TEST_PASSWORD!);
   await page.getByRole("button", { name: /sign in/i }).click();
-  await page.waitForURL(/\/dashboard(?:$|\?)/, { timeout: 20_000 });
+  await page.waitForURL(/\/today(?:$|\?)/, { timeout: 20_000 });
   await expect(page.getByRole("main")).toBeVisible();
 }
 

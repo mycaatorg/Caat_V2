@@ -25,7 +25,7 @@ test("logout: after logout visiting /dashboard redirects to /login", async ({ br
   await freshPage.getByLabel("Email").fill("test@gmail.com");
   await freshPage.getByLabel("Password").fill("testtest123");
   await freshPage.getByRole("button", { name: /login/i }).click();
-  await freshPage.waitForURL(/\/dashboard/, { timeout: 15_000 });
+  await freshPage.waitForURL(/\/today/, { timeout: 15_000 });
 
   // Wait for the nav-user button to load (rendered asynchronously after supabase.auth.getUser)
   const navUserBtn = freshPage.locator("[data-sidebar='menu-button']").filter({ hasText: /test@gmail\.com/ });

@@ -22,8 +22,8 @@ setup("authenticate", async ({ page }) => {
   await page.getByLabel("Password", { exact: true }).fill(TEST_PASSWORD);
   await page.getByRole("button", { name: /sign in/i }).click();
 
-  await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
-  await expect(page).toHaveURL(/\/dashboard/);
+  await page.waitForURL(/\/today/, { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/today/);
 
   await page.context().storageState({ path: AUTH_FILE });
 });

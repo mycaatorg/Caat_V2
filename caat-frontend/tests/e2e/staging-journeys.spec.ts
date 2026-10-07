@@ -48,7 +48,7 @@ async function signInToIsolatedStudent(page: Page) {
   await page.getByLabel("Email", { exact: true }).fill(STUDENT_EMAIL);
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_TEST_PASSWORD!);
   await page.getByRole("button", { name: /sign in/i }).click();
-  await page.waitForURL(/\/dashboard(?:$|\?)/, { timeout: 20_000 });
+  await page.waitForURL(/\/today(?:$|\?)/, { timeout: 20_000 });
   await expect(page.getByRole("main")).toBeVisible();
 }
 
@@ -564,5 +564,32 @@ test("document upload and delete recover from failed requests, and deletion remo
         await removeDocument(page, fileName).catch(() => {});
       }
     }
+  }
+});
+
+test("Today turns a missing application deadline into a task that clears once fixed", async ({ page }) => {
+  test.setTimeout(90_000);
+  await signInToIsolatedStudent(page);
+  try {
+    await removeSeededApplication(page);
+    await page.goto(`/schools/${SCHOOL_ID}`);
+    await page.getByRole("button", { name: "Track Application" }).click();
+    await expect(page.getByRole("link", { name: "Researching" })).toBeVisible({ timeout: 15_000 });
+
+    await page.goto("/today");
+    const task = page.getByRole("region", { name: "Needs attention" }).getByRole("link", { name: /Add the deadline for E2E Test University/ });
+    await expect(task).toBeVisible({ timeout: 15_000 });
+    await task.click();
+    await page.waitForURL(/\/applications\/[0-9a-f-]+$/i);
+    const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/user_school_applications") && r.request().method() === "PATCH" && r.ok());
+    const soon = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
+    await page.locator("#hub-deadline").fill(soon);
+    await saved;
+
+    await page.goto("/today");
+    await expect(page.getByRole("region", { name: "Coming up" }).getByRole("link", { name: /E2E Test University/ })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("region", { name: "Needs attention" }).getByText(/Add the deadline for E2E Test University/)).toHaveCount(0);
+  } finally {
+    if (!page.isClosed()) await removeSeededApplication(page).catch(() => {});
   }
 });
