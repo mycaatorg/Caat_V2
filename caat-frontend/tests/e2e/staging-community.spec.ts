@@ -104,6 +104,20 @@ test("seeded community post, comment, and save persist across detail reloads", a
     const groupPost = page.locator("div.bg-card").filter({ hasText: content }).first();
     await expect(groupPost.getByText(content, { exact: true })).toBeVisible({ timeout: 15_000 });
 
+    // Feed cards never get fresh props, so a successful like must still show
+    // once the server action has finished (PROD-102), not snap back.
+    const likeButton = groupPost.locator('button[aria-label^="Like post"], button[aria-label^="Unlike post"]');
+    await expect(likeButton).toHaveAttribute("aria-label", "Like post, 0 likes");
+    const likeSaved = page.waitForResponse((r) => r.request().method() === "POST" && !!r.request().headers()["next-action"]);
+    await likeButton.click();
+    expect((await likeSaved).ok()).toBe(true);
+    // The optimistic state ends when React finishes the action, a moment after
+    // the response; sample for two seconds that the like stays.
+    for (let sample = 0; sample < 10; sample += 1) {
+      await page.waitForTimeout(200);
+      expect(await likeButton.getAttribute("aria-label"), `like still shown after ${(sample + 1) * 200}ms`).toBe("Unlike post, 1 like");
+    }
+
     // Keep the actual Share action; capture only the OS clipboard boundary so
     // browser runners don't hang on clipboard permission prompts.
     await groupPost.getByRole("button", { name: "Share post", exact: true }).click();
@@ -136,6 +150,7 @@ test("seeded community post, comment, and save persist across detail reloads", a
     const reloadedCard = page.locator("div.bg-card").filter({ hasText: content }).first();
     await expect(reloadedCard.getByText(content, { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(reloadedCard.getByRole("button", { name: "Unsave post", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(reloadedCard.getByRole("button", { name: "Unlike post, 1 like", exact: true })).toHaveAttribute("aria-pressed", "true");
     await reloadedCard.getByRole("button", { name: /Show comments/ }).click();
     await expect(reloadedCard.getByText(comment, { exact: true })).toBeVisible({ timeout: 15_000 });
 

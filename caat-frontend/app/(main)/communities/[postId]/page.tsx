@@ -41,14 +41,14 @@ export default async function SinglePostPage({ params }: Props) {
     <>
       <PageHeader title="Community Campus" />
       <div className="p-6">
-        <main className="max-w-2xl mx-auto">
+        <div className="max-w-2xl mx-auto">
           <PostCard
             post={post}
             currentUser={currentUser}
             initialIsLiked={post.viewer_has_liked ?? false}
             initialIsSaved={post.viewer_has_saved ?? false}
           />
-        </main>
+        </div>
       </div>
     </>
   );

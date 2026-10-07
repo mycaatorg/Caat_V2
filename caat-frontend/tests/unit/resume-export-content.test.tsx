@@ -238,6 +238,31 @@ describe("resume Print / PDF content", { timeout: 30_000 }, () => {
     ]);
   });
 
+  it("numbers a list from its own starting number and caps saved indents", async () => {
+    seedResume([
+      personal,
+      {
+        id: "projects",
+        type: "custom",
+        label: "Projects",
+        mode: "free",
+        contentHtml:
+          '<ol start="3" style="list-style-type: lower-alpha"><li><p>Third SYN</p></li><li><p>Fourth SYN</p></li></ol>' +
+          '<p style="margin-left: 36em">Legacy SYN</p>',
+      },
+    ]);
+    await mountBuilder();
+
+    const lists = [...printRoot().querySelectorAll<HTMLOListElement>(".resume-preview-content ol")];
+    expect(lists.map((ol) => [ol.getAttribute("start"), ol.style.listStyleType, ol.textContent])).toEqual([
+      ["3", "lower-alpha", "Third SYN"],
+      ["4", "lower-alpha", "Fourth SYN"],
+    ]);
+    // Indents saved before the eight-step cap print as the editor shows them.
+    const legacy = [...printRoot().querySelectorAll<HTMLElement>(".resume-preview-content p")].find((p) => p.textContent === "Legacy SYN");
+    expect(legacy?.style.marginLeft).toBe("12em");
+  });
+
   it("justifies the last line of a justified paragraph's first half", async () => {
     const text = words("Just", 60);
     seedResume([
