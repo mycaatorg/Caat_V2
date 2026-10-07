@@ -345,6 +345,8 @@ export default function ResumeBuilderShell() {
     ) {
       return;
     }
+    const removedIndex = sections.findIndex((s) => s.id === id);
+    const owningResumeId = resumeIdRef.current;
     setSections((prev) => {
       const next = prev.filter((s) => s.id !== id);
 
@@ -372,7 +374,17 @@ export default function ResumeBuilderShell() {
     saveQueueRef.current = removal;
     removal.catch((err) => {
       if (process.env.NODE_ENV !== "production") console.error("Failed to delete section from database:", err);
-      toast.error("Section removed locally but could not be deleted from the server.");
+      // The row still exists and would return on the next load, so put the
+      // section back where it was instead of showing it as deleted.
+      if (target && resumeIdRef.current === owningResumeId) {
+        setSections((prev) => {
+          if (prev.some((s) => s.id === id)) return prev;
+          const next = [...prev];
+          next.splice(Math.min(Math.max(removedIndex, 0), next.length), 0, target);
+          return next;
+        });
+      }
+      toast.error("Could not delete the section. It has been restored.");
     });
   }
 

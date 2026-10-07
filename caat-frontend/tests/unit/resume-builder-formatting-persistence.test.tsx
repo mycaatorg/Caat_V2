@@ -256,6 +256,34 @@ describe("resume formatting and section edits survive save and reload", () => {
     expect(printedPages().join(" ")).not.toContain("PROJECTS");
   });
 
+  it("puts a section back in place, with its edits, when the server delete fails", async () => {
+    seedResume([
+      personal,
+      { id: "summary", type: "custom", label: "Summary", mode: "free", contentHtml: "<p>Summary SYN</p>" },
+      { id: "projects", type: "custom", label: "Projects", mode: "free", contentHtml: "<p>Projects SYN</p>" },
+      { id: "awards", type: "custom", label: "Awards", mode: "free", contentHtml: "<p>Awards SYN</p>" },
+    ]);
+    const order = ["Personal Information", "Summary", "Projects", "Awards"];
+    fakeResumeApi.deleteSection.mockRejectedValueOnce(new Error("network down"));
+    await mountBuilder();
+    await openSection("Projects");
+    await selectText("Projects SYN");
+    await pressToolbar("Bold");
+
+    await clickRowButton("Projects", "Delete section");
+    await settle();
+
+    // Hiding it would be a lie: the row still exists and would return on reload.
+    expect(structureOrder()).toEqual(order);
+    expect(toastError).toHaveBeenCalledWith("Could not delete the section. It has been restored.");
+    await openSection("Projects");
+    expect(editorSurface().querySelector("strong")?.textContent).toBe("Projects SYN");
+    await advanceAutosave();
+    await reload();
+    expect(structureOrder()).toEqual(order);
+    expect(savedSection("Projects")?.contentHtml).toContain("<strong>Projects SYN</strong>");
+  });
+
   it("keeps formatting and section edits through a failed save and persists them on retry", async () => {
     seedResume([
       personal,
