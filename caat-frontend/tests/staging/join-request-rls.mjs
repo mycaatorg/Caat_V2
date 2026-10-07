@@ -47,6 +47,8 @@ async function disposableUser(role, firstName, lastName) {
 
 const requestStatus = async (userId) => (await admin.from('community_group_requests').select('status')
   .eq('group_id', groupIds.private).eq('user_id', userId).maybeSingle()).data?.status ?? null;
+const requestCreatedAt = async (userId) => Date.parse((await admin.from('community_group_requests').select('created_at')
+  .eq('group_id', groupIds.private).eq('user_id', userId).maybeSingle()).data?.created_at ?? '');
 const ownerNotifications = async (client, actorId) => required(await client.from('notifications')
   .select('user_id, actor_id, type, post_id, message, is_read').eq('type', 'join_request').eq('actor_id', actorId), 'notification read');
 const adminNotifications = async (actorId) => required(await admin.from('notifications')
@@ -195,7 +197,9 @@ try {
     p_group_id: groupIds.private, p_requester_user_id: requester.id,
   }), 'reject') === true, 'owner rejects the new request');
   check((await requestStatus(requester.id)) === 'rejected', 'rejection is recorded');
+  const askedBefore = await requestCreatedAt(requester.id);
   check(required(await requestJoin(requester.client), 'after rejection') === 'requested', 'rejected requester may ask again');
+  check((await requestCreatedAt(requester.id)) > askedBefore, 'a renewed request is dated when it was asked again');
   check((await ownerNotifications(owner.client, requester.id)).length === 1, 'still one notification per requester');
 
   console.log(`Join request RLS passed: ${checks} assertions using disposable local users and rows.`);

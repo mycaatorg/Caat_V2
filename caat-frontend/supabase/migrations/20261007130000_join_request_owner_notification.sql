@@ -19,6 +19,9 @@
 --     or counts.
 --
 -- Requires 20261004090000_secure_community_groups_and_content.sql (PROD-85).
+-- One transaction: SET LOCAL takes effect, and a failed check below leaves
+-- nothing behind.
+begin;
 SET LOCAL lock_timeout = '5s';
 
 do $$
@@ -63,9 +66,11 @@ begin
 
   -- Concurrent calls serialise on the request's primary key. Only a new row
   -- or a change into pending returns a row, so retries cannot notify twice.
+  -- A renewed request is dated now, so the owner's queue shows when it was
+  -- actually asked.
   insert into public.community_group_requests as r (group_id, user_id, status)
     values (p_group_id, v_actor, 'pending')
-    on conflict (group_id, user_id) do update set status = 'pending'
+    on conflict (group_id, user_id) do update set status = 'pending', created_at = now()
       where r.status is distinct from 'pending'
     returning true into v_changed;
   if v_changed is null then
@@ -139,3 +144,4 @@ end;
 $$;
 
 notify pgrst, 'reload schema';
+commit;
