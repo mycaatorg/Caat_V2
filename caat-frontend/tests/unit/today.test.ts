@@ -79,6 +79,36 @@ describe("deriveTasks", () => {
   );
 });
 
+describe("scholarship deadlines", () => {
+  const sch = (id: string, dateISO: string) => ({ id: `sch-${id}`, source: "scholarship" as const, title: `Award ${id}`, dateISO, href: "/scholarships" });
+
+  it("turns a saved scholarship closing within 14 days into a task until the student acts on it", () => {
+    const tasks = deriveTasks(
+      base({
+        deadlines: [sch("s1", "2026-10-16"), sch("s2", "2026-10-30"), sch("s3", "2026-10-10")],
+        scholarshipStatuses: { s1: "interested", s2: "interested", s3: "applied" },
+      }),
+    );
+    expect(tasks).toEqual([
+      expect.objectContaining({ id: "soon-sch-s1", kind: "deadline-soon", title: "Award s1 closes in 9 days", href: "/scholarships/s1" }),
+    ]);
+  });
+
+  it("orders scholarship and application deadlines together, nearest first", () => {
+    const tasks = deriveTasks(
+      base({
+        applications: [app("a1", { deadlineAt: "2026-10-12" })],
+        essayDraftSchoolIds: [null],
+        documentSchoolIds: [null],
+        deadlines: [sch("s1", "2026-10-08")],
+        scholarshipStatuses: { s1: "interested" },
+      }),
+    );
+    expect(tasks.map((t) => t.id)).toEqual(["soon-sch-s1", "soon-a1"]);
+    expect(tasks[0].title).toBe("Award s1 closes tomorrow");
+  });
+});
+
 describe("comingUp", () => {
   it("keeps today through 60 days ahead, nearest first", () => {
     const d = (id: string, dateISO: string) => ({ id, source: "event" as const, title: id, dateISO, href: "/x" });

@@ -31,6 +31,8 @@ export interface TodayInput {
   documentSchoolIds: (number | null)[];
   saved: { scholarships: number; schools: number; majors: number };
   deadlines: UnifiedDeadline[];
+  /** Saved scholarship id → tracking status ("interested", "applied", …). */
+  scholarshipStatuses?: Record<string, string>;
 }
 
 export type TaskKind = "deadline-soon" | "set-deadline" | "start-essay" | "upload-documents";
@@ -129,6 +131,24 @@ export function deriveTasks(input: TodayInput): TodayTask[] {
         href: `/documents?school=${app.schoolId}`,
       });
     }
+  }
+
+  // Saved scholarships the student has not acted on yet, closing soon. Once
+  // marked applied (or decided) they are no longer a task.
+  for (const d of input.deadlines) {
+    if (d.source !== "scholarship") continue;
+    const id = d.id.replace(/^sch-/, "");
+    if ((input.scholarshipStatuses?.[id] ?? "interested") !== "interested") continue;
+    const days = daysBetween(input.todayISO, d.dateISO);
+    if (days < 0 || days > SOON_DAYS) continue;
+    soon.push({
+      id: `soon-sch-${id}`,
+      kind: "deadline-soon",
+      title: `${d.title} ${days === 0 ? "closes today" : days === 1 ? "closes tomorrow" : `closes in ${days} days`}`,
+      detail: "Decide whether to apply, then check what it asks for.",
+      href: `/scholarships/${id}`,
+      dueISO: d.dateISO.slice(0, 10),
+    });
   }
 
   soon.sort((a, b) => (a.dueISO ?? "").localeCompare(b.dueISO ?? ""));

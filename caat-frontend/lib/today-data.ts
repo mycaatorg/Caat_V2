@@ -74,7 +74,7 @@ export async function loadToday(supabase: SupabaseClient, userId: string, now: D
       supabase.from("documents").select("school_id").eq("user_id", userId),
       supabase
         .from("user_bookmarked_scholarships")
-        .select("scholarship_id, created_at, scholarships(id, title)")
+        .select("scholarship_id, status, created_at, scholarships(id, title)")
         .eq("user_id", userId)
         .order("created_at", { ascending: false }),
       supabase
@@ -193,6 +193,7 @@ export async function loadToday(supabase: SupabaseClient, userId: string, now: D
       documentSchoolIds: ((docsRes.data ?? []) as Row[]).map((d) => (d.school_id as number | null) ?? null),
       saved: { scholarships: savedSch.length, schools: savedSchools.length, majors: savedMajors.length },
       deadlines,
+      scholarshipStatuses: Object.fromEntries(savedSch.map((r) => [r.scholarship_id as string, (r.status as string | null) ?? "interested"])),
     },
     recent,
     todos: ((todosRes.data ?? []) as Row[]).map((t) => ({
