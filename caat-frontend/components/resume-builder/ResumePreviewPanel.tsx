@@ -149,22 +149,56 @@ function escapeHtml(text: string) {
     .replaceAll("'", "&#039;");
 }
 
-function makeSplitHtml(tagName: string, text: string, originalHtml: string) {
-  const safe = escapeHtml(text);
+/**
+ * Splits a block's HTML after its first `wordCount` words (counted the same
+ * way as `words(textContent)`). Both halves keep every wrapper and inline
+ * mark — list type, numbering and style; paragraph alignment, spacing and
+ * indent; bold, italic, font size, colour, links — so a block that breaks
+ * across a page prints the same formatting on both pages. The continuation of
+ * a list item hides its marker, since it is the same item.
+ */
+function splitHtmlAtWord(html: string, wordCount: number): { head: string; tail: string } {
+  const container = document.createElement("div");
+  container.innerHTML = html;
 
-  if (tagName === "li") {
-    return `<ul><li>${safe}</li></ul>`;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let seen = 0;
+  let inWord = false;
+  let splitNode: Text | null = null;
+  let splitOffset = 0;
+  for (let node = walker.nextNode() as Text | null; node && !splitNode; node = walker.nextNode() as Text | null) {
+    for (let i = 0; i < node.data.length; i += 1) {
+      const space = /\s/.test(node.data[i]);
+      if (!space) {
+        inWord = true;
+      } else if (inWord) {
+        inWord = false;
+        seen += 1;
+        if (seen === wordCount) {
+          splitNode = node;
+          splitOffset = i;
+          break;
+        }
+      }
+    }
   }
+  if (!splitNode) return { head: html, tail: "" };
 
-  if (tagName === "div") {
-    return `<div>${safe}</div>`;
-  }
+  const serialize = (range: Range) => {
+    const out = document.createElement("div");
+    out.appendChild(range.cloneContents());
+    return out;
+  };
+  const headRange = document.createRange();
+  headRange.setStart(container, 0);
+  headRange.setEnd(splitNode, splitOffset);
+  const tailRange = document.createRange();
+  tailRange.setStart(splitNode, splitOffset);
+  tailRange.setEnd(container, container.childNodes.length);
 
-  if (tagName === "p") {
-    return `<p>${safe}</p>`;
-  }
-
-  return originalHtml;
+  const tail = serialize(tailRange);
+  tail.querySelector<HTMLElement>("li")?.style.setProperty("list-style-type", "none");
+  return { head: serialize(headRange).innerHTML, tail: tail.innerHTML };
 }
 
 function words(text: string) {
@@ -519,12 +553,7 @@ export default function ResumePreviewPanel({
 
       while (low <= high) {
         const mid = Math.floor((low + high) / 2);
-        const candidateText = allWords.slice(0, mid).join(" ");
-        const candidateHtml = makeSplitHtml(
-          block.tagName,
-          candidateText,
-          block.html
-        );
+        const candidateHtml = splitHtmlAtWord(block.html, mid).head;
         const candidateHeight = measureHtml(candidateHtml);
 
         if (candidateHeight <= availableHeight) {
@@ -539,17 +568,14 @@ export default function ResumePreviewPanel({
         return { headHtml: null, tailBlock: block };
       }
 
-      const headText = allWords.slice(0, best).join(" ");
       const tailWords = allWords.slice(best);
-
-      const headHtml = makeSplitHtml(block.tagName, headText, block.html);
+      const { head: headHtml, tail: tailHtml } = splitHtmlAtWord(block.html, best);
 
       if (tailWords.length === 0) {
         return { headHtml, tailBlock: null };
       }
 
       const tailText = tailWords.join(" ");
-      const tailHtml = makeSplitHtml(block.tagName, tailText, block.html);
 
       return {
         headHtml,

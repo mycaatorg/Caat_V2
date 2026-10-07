@@ -20,6 +20,7 @@ import {
   seedResume,
   selectText,
   settle,
+  words,
 } from "./resume-builder-harness";
 
 const toastError = vi.hoisted(() => vi.fn());
@@ -139,6 +140,63 @@ describe("resume Print / PDF content", () => {
       ["3", "Gamma SYN"],
     ]);
     expect(lettered[1].querySelector("strong")?.textContent).toBe("Beta SYN");
+  });
+
+  it("keeps a paragraph's formatting on both pages when it breaks across a page", async () => {
+    const lead = words("Lead", 30);
+    const tail = words("Tail", 30);
+    seedResume([
+      personal,
+      {
+        id: "profile",
+        type: "custom",
+        label: "Profile",
+        mode: "free",
+        contentHtml: `<p style="text-align: center; line-height: 1.5;"><strong>${lead}</strong> <em>${tail}</em></p>`,
+      },
+    ]);
+    await mountBuilder();
+
+    // 704px remain on page one after the header: 35 words of 20px fit.
+    expect(pages()).toHaveLength(2);
+    const [first, second] = pages().map((page) => page.querySelector<HTMLElement>(".resume-preview-content p")!);
+    for (const part of [first, second]) {
+      expect([part.style.textAlign, part.style.lineHeight]).toEqual(["center", "1.5"]);
+    }
+    expect(first.querySelector("strong")?.textContent).toBe(lead);
+    expect(first.querySelector("em")?.textContent).toBe(words("Tail", 5));
+    expect(second.querySelector("strong")).toBeNull();
+    expect(second.querySelector("em")?.textContent?.trim()).toBe(tail.split(" ").slice(5).join(" "));
+    expect(`${first.textContent} ${second.textContent}`.replace(/\s+/g, " ").trim()).toBe(`${lead} ${tail}`);
+  });
+
+  it("keeps a numbered item's list type, number and formatting when it breaks across a page", async () => {
+    const long = words("Long", 60);
+    seedResume([
+      personal,
+      {
+        id: "projects",
+        type: "custom",
+        label: "Projects",
+        mode: "free",
+        contentHtml: `<ol style="list-style-type: upper-roman;"><li><p>Short SYN item</p></li><li><p><strong>${long}</strong></p></li></ol>`,
+      },
+    ]);
+    await mountBuilder();
+
+    // Page one: 704px - 60px for the first item leaves room for 32 words.
+    expect(pages()).toHaveLength(2);
+    const [head, rest] = pages().map((page) => [...page.querySelectorAll<HTMLElement>(".resume-preview-content > *")].at(-1)!);
+    for (const part of [head, rest]) {
+      expect(part.tagName).toBe("OL");
+      expect(part.style.listStyleType).toBe("upper-roman");
+      expect(part.getAttribute("start")).toBe("2");
+    }
+    expect(head.querySelector("li strong")?.textContent).toBe(words("Long", 32));
+    expect(rest.querySelector("li strong")?.textContent?.trim()).toBe(long.split(" ").slice(32).join(" "));
+    // The continuation is the same item, so it must not print a second marker.
+    expect(head.querySelector<HTMLElement>("li")!.style.listStyleType).toBe("");
+    expect(rest.querySelector<HTMLElement>("li")!.style.listStyleType).toBe("none");
   });
 
   it("saves pending edits before printing, so the printout matches what was saved", async () => {
