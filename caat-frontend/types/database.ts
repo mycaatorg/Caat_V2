@@ -794,6 +794,11 @@ export type Database = {
           school_name: string | null
           target_majors: string[] | null
           updated_at: string | null
+          year_level: string | null
+          student_status: string | null
+          journey_stage: string | null
+          onboarding_completed_at: string | null
+          onboarding_dismissed_at: string | null
         }
         Insert: {
           activities?: string[] | null
@@ -816,6 +821,11 @@ export type Database = {
           school_name?: string | null
           target_majors?: string[] | null
           updated_at?: string | null
+          year_level?: string | null
+          student_status?: string | null
+          journey_stage?: string | null
+          onboarding_completed_at?: string | null
+          onboarding_dismissed_at?: string | null
         }
         Update: {
           activities?: string[] | null
@@ -838,6 +848,11 @@ export type Database = {
           school_name?: string | null
           target_majors?: string[] | null
           updated_at?: string | null
+          year_level?: string | null
+          student_status?: string | null
+          journey_stage?: string | null
+          onboarding_completed_at?: string | null
+          onboarding_dismissed_at?: string | null
         }
         Relationships: [
           {

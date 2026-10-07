@@ -71,15 +71,19 @@ export default function EssaysShell({
   const [renameCustomValue, setRenameCustomValue] = useState("");
   const [confirmDeleteCustomId, setConfirmDeleteCustomId] = useState<string | null>(null);
 
+  const searchParams = useSearchParams();
+  // ?prompt=<id> deep-links to a prompt (e.g. Today's "pick up where you left
+  // off"); custom prompts resolve once the custom list loads.
+  const urlPromptRaw = searchParams.get("prompt");
+  const urlPromptId = urlPromptRaw && /^[0-9a-f-]{36}$/i.test(urlPromptRaw) ? urlPromptRaw : null;
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(
-    initialPrompts?.[0]?.id ?? null,
+    urlPromptId ?? initialPrompts?.[0]?.id ?? null,
   );
   const [drafts, setDrafts] = useState<EssayDraft[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [activeDraft, setActiveDraft] = useState<EssayDraft | null>(null);
 
   // School tagging for per-school prompts (null = shared across applications)
-  const searchParams = useSearchParams();
   // Guard against a malformed ?school=abc — Number("abc") is NaN, which would
   // poison the school_id filter/state.
   const urlSchoolRaw = searchParams.get("school");

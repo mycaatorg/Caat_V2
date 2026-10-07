@@ -16,7 +16,7 @@ export default function MainNotFound() {
         </p>
         <div className="flex flex-wrap justify-center gap-3 pt-1">
           <Button asChild>
-            <Link href="/dashboard">Go to dashboard</Link>
+            <Link href="/today">Go to Today</Link>
           </Button>
           <Button asChild variant="outline">
             <Link href="/scholarships">Browse scholarships</Link>

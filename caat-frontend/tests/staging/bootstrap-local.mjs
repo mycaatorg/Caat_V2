@@ -18,5 +18,10 @@ const migration = spawnSync(process.execPath, [join(here, 'apply-community-migra
 });
 if (migration.error) throw migration.error;
 if (migration.status !== 0) throw new Error('Local community migration failed.');
+const onboarding = spawnSync(process.execPath, [join(here, 'apply-onboarding-migration.mjs')], {
+  stdio: 'inherit', env: process.env,
+});
+if (onboarding.error) throw onboarding.error;
+if (onboarding.status !== 0) throw new Error('Local onboarding migration failed.');
 runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, 'seed.sql')]);
 console.log('Local-only CAAT schema and synthetic catalog fixtures installed.');

@@ -6,10 +6,8 @@ import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  User,
   School,
   FileUser,
-  LayoutDashboard,
   FileText,
   BookOpen,
   GraduationCap,
@@ -17,6 +15,8 @@ import {
   ClipboardList,
   Users,
   Bookmark,
+  Sun,
+  ListChecks,
 } from "lucide-react"
 
 import {
@@ -35,28 +35,64 @@ import {
 import { NavUser } from "./nav-user"
 import { useAuth } from "@/components/providers/AuthContext"
 
-const tools = [
-  { title: "Dashboard", icon: LayoutDashboard, url: "/dashboard" },
-  { title: "My Profile", icon: User, url: "/profile" },
-  { title: "Schools", icon: School, url: "/schools" },
-  { title: "Applications", icon: ClipboardList, url: "/applications" },
-  { title: "Majors", icon: BookOpen, url: "/majors" },
-  { title: "Resume Builder", icon: FileUser, url: "/resume-builder" },
-  { title: "Essays", icon: FileText, url: "/essays" },
-  { title: "Scholarships", icon: GraduationCap, url: "/scholarships" },
-  { title: "Documents", icon: FolderOpen, url: "/documents" },
+type NavItem = { title: string; icon: typeof Sun; url: string }
+
+// PROD-74: four primary destinations, then discovery, workspace and
+// community. Every pre-existing URL still resolves; Profile, Settings and the
+// widget dashboard live in the account menu.
+const navGroups: { label: string | null; items: NavItem[] }[] = [
+  {
+    label: null,
+    items: [
+      { title: "Today", icon: Sun, url: "/today" },
+      { title: "My shortlist", icon: ListChecks, url: "/shortlist" },
+      { title: "My applications", icon: ClipboardList, url: "/applications" },
+    ],
+  },
+  {
+    label: "Explore",
+    items: [
+      { title: "Scholarships", icon: GraduationCap, url: "/scholarships" },
+      { title: "Universities", icon: School, url: "/schools" },
+      { title: "Courses", icon: BookOpen, url: "/majors" },
+    ],
+  },
+  {
+    label: "Workspace",
+    items: [
+      { title: "Essays", icon: FileText, url: "/essays" },
+      { title: "Documents", icon: FolderOpen, url: "/documents" },
+      { title: "Resume builder", icon: FileUser, url: "/resume-builder" },
+    ],
+  },
+  {
+    label: "Community",
+    items: [
+      { title: "Community Campus", icon: Users, url: "/communities" },
+      { title: "Saved posts", icon: Bookmark, url: "/communities/saved" },
+    ],
+  },
 ]
 
-const community = [
-  { title: "Community Campus", icon: Users, url: "/communities" },
-  { title: "Saved Posts",  icon: Bookmark, url: "/communities/saved" },
-]
+/** The single nav URL that best matches the path (longest segment prefix),
+ *  so /communities/saved highlights only "Saved posts". */
+export function activeNavUrl(pathname: string): string | null {
+  let best: string | null = null
+  for (const group of navGroups) {
+    for (const { url } of group.items) {
+      const matches = pathname === url || pathname.startsWith(`${url}/`)
+      if (matches && (!best || url.length > best.length)) best = url
+    }
+  }
+  return best
+}
 
 export function AppSidebar({
   initialAvatarUrl = null,
   ...props
 }: React.ComponentProps<typeof Sidebar> & { initialAvatarUrl?: string | null }) {
   const pathname = usePathname()
+  const active = activeNavUrl(pathname)
   // C5: read the already-resolved user from AuthContext instead of firing this
   // sidebar's own getUser() + profile fetch on every navigation. The avatar is
   // resolved once server-side and passed in.
@@ -87,7 +123,7 @@ export function AppSidebar({
   return (
     <Sidebar {...props}>
       <SidebarHeader className="py-5 px-6 border-b border-sidebar-border">
-        <Link href="/dashboard" className="inline-flex items-center focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-sidebar-ring focus-visible:outline-offset-2">
+        <Link href="/today" className="inline-flex items-center focus-visible:outline focus-visible:outline-[2px] focus-visible:outline-sidebar-ring focus-visible:outline-offset-2">
           <div className="relative h-8 w-24">
             <Image
               src="/logo.png"
@@ -101,62 +137,36 @@ export function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/60 uppercase text-[10px] tracking-[0.15em] font-code px-4 mb-1">
-            Tools
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {tools.map((item) => {
-                const isActive =
-                  item.url === "/dashboard"
-                    ? pathname === "/dashboard"
-                    : pathname.startsWith(item.url)
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      className="gap-3 px-4 py-2.5 rounded-none text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-[#9a1a27] data-[active=true]:text-white data-[active=true]:hover:bg-[#9a1a27] data-[active=true]:hover:text-white data-[active=true]:font-medium transition-colors duration-100"
-                    >
-                      <Link href={item.url}>
-                        <item.icon className="size-4 shrink-0" strokeWidth={1.5} />
-                        <span className="text-sm">{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup className="mt-2">
-          <SidebarGroupLabel className="text-sidebar-foreground/60 uppercase text-[10px] tracking-[0.15em] font-code px-4 mb-1">
-            Community
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {community.map((item) => {
-                const isActive = pathname.startsWith(item.url)
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      className="gap-3 px-4 py-2.5 rounded-none text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-[#9a1a27] data-[active=true]:text-white data-[active=true]:hover:bg-[#9a1a27] data-[active=true]:hover:text-white data-[active=true]:font-medium transition-colors duration-100"
-                    >
-                      <Link href={item.url}>
-                        <item.icon className="size-4 shrink-0" strokeWidth={1.5} />
-                        <span className="text-sm">{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {navGroups.map((group, index) => (
+          <SidebarGroup key={group.label ?? "primary"} className={index > 0 ? "mt-1" : undefined}>
+            {group.label ? (
+              <SidebarGroupLabel className="text-sidebar-foreground/60 uppercase text-[10px] tracking-[0.15em] font-code px-4 mb-1">
+                {group.label}
+              </SidebarGroupLabel>
+            ) : null}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => {
+                  const isActive = active === item.url
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        className="gap-3 px-4 py-2.5 rounded-none text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent data-[active=true]:bg-[#9a1a27] data-[active=true]:text-white data-[active=true]:hover:bg-[#9a1a27] data-[active=true]:hover:text-white data-[active=true]:font-medium transition-colors duration-100"
+                      >
+                        <Link href={item.url} aria-current={isActive ? "page" : undefined}>
+                          <item.icon className="size-4 shrink-0" strokeWidth={1.5} />
+                          <span className="text-sm">{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">

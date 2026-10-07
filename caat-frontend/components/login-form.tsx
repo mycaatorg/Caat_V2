@@ -61,7 +61,7 @@ export function LoginForm({
       if (signInError) throw signInError
 
       const next = searchParams.get("next")
-      let destination = "/dashboard"
+      let destination = "/today"
       if (next) {
         try {
           const parsed = new URL(next, window.location.origin)
@@ -69,7 +69,7 @@ export function LoginForm({
             destination = next
           }
         } catch {
-          // Invalid URL — fall back to dashboard
+          // Invalid URL — fall back to Today
         }
       }
       router.push(destination)
