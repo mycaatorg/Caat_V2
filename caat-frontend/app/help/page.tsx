@@ -29,11 +29,13 @@ const GROUPS: FaqGroup[] = [
         q: "What is CAAT, in plain terms?",
         a: (
           <>
-            It is one place to run your whole university application. Instead of
-            living in five browser tabs and a messy spreadsheet, you keep your
-            deadlines, essays, schools, scholarships, resume, and documents
-            together, and CAAT keeps track of what is due and what is left to
-            do.
+            It is one place to plan your path to university. Instead of living
+            in five browser tabs and a messy spreadsheet, you keep your
+            deadlines, essays, universities, courses, scholarships, resume, and
+            documents together, and CAAT keeps track of what is due and what is
+            left to do. CAAT does not submit anything for you: you still apply
+            through UAC, VTAC, QTAC, SATAC, TISC or directly to the university,
+            and through each scholarship provider.
           </>
         ),
       },
@@ -52,11 +54,11 @@ const GROUPS: FaqGroup[] = [
         q: "Who is it for?",
         a: (
           <>
-            Mostly high school students applying to university, and anyone
-            helping them. If you are juggling a few schools, a couple of
-            scholarship deadlines, and an essay or two, you are exactly who we
-            built this for. It works whether you are applying to one school or
-            fifteen.
+            Mostly Australian high school students in Years 10 to 12 planning
+            for university, and anyone helping them. If you are juggling a few
+            universities, a couple of scholarship deadlines, and an essay or
+            two, you are exactly who we built this for. It works whether you
+            are aiming for one university or several, here or overseas.
           </>
         ),
       },
@@ -64,10 +66,11 @@ const GROUPS: FaqGroup[] = [
         q: "How do I actually get going?",
         a: (
           <>
-            Sign up, then spend two minutes filling in your profile (your
-            graduation year, the countries and majors you are interested in).
-            That is what lets CAAT tailor your scholarship and school
-            suggestions. After that, add a school or a deadline and you are off.
+            Sign up, then answer five quick questions: your year level, whether
+            you will study as a domestic or international student, where and
+            what you would like to study, and where you are up to. That is what
+            lets CAAT tailor your scholarship and university suggestions. After
+            that, save a university or add a deadline and you are off.
           </>
         ),
       },
@@ -80,11 +83,10 @@ const GROUPS: FaqGroup[] = [
         q: "Will it write my essays for me?",
         a: (
           <>
-            No, and that is on purpose. Admissions officers can smell a
-            generated essay, and so can your future self. CAAT helps you get
-            from a blank page to a real draft with prompts and structure, keeps
-            every version so you never lose a good line, and gives feedback you
-            can take or leave. The words stay yours.
+            No, and that is on purpose. Selection panels can spot a generated
+            essay, and so can your future self. CAAT helps you get from a blank
+            page to a real draft with prompts and tips, and lets you keep
+            several drafts so you never lose a good line. The words stay yours.
           </>
         ),
       },
@@ -104,9 +106,9 @@ const GROUPS: FaqGroup[] = [
         a: (
           <>
             It surfaces scholarships and tags the ones that fit your profile, so
-            a strong match for your major, country, and level floats to the top.
-            Change your preferred major or country in your profile and the
-            matches update straight away. Always read the official eligibility
+            a strong match for your field of study, country, and level floats to
+            the top. Change your target majors or countries in your profile and
+            the matches update straight away. Always read the official eligibility
             on the scholarship itself before you apply, since rules can change.
           </>
         ),
@@ -116,8 +118,8 @@ const GROUPS: FaqGroup[] = [
         a: (
           <>
             Yes. Add your application and scholarship deadlines and they show up
-            on your dashboard counting down, so the thing due in three days is
-            never a surprise at 11pm. You can see everything at a glance instead
+            on Today and your dashboard counting down, so the thing due in three
+            days is never a surprise at 11pm. You can see everything at a glance instead
             of digging through emails.
           </>
         ),
@@ -126,10 +128,10 @@ const GROUPS: FaqGroup[] = [
         q: "What about all my documents?",
         a: (
           <>
-            The document vault is where your transcripts, ID, language results,
-            and recommendation letters live, with a status on each one so you
-            know what is verified, what is pending, and what still needs your
-            attention.
+            The document vault is where your school reports, ID, English test
+            results, and references live. Link each file to the applications
+            that need it, and each application shows which documents are
+            uploaded and which are still missing.
           </>
         ),
       },
@@ -173,12 +175,12 @@ const GROUPS: FaqGroup[] = [
         ),
       },
       {
-        q: "Can my parents or my counselor see my stuff?",
+        q: "Can my parents or my careers adviser see my stuff?",
         a: (
           <>
             Only if you show them. Your account is yours. Nothing you put in CAAT
-            is shared with a parent, school, or counselor unless you choose to
-            share it.
+            is shared with a parent, school, or careers adviser unless you
+            choose to share it.
           </>
         ),
       },
@@ -226,9 +228,10 @@ const GROUPS: FaqGroup[] = [
         a: (
           <>
             No. We are independent, so the suggestions you get are not steered by
-            any school paying to be there. School and scholarship info comes from
-            public sources, and we point you to the official page for the final
-            word.
+            any university paying to be there. We are not part of UAC, VTAC,
+            QTAC, SATAC or TISC either. University and scholarship info comes
+            from public sources, and we point you to the official page for the
+            final word.
           </>
         ),
       },

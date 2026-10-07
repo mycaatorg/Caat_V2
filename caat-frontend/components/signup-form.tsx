@@ -144,7 +144,7 @@ export function SignupForm({
           Create account
         </h1>
         <p className="text-sm text-[#525252] font-serif">
-          Start your college application journey today.
+          Start planning your path to university today.
         </p>
       </div>
 

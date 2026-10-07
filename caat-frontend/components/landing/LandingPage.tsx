@@ -102,7 +102,7 @@ function Hero() {
             {/* Badge */}
             <div className="inline-block border border-black px-4 py-2">
               <span className="text-[11px] tracking-[0.18em] uppercase font-code text-black">
-                Your Future, Curated
+                For Years 10 to 12 in Australia
               </span>
             </div>
 
@@ -127,9 +127,10 @@ function Hero() {
 
             {/* Subtitle */}
             <p className="text-lg text-[#525252] leading-relaxed max-w-lg font-serif">
-              Organize deadlines, essays, and documents in one intelligent
-              platform. Stop juggling spreadsheets and start focusing on what
-              matters.
+              Shortlist universities and courses, track scholarships and
+              application deadlines, and keep essays and documents in one
+              place. Plan around Year 12 and your ATAR instead of juggling
+              spreadsheets.
             </p>
 
             {/* CTAs */}
@@ -158,7 +159,8 @@ function Hero() {
             </p>
           </div>
 
-          {/* Right: Dashboard preview - mirrors real /dashboard layout */}
+          {/* Right: Dashboard preview. Mirrors the real /dashboard layout with
+              fictional example names, labelled as an example. */}
           <div className="hidden lg:flex items-center justify-center relative">
             {/* Shadow layer (offset duplicate) */}
             <div
@@ -177,7 +179,7 @@ function Hero() {
               {/* Mockup titlebar */}
               <div className="border-b-2 border-black bg-black text-white px-4 py-3 flex items-center justify-between">
                 <span className="text-xs tracking-[0.15em] uppercase font-display font-bold">
-                  CAAT Dashboard
+                  Example Dashboard
                 </span>
                 <div className="flex gap-1.5">
                   {[0, 1, 2].map((i) => (
@@ -198,7 +200,7 @@ function Hero() {
                     Good evening, Alex!
                   </div>
                   <div className="text-[11px] text-[#525252] mt-0.5 font-serif">
-                    Here&apos;s an overview of your admissions journey.
+                    Here&apos;s where your university plan is up to.
                   </div>
                 </div>
 
@@ -229,8 +231,8 @@ function Hero() {
                   <div className="grid grid-cols-2 gap-1.5">
                     {[
                       { label: "Profile", done: true },
-                      { label: "Schools", done: true },
-                      { label: "Majors", done: true },
+                      { label: "Universities", done: true },
+                      { label: "Courses", done: true },
                       { label: "Applications", done: true },
                       { label: "Resume", done: false },
                       { label: "Essays", done: false },
@@ -277,7 +279,7 @@ function Hero() {
                   <div className="space-y-1.5">
                     {[
                       {
-                        label: "Stanford University",
+                        label: "Harbourside University",
                         type: "Application",
                         days: "3d",
                         dotClass: "",
@@ -286,14 +288,14 @@ function Hero() {
                         countdownStyle: { color: "#9a1a27" },
                       },
                       {
-                        label: "Gates Scholarship",
+                        label: "Red Gum Regional Scholarship",
                         type: "Scholarship",
                         days: "12d",
                         dotClass: "bg-amber-500",
                         countdownClass: "text-amber-600",
                       },
                       {
-                        label: "Yale University",
+                        label: "Wattle Valley University",
                         type: "Application",
                         days: "45d",
                         dotClass: "",
@@ -376,56 +378,56 @@ function FeaturesGrid() {
       icon: <LayoutGrid size={20} strokeWidth={1.5} />,
       title: "Dashboard",
       description:
-        "See your application progress, to-do list, bookmarked schools and majors, upcoming deadlines, and calendar at a glance. Drag and resize widgets to lay it out your way.",
+        "Today opens on your next step, what needs attention and the deadlines coming up. Your dashboard adds a calendar, to-dos, saved universities and courses, and widgets you can drag and resize.",
       previewImage: "/feature-previews/dashboard.png",
     },
     {
       icon: <CheckCircle2 size={20} strokeWidth={1.5} />,
       title: "Application Tracker",
       description:
-        "Manage every application, deadline, and requirement from a single unified dashboard. Status updates, progress bars, and task checklists in one view.",
+        "Track each university application with its status, deadline and notes, plus a readiness check for your essays and documents. Outcomes stay on the same list.",
       previewImage: "/feature-previews/application-tracker.png",
     },
     {
       icon: <GraduationCap size={20} strokeWidth={1.5} />,
-      title: "School Search",
+      title: "University Search",
       description:
-        "Browse 10,000+ universities worldwide. Compare acceptance rates, deadlines, tuition, and requirements side by side to build your perfect list.",
+        "Search universities in Australia and around the world, filter by country, keep notes on each one, and save favourites to your shortlist. Compare courses side by side.",
       previewImage: "/feature-previews/school-search.png",
     },
     {
       icon: <Pencil size={20} strokeWidth={1.5} />,
       title: "Essay Workshop",
       description:
-        "Interactive prompts guide you from blank page to polished draft. Version history keeps every revision, and built-in feedback helps you refine.",
+        "Write against each prompt with tips alongside, or add your own for a scholarship or early entry application. Keep several drafts and switch between them.",
       previewImage: "/feature-previews/essay-workshop.png",
     },
     {
       icon: <Award size={20} strokeWidth={1.5} />,
       title: "Scholarship Finder",
       description:
-        "Scholarships matched to your profile, field of study, and background surface first. Track applications and deadlines in one place.",
+        "Scholarships matched to your profile, field of study and background surface first. Save them, track their deadlines, and apply through each provider.",
       previewImage: "/feature-previews/scholarship-finder.png",
     },
     {
       icon: <FileText size={20} strokeWidth={1.5} />,
       title: "Resume Builder",
       description:
-        "Guided templates walk you through activities, awards, and achievements. Export a polished resume formatted the way admissions offices expect.",
+        "Guided sections walk you through education, experience, activities and skills. Print or save a clean A4 resume as a PDF for scholarship and early entry applications.",
       previewImage: "/feature-previews/resume-builder.png",
     },
     {
       icon: <FolderOpen size={20} strokeWidth={1.5} />,
       title: "Document Vault",
       description:
-        "Upload transcripts, recommendation letters, and test scores to secure encrypted storage. Share access links directly with institutions.",
+        "Keep school reports, ID, English test results and references in one place, and link each file to the applications that need it.",
       previewImage: "/feature-previews/document-vault.png",
     },
     {
       icon: <Lock size={20} strokeWidth={1.5} />,
-      title: "Secure by Default",
+      title: "Private by Default",
       description:
-        "Every file and form is encrypted, and we run on SOC2-certified infrastructure. Only you can see what you put in.",
+        "Your applications, essays and documents are private to your account and travel over HTTPS. Export or delete your data at any time.",
       disablePreview: true,
     },
   ];
@@ -449,8 +451,8 @@ function FeaturesGrid() {
             </span>
           </h2>
           <p className="text-lg text-[#525252] max-w-xl mx-auto font-serif">
-            All the tools you need to actually get through the college
-            application process, in one place.
+            Everything you need to plan for university, from a first
+            shortlist in Year 10 to applications in Year 12, in one place.
           </p>
         </div>
 
@@ -486,7 +488,7 @@ function ProductShowcase() {
             the complicated.
           </h2>
           <p className="text-lg text-[#525252] max-w-lg font-serif">
-            Powerful tools built around how you actually think: organized,
+            Powerful tools built around how you actually think: organised,
             clear, and always one step ahead.
           </p>
         </div>
@@ -503,10 +505,10 @@ function ProductShowcase() {
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
                   <div className="font-bold font-display text-lg">
-                    Stanford University
+                    Harbourside University
                   </div>
                   <div className="text-[11px] text-[#525252] mt-0.5 font-code">
-                    Deadline: Jan 2, 2026
+                    Example · Due in 12 days
                   </div>
                 </div>
                 <div
@@ -516,12 +518,12 @@ function ProductShowcase() {
                     color: "#16a34a",
                   }}
                 >
-                  In Progress
+                  Applying
                 </div>
               </div>
               <div className="space-y-1.5">
                 <div className="flex justify-between text-xs text-[#525252]">
-                  <span className="font-serif">Overall Progress</span>
+                  <span className="font-serif">Readiness</span>
                   <span
                     className="font-code font-bold"
                     style={{ color: "#9a1a27" }}
@@ -541,10 +543,10 @@ function ProductShowcase() {
             {/* Checklist */}
             <div className="space-y-3">
               {[
-                { label: "Personal Statement", done: true },
-                { label: "Supplemental Essays", done: true },
-                { label: "Recommendations", done: false },
-                { label: "Test Scores Submitted", done: false },
+                { label: "Deadline set", done: true },
+                { label: "Essay drafted", done: true },
+                { label: "School report uploaded", done: true },
+                { label: "Submitted through UAC", done: false },
               ].map((item) => (
                 <div key={item.label} className="flex items-center gap-3">
                   <div
@@ -570,9 +572,9 @@ function ProductShowcase() {
             {/* Divider - full-bleed hairline rule between sub-features */}
             <div className="-mx-8 lg:-mx-10 h-px bg-black my-10" aria-hidden />
 
-            {/* School Search - mirrors /schools page */}
+            {/* University Search - mirrors /schools page, fictional examples */}
             <p className="text-[10px] tracking-[0.18em] uppercase text-[#525252] mb-5 font-code">
-              School Search
+              University Search
             </p>
 
             {/* Search input + country filter row */}
@@ -583,7 +585,7 @@ function ProductShowcase() {
                   strokeWidth={1.5}
                   className="text-[#525252] flex-shrink-0"
                 />
-                <span className="text-xs font-serif">Stanford</span>
+                <span className="text-xs font-serif">Harbourside</span>
                 <span
                   className="ml-auto w-px h-3 bg-black inline-block"
                   aria-hidden
@@ -594,7 +596,7 @@ function ProductShowcase() {
               </div>
               <div className="border border-black flex items-center gap-2 px-3 py-2.5">
                 <span className="text-[10px] tracking-[0.1em] uppercase font-code">
-                  USA
+                  Australia
                 </span>
                 <ChevronDown size={11} strokeWidth={1.5} />
               </div>
@@ -602,26 +604,27 @@ function ProductShowcase() {
 
             {/* Results count */}
             <div className="text-[11px] text-[#525252] font-serif mb-3">
-              Showing <span className="font-bold text-black">3 results</span> in{" "}
-              <span className="font-bold text-black">United States</span>
+              Showing{" "}
+              <span className="font-bold text-black">3 example results</span>{" "}
+              in <span className="font-bold text-black">Australia</span>
             </div>
 
             {/* Result rows */}
             <div className="border border-black divide-y divide-black">
               {[
                 {
-                  name: "Stanford University",
-                  country: "United States",
+                  name: "Harbourside University",
+                  country: "Australia",
                   bookmarked: true,
                 },
                 {
-                  name: "Stanford Online High School",
-                  country: "United States",
+                  name: "Harbourside Institute of Technology",
+                  country: "Australia",
                   bookmarked: false,
                 },
                 {
-                  name: "Stanford Graduate School",
-                  country: "United States",
+                  name: "Harbourside College of the Arts",
+                  country: "Australia",
                   bookmarked: false,
                 },
               ].map((school) => (
@@ -657,8 +660,8 @@ function ProductShowcase() {
 
             <p className="text-lg mb-8 leading-relaxed font-serif text-[#525252]">
               Guided sections walk you through every detail. The live A4 preview
-              updates as you type, print-ready, the way admissions offices
-              expect.
+              updates as you type, ready to print or save as a PDF for
+              scholarship and early entry applications.
             </p>
 
             {/* Section nav - mirrors DocumentStructurePanel */}
@@ -720,7 +723,7 @@ function ProductShowcase() {
                       lineHeight: 1.2,
                     }}
                   >
-                    ALEX JOHNSON
+                    ALEX CHEN
                   </div>
                   <div
                     className="font-serif"
@@ -731,7 +734,7 @@ function ProductShowcase() {
                       lineHeight: 1.4,
                     }}
                   >
-                    alex.johnson@email.com · Boston, MA · linkedin.com/in/alex
+                    alex@example.com · Parramatta, NSW · Example resume
                   </div>
                 </div>
 
@@ -758,12 +761,12 @@ function ProductShowcase() {
                     className="font-serif"
                     style={{ fontSize: "8.5px", lineHeight: 1.45 }}
                   >
-                    <div className="font-bold">Boston Latin School</div>
+                    <div className="font-bold">Harbourside High School</div>
                     <div style={{ color: "#666" }}>
-                      GPA 3.98 / 4.00 · Class of 2026
+                      Year 12 · HSC, finishing 2027
                     </div>
                     <div style={{ color: "#666", marginTop: 2 }}>
-                      AP Capstone · National Merit Finalist
+                      Mathematics Extension 1 · House captain
                     </div>
                   </div>
                 </div>
@@ -793,10 +796,10 @@ function ProductShowcase() {
                   >
                     <div className="flex justify-between items-baseline">
                       <span className="font-bold">
-                        Research Intern, MIT Media Lab
+                        Volunteer Tutor, Homework Club
                       </span>
                       <span style={{ color: "#666", fontSize: "7.5px" }}>
-                        2025
+                        2026
                       </span>
                     </div>
                     <ul
@@ -807,9 +810,9 @@ function ProductShowcase() {
                       }}
                     >
                       <li style={{ marginBottom: 1 }}>
-                        Built ML pipeline analyzing 50k+ student records
+                        Tutored Year 7 and 8 students in maths each week
                       </li>
-                      <li>Co-authored paper accepted at NeurIPS workshop</li>
+                      <li>Ran a school holiday coding workshop</li>
                     </ul>
                   </div>
                 </div>
@@ -841,7 +844,7 @@ function ProductShowcase() {
                       lineHeight: 1.45,
                     }}
                   >
-                    Python, TypeScript, React · Debate, Robotics, Piano
+                    Python, Excel, First Aid · Debating, Robotics, Netball
                   </div>
                 </div>
               </div>
@@ -878,9 +881,10 @@ function MoreFeatures() {
               Essay Workshop
             </h3>
             <p className="text-[#525252] leading-relaxed mb-8 font-serif">
-              Interactive prompts guide your writing process from blank page to
-              polished draft. Version tracking ensures you never lose your best
-              work. Refine with AI feedback and expert suggestions.
+              Prompts with tips guide you from blank page to a real draft. Add
+              your own prompt for a scholarship or early entry application,
+              keep several drafts, and let autosave hold on to your best work.
+              The words stay yours.
             </p>
 
             {/* Decorative content lines */}
@@ -904,9 +908,9 @@ function MoreFeatures() {
               Scholarship Finder
             </h3>
             <p className="text-[#525252] leading-relaxed mb-6 font-serif">
-              Scholarships matched to your profile, field of study, and
-              background surface first. Bookmark, track deadlines, and apply,
-              all in one place.
+              Scholarships matched to your profile, field of study and
+              background surface first. Save them, track their deadlines, then
+              apply through each provider&apos;s official page.
             </p>
             <Link
               href="/signup"
@@ -931,14 +935,14 @@ function MoreFeatures() {
               >
                 <div className="flex items-baseline justify-between">
                   <div className="font-bold font-display text-sm text-[#BFBFBF]">
-                    Coca-Cola Scholars
+                    Red Gum Scholarship
                   </div>
                   <div className="font-code text-[10px] text-[#BFBFBF]">
-                    $20k
+                    A$5k
                   </div>
                 </div>
                 <div className="text-[#BFBFBF] font-code text-[10px] mt-1">
-                  Closes Oct 31
+                  Closes in 30 days
                 </div>
               </div>
               {/* Front layer */}
@@ -954,14 +958,14 @@ function MoreFeatures() {
               >
                 <div className="flex items-baseline justify-between gap-2">
                   <div className="font-bold font-display text-sm">
-                    Gates Scholarship
+                    Tasman Bay Scholarship
                   </div>
                   <div className="font-code text-[10px] font-bold tabular-nums">
-                    $50k
+                    A$10k/yr
                   </div>
                 </div>
                 <div className="text-[#525252] font-code text-[10px] mt-0.5">
-                  Full ride · STEM majors
+                  Example · Undergraduate STEM
                 </div>
                 <div className="h-px bg-black my-2" />
                 <div className="flex items-center justify-between">
@@ -992,29 +996,29 @@ function ThreeSteps() {
       number: "01",
       title: "Create Your Free Account",
       description:
-        "Sign up in under a minute, no credit card or setup fees needed. Your personalized dashboard is ready the moment you confirm your email.",
+        "Sign up in a minute, no credit card needed. Then answer five quick questions about your year level and study plans so CAAT can tailor scholarships and universities to you.",
       tag: "Getting Started",
     },
     {
       number: "02",
-      title: "Build Your School List",
+      title: "Build Your Shortlist",
       description:
-        "Search 10,000+ universities, compare deadlines and requirements, and add schools to your tracker. Everything about each application lives in one place.",
+        "Search universities in Australia and overseas, compare courses side by side, and save scholarships. Everything you save lands in My shortlist, ready to turn into an application.",
       tag: "Research & Plan",
     },
     {
       number: "03",
-      title: "Write, Prepare & Apply",
+      title: "Write & Prepare",
       description:
-        "Draft essays in the Workshop, find matching scholarships, build your resume, and upload documents. All of it tracked against your live deadlines.",
-      tag: "Execute",
+        "Draft essays, build your resume and upload documents, all tracked against your deadlines. Today shows what needs you next, so nothing sneaks up on you in Year 12.",
+      tag: "Prepare",
     },
     {
       number: "04",
-      title: "Submit with Confidence",
+      title: "Apply Through Official Channels",
       description:
-        "Your completion checklist turns item by item. When every box is checked, hit submit knowing nothing was missed and no deadline slipped by.",
-      tag: "Submit",
+        "When your readiness check is complete, submit through the admissions centre or university, and through each scholarship provider. Then mark it submitted in CAAT and track the outcome.",
+      tag: "Apply",
     },
   ];
 
@@ -1038,8 +1042,8 @@ function ThreeSteps() {
               </span>
             </h2>
             <p className="text-lg text-[#525252] leading-relaxed font-serif mb-8">
-              CAAT walks you through every stage of applying to college, from
-              your first school search to hitting submit.
+              CAAT walks you through planning for university, from your first
+              shortlist to the applications you send in Year 12.
             </p>
             <div className="h-[4px] w-12 bg-black" aria-hidden />
           </div>
@@ -1086,6 +1090,45 @@ function ThreeSteps() {
             ))}
           </div>
         </div>
+
+        {/* Honest scope note: CAAT plans and tracks, it does not submit. */}
+        <div className="mt-16 md:mt-20 border border-black border-l-4 border-l-[#9a1a27] bg-white">
+          <div className="border-b border-black px-6 py-4 md:px-8">
+            <p className="text-[11px] tracking-[0.18em] uppercase font-code text-[#9a1a27]">
+              What CAAT does and does not do
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2">
+            <div className="px-6 py-6 md:px-8 border-b md:border-b-0 md:border-r border-black">
+              <h3 className="text-lg font-bold font-display mb-2">
+                CAAT{" "}
+                <span className="italic" style={{ color: "#9a1a27" }}>
+                  does
+                </span>
+              </h3>
+              <p className="text-[#525252] leading-relaxed font-serif text-sm">
+                Keep your plan, deadlines and drafts organised in one place:
+                the universities, courses and scholarships you are weighing up,
+                your essays and documents, and what is due next.
+              </p>
+            </div>
+            <div className="px-6 py-6 md:px-8">
+              <h3 className="text-lg font-bold font-display mb-2">
+                CAAT{" "}
+                <span className="italic" style={{ color: "#9a1a27" }}>
+                  does not
+                </span>
+              </h3>
+              <p className="text-[#525252] leading-relaxed font-serif text-sm">
+                Submit anything for you. You still apply through UAC (NSW and
+                ACT), VTAC (Victoria), QTAC (Queensland), SATAC (SA and NT),
+                TISC (WA) or directly to the university, and through each
+                scholarship provider. Always check dates and rules on their
+                official sites.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -1102,7 +1145,7 @@ function SecurityBanner() {
           {/* Left: title */}
           <div>
             <p className="text-[11px] tracking-[0.18em] uppercase text-[#888] mb-5 font-code">
-              Security
+              Privacy
             </p>
             <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] font-display text-white">
               Your Data Stays{" "}
@@ -1115,22 +1158,22 @@ function SecurityBanner() {
           {/* Right: body */}
           <div>
             <p className="text-[#999] leading-relaxed mb-10 text-lg font-serif">
-              Your essays, scores, and applications are encrypted and only
-              visible to you. We don&apos;t sell your data, share it with
-              advertisers, or use it to train AI. You can export all your data,
-              or delete your account and everything tied to it, from your
-              account settings.
+              Your essays, documents and applications are private to your
+              account, and the site only loads over HTTPS. We don&apos;t sell
+              your data, share it with advertisers, or use it to train AI. You
+              can export all your data, or delete your account and everything
+              tied to it, from your account settings.
             </p>
 
             <div className="flex flex-wrap gap-3">
               {[
                 {
-                  icon: <Shield size={13} strokeWidth={1.5} />,
-                  label: "Runs on SOC2-Certified Infrastructure",
+                  icon: <Lock size={13} strokeWidth={1.5} />,
+                  label: "HTTPS Only",
                 },
                 {
-                  icon: <Lock size={13} strokeWidth={1.5} />,
-                  label: "AES-256 Encryption",
+                  icon: <Shield size={13} strokeWidth={1.5} />,
+                  label: "Export or Delete Any Time",
                 },
               ].map((badge) => (
                 <div
@@ -1254,7 +1297,8 @@ function FinalCTA() {
           </span>
         </h2>
         <p className="text-lg text-[#888] mb-12 max-w-md mx-auto font-serif">
-          Deadlines wait for no one. Get your plan together before the rush.
+          Deadlines wait for no one. Get your plan together before Year 12
+          gets busy.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center mb-10">
@@ -1269,7 +1313,7 @@ function FinalCTA() {
              signed-up advisors once that programme launches. */}
           <span
             aria-disabled="true"
-            title="Coming soon. Advisor matching will go live shortly."
+            title="Coming soon. Advisor matching is not available yet."
             className="inline-flex items-center justify-center gap-2 bg-transparent text-white/60 text-[11px] tracking-[0.18em] uppercase px-8 py-4 border border-white/40 cursor-not-allowed select-none font-code"
           >
             <Clock size={13} strokeWidth={1.5} />
@@ -1278,8 +1322,8 @@ function FinalCTA() {
         </div>
 
         <p className="text-[11px] text-[#555] tracking-[0.12em] font-code">
-          No credit card required&nbsp;&nbsp;•&nbsp;&nbsp;Secure data
-          storage&nbsp;&nbsp;•&nbsp;&nbsp;Expert support
+          No credit card required&nbsp;&nbsp;•&nbsp;&nbsp;Private to your
+          account&nbsp;&nbsp;•&nbsp;&nbsp;Help from a real person
         </p>
       </div>
     </section>
@@ -1338,8 +1382,8 @@ function Footer() {
               </a>
             </div>
             <p className="text-sm text-[#525252] max-w-xs font-serif">
-              College Application Assistance Tool. Your path to university,
-              organized.
+              University planning for Australian students. Your path to
+              university, organised.
             </p>
           </div>
 
@@ -1361,7 +1405,7 @@ function Footer() {
             © {new Date().getFullYear()} CAAT. All rights reserved.
           </p>
           <p className="text-[11px] text-[#525252] font-code">
-            Built for students. Trusted by early users.
+            Built for students in Years 10 to 12.
           </p>
         </div>
       </div>

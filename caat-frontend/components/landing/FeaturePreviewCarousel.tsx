@@ -160,7 +160,7 @@ function FeaturePreviewModal({
         {/* Title bar */}
         <div className="border-b-2 border-black px-6 py-4">
           <p className="text-[10px] font-code tracking-[0.18em] uppercase text-[#525252] mb-1">
-            Feature preview
+            Feature preview · Example data from a test account
           </p>
           <h2 className="text-2xl md:text-3xl font-bold font-display tracking-tight">
             {title}
