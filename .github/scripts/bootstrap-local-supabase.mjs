@@ -78,6 +78,7 @@ async function main() {
   run('tests/staging/setup-local.mjs', localOnlyEnv);
   run('tests/staging/rls-smoke.mjs', localOnlyEnv);
   run('tests/staging/community-rls.mjs', localOnlyEnv);
+  run('tests/staging/document-status-rls.mjs', localOnlyEnv);
   const githubEnv = githubPublicEnv(local);
   const { appendFile } = await import('node:fs/promises');
   await appendFile(process.env.GITHUB_ENV, githubEnv);
