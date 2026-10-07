@@ -19,4 +19,14 @@ const migration = spawnSync(process.execPath, [join(here, 'apply-community-migra
 if (migration.error) throw migration.error;
 if (migration.status !== 0) throw new Error('Local community migration failed.');
 runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, 'seed.sql')]);
+const notifications = spawnSync(process.execPath, [join(here, 'apply-community-notifications-migration.mjs')], {
+  stdio: 'inherit', env: process.env,
+});
+if (notifications.error) throw notifications.error;
+if (notifications.status !== 0) throw new Error('Local community notification migration failed.');
+const postCleanup = spawnSync(process.execPath, [join(here, 'apply-delete-post-children-migration.mjs')], {
+  stdio: 'inherit', env: process.env,
+});
+if (postCleanup.error) throw postCleanup.error;
+if (postCleanup.status !== 0) throw new Error('Local delete_post_children migration failed.');
 console.log('Local-only CAAT schema and synthetic catalog fixtures installed.');

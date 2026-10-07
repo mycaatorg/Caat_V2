@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { parseLocalDatabaseUrl } from './safety.mjs';
 
 export function localDatabaseUrl() {
@@ -30,4 +30,15 @@ export function checkLocalPsql(url, extraArgs) {
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`Local DB preflight failed: ${result.stderr.trim()}`);
   return result.stdout.trim();
+}
+
+// Runs psql concurrently with the caller; resolves with its exit status and stderr.
+export function startLocalPsql(url, extraArgs) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('psql', psqlArgs(url, extraArgs), { env: psqlEnv(url), stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (status) => resolve({ status, stderr }));
+  });
 }

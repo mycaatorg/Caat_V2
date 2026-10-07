@@ -156,10 +156,10 @@ describe("community server actions", () => {
     expect(query(db, "notifications", "insert")).toBeUndefined();
   });
 
-  it("sends one approval notification only after the atomic RPC reports a change", async () => {
+  it("approves through the atomic RPC and leaves the approval notification to the database", async () => {
     const db = setDb({ id: OWNER }, (ctx) => {
       if (ctx.table === "community_groups" && ctx.op === "select")
-        return { data: { creator_id: OWNER, name: "Study Group" } };
+        return { data: { creator_id: OWNER } };
       return { data: null };
     }, () => ({ data: true, error: null }));
 
@@ -170,12 +170,8 @@ describe("community server actions", () => {
     expect(db.rpc).toHaveBeenCalledWith("approve_group_join_request", { p_group_id: GROUP, p_requester_user_id: MEMBER });
     expect(query(db, "community_group_members", "insert")).toBeUndefined();
     expect(query(db, "community_group_members", "upsert")).toBeUndefined();
-    const notifications = db.queries.filter((ctx) => ctx.table === "notifications" && ctx.op === "insert");
-    expect(notifications).toHaveLength(1);
-    expect(hasCall(notifications[0], "insert", {
-      user_id: MEMBER, actor_id: OWNER, type: "request_approved", post_id: null,
-      message: "Your request to join Study Group was approved",
-    })).toBe(true);
+    // PROD-100: the request's transition to approved notifies the requester.
+    expect(db.queries.some((ctx) => ctx.table === "notifications")).toBe(false);
   });
 
   it("does not let a reply attach a comment from another post", async () => {
