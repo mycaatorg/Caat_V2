@@ -225,24 +225,35 @@ export default function EssaysShell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Merge rather than replace: an essay created while this load was in flight
-  // is newer than the response and must not vanish from the list. A failed
-  // load is shown as an error, not as "No custom essays yet".
+  // Essays created or deleted while a list load is in flight are newer than its
+  // response. The response is authoritative for everything else, so a later
+  // reload still drops rows deleted elsewhere (or another account's rows).
+  const createdDuringLoad = useRef(new Set<string>());
+  const deletedDuringLoad = useRef(new Set<string>());
   const loadCustomPrompts = useCallback(() => {
+    createdDuringLoad.current = new Set();
+    deletedDuringLoad.current = new Set();
     setCustomPromptsError(false);
     fetchCustomPrompts()
       .then((loaded) =>
         setCustomPrompts((prev) => {
-          const loadedIds = new Set(loaded.map((p) => p.id));
-          return [...loaded, ...prev.filter((p) => !loadedIds.has(p.id))];
+          const kept = loaded.filter((p) => !deletedDuringLoad.current.has(p.id));
+          const keptIds = new Set(kept.map((p) => p.id));
+          const created = prev.filter((p) => createdDuringLoad.current.has(p.id) && !keptIds.has(p.id));
+          return [...kept, ...created];
         })
       )
+      // A failed load is shown as an error, not as "No custom essays yet".
       .catch(() => setCustomPromptsError(true));
   }, []);
 
   // Load custom prompts when authenticated
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      setCustomPrompts([]);
+      setCustomPromptsError(false);
+      return;
+    }
     loadCustomPrompts();
     fetchMySchools().then(setMySchools).catch(() => {});
   }, [isAuthenticated, loadCustomPrompts]);
@@ -479,7 +490,9 @@ export default function EssaysShell({
     setSavingCustomPrompt(true);
     try {
       const cp = await createCustomPrompt(title);
-      setCustomPrompts((prev) => [...prev, cp]);
+      createdDuringLoad.current.add(cp.id);
+      // A list load that read after the insert may already include it.
+      setCustomPrompts((prev) => (prev.some((p) => p.id === cp.id) ? prev : [...prev, cp]));
       setNewCustomTitle("");
       setCreatingCustomPrompt(false);
       setSelectedPromptId(cp.id);
@@ -527,6 +540,7 @@ export default function EssaysShell({
           }
         }
         await deleteCustomPrompt(id);
+        deletedDuringLoad.current.add(id);
         // Delete all drafts for this custom prompt from local state
         setCustomPrompts((prev) => prev.filter((p) => p.id !== id));
         if (deletingActivePrompt) {

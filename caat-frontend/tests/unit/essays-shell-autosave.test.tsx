@@ -658,6 +658,36 @@ describe("custom essay list loading", () => {
     expect(document.body.textContent).not.toContain("No custom essays yet");
   });
 
+  it("clears on sign-out and trusts the server list after signing back in", async () => {
+    const other = { ...custom, id: "custom-2", title: "Another account's essay" };
+    mocks.fetchCustomPrompts.mockResolvedValueOnce([custom]).mockResolvedValueOnce([other]);
+    await mountEditor([]);
+    expect(buttonNamed("Why law at Monash")).toBeTruthy();
+    const authChange = mocks.onAuthStateChange.mock.calls[0][0] as (event: string, session: unknown) => void;
+
+    await act(async () => { authChange("SIGNED_OUT", null); });
+    await settleEffects();
+    expect(document.body.textContent).not.toContain("Why law at Monash");
+
+    await act(async () => { authChange("SIGNED_IN", { user: { id: "user-2" } }); });
+    await settleEffects();
+    expect(buttonNamed("Another account's essay")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("Why law at Monash");
+  });
+
+  it("does not add the same new essay twice when the list already includes it", async () => {
+    let finishLoad!: (value: unknown[]) => void;
+    mocks.fetchCustomPrompts.mockReturnValue(new Promise((resolve) => { finishLoad = resolve; }));
+    mocks.createCustomPrompt.mockResolvedValue(custom);
+    await mountEditor([]);
+    await act(async () => { finishLoad([custom]); });
+    await settleEffects();
+    await createCustom("Why law at Monash");
+    const matches = [...document.querySelectorAll("button")].filter((b) => b.textContent?.includes("Why law at Monash"));
+    expect(matches.length).toBeLessThanOrEqual(2);
+    expect(new Set(matches.map((b) => b.closest("div.group"))).size).toBe(1);
+  });
+
   it("shows a retryable error instead of an empty list when custom essays fail to load", async () => {
     mocks.fetchCustomPrompts.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([custom]);
     await mountEditor([]);

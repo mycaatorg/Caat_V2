@@ -154,6 +154,8 @@ test("custom essay draft content autosaves and reloads from the real account", a
   } finally {
     releaseList();
     await page.unroute(CUSTOM_PROMPTS).catch(() => {});
+    // Reload so cleanup sees the persisted list even if the UI dropped the row.
+    await page.reload().catch(() => {});
     await removeCustomEssay(page, title).catch(() => {});
   }
 });
