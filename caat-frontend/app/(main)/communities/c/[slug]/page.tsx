@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { Users, Lock, Globe, CalendarDays, ArrowLeft } from "lucide-react";
+import { Users, Lock, Globe, CalendarDays, ArrowLeft, DoorOpen } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import {
   Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator,
@@ -13,8 +13,9 @@ import { GroupJoinButton } from "@/components/communities/GroupJoinButton";
 import { GroupManageMenu } from "@/components/communities/GroupManageMenu";
 import { GroupFeedClient } from "@/components/communities/GroupFeedClient";
 import { createSupabaseServer } from "@/lib/supabase-server";
+import { PrivateGroupJoinCard } from "@/components/communities/PrivateGroupJoinCard";
 import {
-  fetchGroupAction, fetchGroupPostsAction, fetchMyGroupsAction,
+  fetchGroupAction, fetchGroupJoinCardAction, fetchGroupPostsAction, fetchMyGroupsAction,
 } from "@/app/(main)/communities/actions";
 import type { PostAuthor } from "@/types/community";
 
@@ -25,56 +26,35 @@ interface Props {
 export default async function GroupPage({ params }: Props) {
   const { slug } = await params;
   const { group, error } = await fetchGroupAction(slug);
-  if (error || !group) notFound();
+  if (error || !group) {
+    // RLS hides a private community from non-members. If the link is to a
+    // private community the caller may ask to join, show only the minimal
+    // join card; anything else stays a plain not-found (PROD-86).
+    const { card } = await fetchGroupJoinCardAction(slug);
+    if (!card) notFound();
+    return (
+      <PrivateGroupJoinCard
+        groupId={card.id}
+        name={card.name}
+        slug={slug}
+        hasRequested={card.has_pending_request}
+      />
+    );
+  }
 
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Private group: non-members see request-to-join screen
+  // A readable private group without membership (a legacy creator row) gets
+  // the same minimal card rather than the description or counts.
   if (group.is_private && !group.is_member) {
     return (
-      <>
-        <header className="flex h-16 shrink-0 items-center gap-2 px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-          <Breadcrumb className="flex-1">
-            <BreadcrumbList>
-              <BreadcrumbItem className="hidden md:block">
-                <BreadcrumbLink href="/communities">Community Campus</BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator className="hidden md:block" />
-              <BreadcrumbItem><BreadcrumbLink>c/{group.slug}</BreadcrumbLink></BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-          <NotificationBell />
-        </header>
-        <div className="flex flex-col items-center justify-center py-32 text-muted-foreground gap-4">
-          <div className="size-14 rounded-full bg-gradient-to-br from-zinc-200 to-zinc-300 dark:from-zinc-700 dark:to-zinc-800 flex items-center justify-center text-base font-bold text-zinc-600 dark:text-zinc-300">
-            {group.name.slice(0, 2).toUpperCase()}
-          </div>
-          <div className="text-center space-y-1">
-            <p className="text-base font-semibold text-foreground">{group.name}</p>
-            <p className="text-sm font-mono text-muted-foreground">c/{group.slug}</p>
-          </div>
-          <div className="flex items-center gap-1.5 text-sm">
-            <Lock className="size-3.5" />
-            <span>This is a private community</span>
-          </div>
-          {group.description && (
-            <p className="text-sm text-muted-foreground max-w-xs text-center">{group.description}</p>
-          )}
-          <GroupJoinButton
-            groupId={group.id}
-            initialIsMember={false}
-            isOwner={false}
-            isPrivate={true}
-            initialHasRequested={group.has_requested}
-          />
-          <Link href="/communities/groups" className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-            <ArrowLeft className="size-3" /> Browse communities
-          </Link>
-        </div>
-      </>
+      <PrivateGroupJoinCard
+        groupId={group.id}
+        name={group.name}
+        slug={group.slug}
+        hasRequested={!!group.has_requested}
+      />
     );
   }
 
@@ -206,6 +186,15 @@ export default async function GroupPage({ params }: Props) {
                 isPrivate={group.is_private}
                 initialHasRequested={group.has_requested}
               />
+
+              {group.is_owner && group.is_private && (
+                <Link href="/communities/requests">
+                  <Button size="sm" variant="outline" className="w-full gap-1.5">
+                    <DoorOpen className="size-3.5" />
+                    Review join requests
+                  </Button>
+                </Link>
+              )}
 
               {group.is_owner && (
                 <GroupManageMenu

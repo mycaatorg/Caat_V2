@@ -1739,6 +1739,14 @@ export type Database = {
           target_majors: string[]
         }[]
       }
+      get_community_group_join_card: {
+        Args: { p_slug: string }
+        Returns: {
+          has_pending_request: boolean
+          id: string
+          name: string
+        }[]
+      }
       get_poll_vote_counts: {
         Args: { post_ids: string[] }
         Returns: {
@@ -1760,6 +1768,10 @@ export type Database = {
       reject_group_join_request: {
         Args: { p_group_id: string; p_requester_user_id: string }
         Returns: boolean
+      }
+      request_community_group_join: {
+        Args: { p_group_id: string }
+        Returns: string
       }
       scholarship_universities: { Args: never; Returns: string[] }
       search_scholarships: {

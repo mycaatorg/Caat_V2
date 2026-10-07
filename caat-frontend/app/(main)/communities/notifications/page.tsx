@@ -8,6 +8,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { getInitials } from "@/lib/user-utils";
+import { notificationHref } from "@/lib/notification-href";
 import { fetchNotificationsAction } from "@/app/(main)/communities/actions";
 import { MarkNotificationsRead } from "./MarkRead";
 import type { NotificationItem } from "@/types/community";
@@ -63,12 +64,7 @@ export default async function NotificationsPage() {
               {notifications.map((n) => {
                 const cfg = TYPE_CONFIG[n.type] ?? FALLBACK_CONFIG;
                 const Icon = cfg.icon;
-                // D5 — follow notifications must link by actor id, not name.
-                const href = n.post_id
-                  ? `/communities/${n.post_id}`
-                  : n.type === "follow" && n.actor_id
-                    ? `/communities/profile/${n.actor_id}`
-                    : "/communities";
+                const href = notificationHref(n);
                 return (
                   <Link
                     key={n.id}

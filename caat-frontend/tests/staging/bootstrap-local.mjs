@@ -18,5 +18,10 @@ const migration = spawnSync(process.execPath, [join(here, 'apply-community-migra
 });
 if (migration.error) throw migration.error;
 if (migration.status !== 0) throw new Error('Local community migration failed.');
+const joinRequest = spawnSync(process.execPath, [join(here, 'apply-join-request-migration.mjs')], {
+  stdio: 'inherit', env: process.env,
+});
+if (joinRequest.error) throw joinRequest.error;
+if (joinRequest.status !== 0) throw new Error('Local join request migration failed.');
 runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, 'seed.sql')]);
 console.log('Local-only CAAT schema and synthetic catalog fixtures installed.');

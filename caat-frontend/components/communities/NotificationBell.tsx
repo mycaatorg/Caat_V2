@@ -15,6 +15,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getInitials } from "@/lib/user-utils";
+import { notificationHref } from "@/lib/notification-href";
 import { supabase } from "@/lib/supabase/client";
 import { fetchNotificationsAction, markNotificationsReadAction } from "@/app/(main)/communities/actions";
 import type { NotificationItem } from "@/types/community";
@@ -159,13 +160,7 @@ export function NotificationBell() {
             notifications.map((n) => {
               const cfg = TYPE_CONFIG[n.type] ?? FALLBACK_CONFIG;
               const Icon = cfg.icon;
-              // D5 — never link to /communities/null; route by what the
-              // notification actually points at.
-              const href = n.post_id
-                ? `/communities/${n.post_id}`
-                : n.type === "follow" && n.actor_id
-                  ? `/communities/profile/${n.actor_id}`
-                  : "/communities";
+              const href = notificationHref(n);
               return (
                 <Link
                   key={n.id}
