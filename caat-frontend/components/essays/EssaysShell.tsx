@@ -230,26 +230,34 @@ export default function EssaysShell({
   // reload still drops rows deleted elsewhere (or another account's rows).
   const createdDuringLoad = useRef(new Set<string>());
   const deletedDuringLoad = useRef(new Set<string>());
+  // Only the newest load may apply its response; an older, slower one (or one
+  // from before a sign-out) is discarded.
+  const customLoadSeq = useRef(0);
   const loadCustomPrompts = useCallback(() => {
+    const seq = ++customLoadSeq.current;
     createdDuringLoad.current = new Set();
     deletedDuringLoad.current = new Set();
     setCustomPromptsError(false);
     fetchCustomPrompts()
-      .then((loaded) =>
+      .then((loaded) => {
+        if (seq !== customLoadSeq.current) return;
         setCustomPrompts((prev) => {
           const kept = loaded.filter((p) => !deletedDuringLoad.current.has(p.id));
           const keptIds = new Set(kept.map((p) => p.id));
           const created = prev.filter((p) => createdDuringLoad.current.has(p.id) && !keptIds.has(p.id));
           return [...kept, ...created];
-        })
-      )
+        });
+      })
       // A failed load is shown as an error, not as "No custom essays yet".
-      .catch(() => setCustomPromptsError(true));
+      .catch(() => {
+        if (seq === customLoadSeq.current) setCustomPromptsError(true);
+      });
   }, []);
 
   // Load custom prompts when authenticated
   useEffect(() => {
     if (!isAuthenticated) {
+      customLoadSeq.current += 1;
       setCustomPrompts([]);
       setCustomPromptsError(false);
       return;

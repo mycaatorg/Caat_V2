@@ -658,18 +658,24 @@ describe("custom essay list loading", () => {
     expect(document.body.textContent).not.toContain("No custom essays yet");
   });
 
-  it("clears on sign-out and trusts the server list after signing back in", async () => {
+  it("clears on sign-out and ignores a slower response from before it", async () => {
     const other = { ...custom, id: "custom-2", title: "Another account's essay" };
-    mocks.fetchCustomPrompts.mockResolvedValueOnce([custom]).mockResolvedValueOnce([other]);
+    let finishA!: (value: unknown[]) => void;
+    let finishB!: (value: unknown[]) => void;
+    mocks.fetchCustomPrompts
+      .mockReturnValueOnce(new Promise((resolve) => { finishA = resolve; }))
+      .mockReturnValueOnce(new Promise((resolve) => { finishB = resolve; }));
     await mountEditor([]);
-    expect(buttonNamed("Why law at Monash")).toBeTruthy();
     const authChange = mocks.onAuthStateChange.mock.calls[0][0] as (event: string, session: unknown) => void;
 
     await act(async () => { authChange("SIGNED_OUT", null); });
+    await act(async () => { authChange("SIGNED_IN", { user: { id: "user-2" } }); });
     await settleEffects();
+    // Signed back in, new list still loading: nothing from before the sign-out.
     expect(document.body.textContent).not.toContain("Why law at Monash");
 
-    await act(async () => { authChange("SIGNED_IN", { user: { id: "user-2" } }); });
+    await act(async () => { finishB([other]); });
+    await act(async () => { finishA([custom]); });
     await settleEffects();
     expect(buttonNamed("Another account's essay")).toBeTruthy();
     expect(document.body.textContent).not.toContain("Why law at Monash");
