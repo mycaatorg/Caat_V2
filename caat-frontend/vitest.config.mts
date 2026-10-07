@@ -13,7 +13,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text-summary", "text", "json-summary", "lcov"],
       // Ratchet the verified whole-source baseline; new work should add tests.
-      thresholds: { lines: 31, statements: 30, functions: 23, branches: 26 },
+      thresholds: { lines: 33, statements: 32, functions: 25, branches: 28 },
       // Include untested production code: these are whole-source UNIT coverage
       // numbers. Browser route/journey coverage is reported separately.
       include: [

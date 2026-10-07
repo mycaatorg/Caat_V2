@@ -362,6 +362,7 @@ export default function DocumentVaultClient({
   const hasInitialDocs = initialDocs != null;
   const [docs, setDocs] = useState<DocumentRow[]>(initialDocs ?? []);
   const [loading, setLoading] = useState(!hasInitialDocs);
+  const [loadError, setLoadError] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("All Files");
   const [page, setPage] = useState(1);
 
@@ -413,9 +414,12 @@ export default function DocumentVaultClient({
   async function loadDocs() {
     try {
       setLoading(true);
+      setLoadError(false);
       const data = await fetchDocuments();
       setDocs(data);
     } catch {
+      // A failed load is not an empty vault: never invite a "first" upload.
+      setLoadError(true);
       toast.error("Failed to load documents");
     } finally {
       setLoading(false);
@@ -454,7 +458,9 @@ export default function DocumentVaultClient({
     try {
       setIsUploading(true);
       const newDoc = await uploadDocument(uploadFile, uploadCategory, uploadSchoolId);
-      setDocs((prev) => [newDoc, ...prev]);
+      // After a failed load the local list is incomplete; reload it instead.
+      if (loadError) void loadDocs();
+      else setDocs((prev) => [newDoc, ...prev]);
       setSheetOpen(false);
       setUploadFile(null);
       toast.success("Document uploaded successfully");
@@ -568,6 +574,8 @@ export default function DocumentVaultClient({
       {/* ------------------------------------------------------------------ */}
       {/* Stats cards                                                         */}
       {/* ------------------------------------------------------------------ */}
+      {/* Zero counts would be false while the list failed to load. */}
+      {!loadError && (
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <StatCard
           label="Verified"
@@ -591,6 +599,7 @@ export default function DocumentVaultClient({
           total={total}
         />
       </div>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Filter tabs + document table                                        */}
@@ -653,6 +662,13 @@ export default function DocumentVaultClient({
               ))}
             </div>
           ))
+        ) : loadError ? (
+          <div role="alert" className="py-16 text-center">
+            <p className="text-sm font-medium">Couldn&apos;t load your documents.</p>
+            <Button size="sm" variant="outline" className="mt-3" onClick={loadDocs}>
+              Try again
+            </Button>
+          </div>
         ) : pagedDocs.length > 0 ? (
           pagedDocs.map((doc, idx) => (
             <div

@@ -287,7 +287,7 @@
         "tests/e2e/staging-journeys.spec.ts",
         "tests/e2e/documents.spec.ts"
       ],
-      "reason": "PR staging uploads a synthetic PDF to local Storage, verifies metadata after reload, then deletes the file and row."
+      "reason": "PR staging uploads a synthetic PDF to local Storage, verifies metadata after reload, then deletes the file and row. A recovery journey aborts one storage upload and one row delete, checks no false success and kept state, retries both, reads the stored bytes through the owner's signed link, and proves the object is gone after deletion."
     },
     {
       "id": "application-create-update",
