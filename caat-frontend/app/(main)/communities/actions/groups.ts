@@ -334,48 +334,110 @@ export async function requestJoinGroupAction(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in" };
 
-  // Check if already a member
-  const { data: existing } = await supabase
-    .from("community_group_members")
-    .select("role")
-    .eq("group_id", groupId)
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (existing) return { error: null };
-
-  // Upsert request
-  const { error: requestError } = await supabase
-    .from("community_group_requests")
-    .upsert({ group_id: groupId, user_id: user.id, status: "pending" });
-  if (requestError)
-    return { error: sanitizeError(requestError, "Could not request to join this community.") };
-
-  // Notify group owner
-  const { data: groupRow } = await supabase
-    .from("community_groups")
-    .select("creator_id, name")
-    .eq("id", groupId)
-    .maybeSingle();
-  if (groupRow?.creator_id && groupRow.creator_id !== user.id) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("first_name, last_name")
-      .eq("id", user.id)
-      .maybeSingle();
-    const requesterName = profile
-      ? [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
-        "Someone"
-      : "Someone";
-    await supabase.from("notifications").insert({
-      user_id: groupRow.creator_id,
-      actor_id: user.id,
-      type: "join_request",
-      post_id: null,
-      message: `${requesterName} requested to join ${groupRow.name as string}`,
-    });
-  }
-
+  // PROD-86: a requester cannot read a private group or write notifications,
+  // so the database records the pending request and notifies the owner in one
+  // transaction. Only the group id is sent; owner, actor and message are
+  // derived there. A retry ("pending") or existing membership ("member") is
+  // a successful no-op that never notifies again.
+  const { error } = await supabase.rpc("request_community_group_join", {
+    p_group_id: groupId,
+  });
+  if (error)
+    return { error: sanitizeError(error, "Could not request to join this community.") };
   return { error: null };
+}
+
+
+export interface GroupJoinCard {
+  id: string;
+  name: string;
+  has_pending_request: boolean;
+}
+
+/**
+ * The deliberately minimal view of a private community that the caller
+ * reached by its link but cannot read: id and name only, plus whether the
+ * caller already asked to join. No description, posts, members or counts.
+ */
+export async function fetchGroupJoinCardAction(
+  slug: string,
+): Promise<{ card: GroupJoinCard | null }> {
+  const supabase = await createSupabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { card: null };
+
+  const { data, error } = await supabase.rpc("get_community_group_join_card", {
+    p_slug: slug,
+  });
+  const row = error ? undefined : data?.[0];
+  if (!row) return { card: null };
+  return {
+    card: { id: row.id, name: row.name, has_pending_request: !!row.has_pending_request },
+  };
+}
+
+
+export interface JoinRequestQueueGroup {
+  id: string;
+  name: string;
+  slug: string;
+  requests: { user_id: string; created_at: string; user: PostAuthor | null }[];
+}
+
+/** Pending join requests across every community the caller owns. */
+export async function fetchJoinRequestQueueAction(): Promise<{
+  groups: JoinRequestQueueGroup[];
+  error: string | null;
+}> {
+  const supabase = await createSupabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { groups: [], error: "Not signed in" };
+
+  const { data: owned, error: ownedError } = await supabase
+    .from("community_groups")
+    .select("id, name, slug")
+    .eq("creator_id", user.id)
+    .order("name");
+  if (ownedError) return { groups: [], error: "Could not load join requests." };
+  if (!owned?.length) return { groups: [], error: null };
+
+  const { data: rows, error: requestsError } = await supabase
+    .from("community_group_requests")
+    .select("group_id, user_id, created_at")
+    .in("group_id", owned.map((g) => g.id as string))
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
+  if (requestsError) return { groups: [], error: "Could not load join requests." };
+  if (!rows?.length) return { groups: [], error: null };
+
+  const { data: profiles } = await supabase.rpc("get_public_profiles", {
+    user_ids: [...new Set(rows.map((r) => r.user_id as string))],
+  });
+  const profileMap = new Map<string, PostAuthor>(
+    ((profiles ?? []) as PostAuthor[]).map((p) => [p.id, p]),
+  );
+
+  return {
+    groups: owned
+      .map((g) => ({
+        id: g.id as string,
+        name: g.name as string,
+        slug: g.slug as string,
+        requests: rows
+          .filter((r) => r.group_id === g.id)
+          .map((r) => ({
+            user_id: r.user_id as string,
+            created_at: r.created_at as string,
+            user: profileMap.get(r.user_id as string) ?? null,
+          })),
+      }))
+      .filter((g) => g.requests.length > 0),
+    error: null,
+  };
 }
 
 

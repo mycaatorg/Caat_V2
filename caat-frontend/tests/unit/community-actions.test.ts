@@ -102,15 +102,14 @@ describe("community server actions", () => {
   });
 
   it("reports a failed join request without sending a success notification", async () => {
-    const db = setDb({ id: MEMBER }, (ctx) => {
-      if (ctx.table === "community_group_members" && ctx.op === "select") return { data: null };
-      if (ctx.table === "community_group_requests" && ctx.op === "upsert") return { data: null, error: { message: "request denied" } };
-      return { data: null };
-    });
+    const db = setDb({ id: MEMBER }, () => ({ data: null }),
+      () => ({ data: null, error: { message: "request denied" } }));
 
     const result = await requestJoinGroupAction(GROUP);
 
     expect(result.error).not.toBeNull();
+    expect(db.rpc).toHaveBeenCalledWith("request_community_group_join", { p_group_id: GROUP });
+    expect(query(db, "community_group_requests", "upsert")).toBeUndefined();
     expect(query(db, "notifications", "insert")).toBeUndefined();
   });
 
