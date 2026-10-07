@@ -1,5 +1,6 @@
 "use client";
 
+import { capIndents } from "@/extensions/Indent";
 import React, {
   useEffect,
   useLayoutEffect,
@@ -50,6 +51,28 @@ export type PageModel = {
   sections: PageSectionChunk[];
 };
 
+/**
+ * One list per item, so each item can page-break on its own. Each wrapper keeps
+ * the list's attributes (marker style, type) and, for ordered lists, the number
+ * its item shows, counting from the list's own start.
+ */
+export function splitListItems(list: HTMLElement, items: HTMLElement[]): HTMLElement[] {
+  const tagName = list.tagName.toLowerCase();
+  const start = Number.parseInt(list.getAttribute("start") ?? "1", 10);
+  const first = Number.isNaN(start) ? 1 : start;
+  return items.map((li, index) => {
+    const wrapper = document.createElement(tagName);
+    for (const { name, value } of Array.from(list.attributes)) wrapper.setAttribute(name, value);
+    if (tagName === "ol") {
+      const number = first + index;
+      if (number === 1) wrapper.removeAttribute("start");
+      else wrapper.setAttribute("start", String(number));
+    }
+    wrapper.appendChild(li.cloneNode(true));
+    return wrapper;
+  });
+}
+
 function getTopLevelBlocks(
   sectionId: string,
   sectionLabel: string,
@@ -59,6 +82,7 @@ function getTopLevelBlocks(
 
   const container = document.createElement("div");
   container.innerHTML = html || "";
+  capIndents(container);
 
   const nodes = Array.from(container.childNodes);
   const blocks: RenderBlock[] = [];
@@ -103,15 +127,9 @@ function getTopLevelBlocks(
         return;
       }
 
-      const listStyle = el.getAttribute("style");
-      items.forEach((li, liIndex) => {
-        const wrapper = document.createElement(tagName);
-        // Each li becomes its own list so it can page-break independently;
-        // for ordered lists, carry the start number so 1,2,3 is preserved.
-        if (tagName === "ol" && liIndex > 0) wrapper.setAttribute("start", String(liIndex + 1));
-        // Carry the list's inline style (e.g. list-style-type) onto each wrapper.
-        if (listStyle) wrapper.setAttribute("style", listStyle);
-        wrapper.appendChild(li.cloneNode(true));
+      // Each li becomes its own list so it can page-break independently.
+      splitListItems(el, items).forEach((wrapper, liIndex) => {
+        const li = items[liIndex];
         blocks.push({
           id: `${sectionId}-li-${index}-${liIndex}`,
           sectionId,
