@@ -122,7 +122,7 @@ export default async function GroupPage({ params }: Props) {
         <div className="max-w-5xl mx-auto flex gap-6 items-start">
 
           {/* Feed — same width as main communities page */}
-          <main className="flex-1 min-w-0 space-y-4">
+          <div className="flex-1 min-w-0 space-y-4">
 
             {/* Sticky community context banner */}
             <div className="sticky top-0 z-10 -mx-1 px-1 pb-2 pt-0.5 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -153,7 +153,7 @@ export default async function GroupPage({ params }: Props) {
               initialSavedIds={savedIds}
               isMember={group.is_member}
             />
-          </main>
+          </div>
 
           {/* Right sidebar */}
           <aside className="w-72 shrink-0 hidden lg:block sticky top-6 space-y-4">

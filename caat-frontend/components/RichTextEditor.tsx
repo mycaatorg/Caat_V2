@@ -8,7 +8,7 @@ import { TextStyle, Color, BackgroundColor } from "@tiptap/extension-text-style"
 import React, { useEffect } from "react";
 import { FontSizeExtension } from "@/extensions/FontSize";
 import { LineHeightExtension } from "@/extensions/LineHeight";
-import { IndentExtension } from "@/extensions/Indent";
+import { IndentExtension, MAX_INDENT } from "@/extensions/Indent";
 import { ListStyleExtension } from "@/extensions/ListStyle";
 import { Bold, Italic, Underline, Strikethrough, List, ListOrdered, ListChecks, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, Link2, Highlighter, Baseline, ChevronDown, Check, RemoveFormatting } from "lucide-react";
 import {
@@ -145,6 +145,9 @@ export default function RichTextEditor({ content, onChange, variant = "full" }: 
   const minimal = variant === "minimal";
   const editor = useEditor({
     immediatelyRender: false,
+    // The toolbar reads the selection (active marks, list controls); without
+    // this it only refreshed on edits, not when the cursor moved.
+    shouldRerenderOnTransaction: true,
     extensions: [
       StarterKit.configure({ link: { openOnClick: false } }),
       TextStyle,
@@ -236,7 +239,7 @@ export default function RichTextEditor({ content, onChange, variant = "full" }: 
   const currentIndent = () =>
     Number(editor.getAttributes("paragraph").indent ?? editor.getAttributes("heading").indent ?? 0);
   const changeIndent = (delta: number) => {
-    const next = Math.max(0, Math.min(8, currentIndent() + delta));
+    const next = Math.max(0, Math.min(MAX_INDENT, currentIndent() + delta));
     editor
       .chain()
       .focus()

@@ -345,6 +345,8 @@ export default function ResumeBuilderShell() {
     ) {
       return;
     }
+    const removedIndex = sections.findIndex((s) => s.id === id);
+    const owningResumeId = resumeIdRef.current;
     setSections((prev) => {
       const next = prev.filter((s) => s.id !== id);
 
@@ -360,9 +362,29 @@ export default function ResumeBuilderShell() {
       return next;
     });
 
-    deleteSectionFromDb(id).catch((err) => {
+    // Queue the server delete behind any save already queued or in flight.
+    // Those saves upsert every section they captured, so one that landed after
+    // the delete would bring the removed section back on the next load.
+    queuedSaveCountRef.current += 1;
+    setIsSaving(true);
+    const removal = saveQueueRef.current.catch(() => {}).then(() => deleteSectionFromDb(id)).finally(() => {
+      queuedSaveCountRef.current -= 1;
+      setIsSaving(queuedSaveCountRef.current > 0);
+    });
+    saveQueueRef.current = removal;
+    removal.catch((err) => {
       if (process.env.NODE_ENV !== "production") console.error("Failed to delete section from database:", err);
-      toast.error("Section removed locally but could not be deleted from the server.");
+      // The row still exists and would return on the next load, so put the
+      // section back where it was instead of showing it as deleted.
+      if (target && resumeIdRef.current === owningResumeId) {
+        setSections((prev) => {
+          if (prev.some((s) => s.id === id)) return prev;
+          const next = [...prev];
+          next.splice(Math.min(Math.max(removedIndex, 0), next.length), 0, target);
+          return next;
+        });
+      }
+      toast.error("Could not delete the section. It has been restored.");
     });
   }
 
@@ -852,10 +874,12 @@ export default function ResumeBuilderShell() {
         {(["structure", "editor", "preview"] as const).map((tab) => (
           <button
             key={tab}
+            type="button"
+            aria-pressed={mobileTab === tab}
             onClick={() => setMobileTab(tab)}
             className={`flex-1 py-2 text-sm capitalize font-medium ${
               mobileTab === tab
-                ? "border-b-2 border-blue-600 text-blue-600"
+                ? "border-b-2 border-[#9a1a27] text-[#9a1a27] dark:border-[#e06b78] dark:text-[#e06b78]"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >

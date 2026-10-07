@@ -65,6 +65,8 @@ export default function Navbar() {
           <button
             onClick={() => setOpen(!open)}
             aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
+            aria-controls="landing-mobile-menu"
             className="md:hidden p-2 -mr-2 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-black focus-visible:outline-offset-2"
           >
             {open ? (
@@ -78,7 +80,7 @@ export default function Navbar() {
 
       {/* Mobile menu */}
       {open && (
-        <div className="md:hidden border-t border-black bg-white">
+        <div id="landing-mobile-menu" className="md:hidden border-t border-black bg-white">
           <div className="max-w-6xl mx-auto px-6 py-6 flex flex-col gap-0">
             {NAV_LINKS.map((link) => (
               <a

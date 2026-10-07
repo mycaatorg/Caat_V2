@@ -1,5 +1,6 @@
 "use client";
 
+import { capIndents } from "@/extensions/Indent";
 import React, {
   useEffect,
   useLayoutEffect,
@@ -50,6 +51,28 @@ export type PageModel = {
   sections: PageSectionChunk[];
 };
 
+/**
+ * One list per item, so each item can page-break on its own. Each wrapper keeps
+ * the list's attributes (marker style, type) and, for ordered lists, the number
+ * its item shows, counting from the list's own start.
+ */
+export function splitListItems(list: HTMLElement, items: HTMLElement[]): HTMLElement[] {
+  const tagName = list.tagName.toLowerCase();
+  const start = Number.parseInt(list.getAttribute("start") ?? "1", 10);
+  const first = Number.isNaN(start) ? 1 : start;
+  return items.map((li, index) => {
+    const wrapper = document.createElement(tagName);
+    for (const { name, value } of Array.from(list.attributes)) wrapper.setAttribute(name, value);
+    if (tagName === "ol") {
+      const number = first + index;
+      if (number === 1) wrapper.removeAttribute("start");
+      else wrapper.setAttribute("start", String(number));
+    }
+    wrapper.appendChild(li.cloneNode(true));
+    return wrapper;
+  });
+}
+
 function getTopLevelBlocks(
   sectionId: string,
   sectionLabel: string,
@@ -59,6 +82,7 @@ function getTopLevelBlocks(
 
   const container = document.createElement("div");
   container.innerHTML = html || "";
+  capIndents(container);
 
   const nodes = Array.from(container.childNodes);
   const blocks: RenderBlock[] = [];
@@ -103,15 +127,9 @@ function getTopLevelBlocks(
         return;
       }
 
-      const listStyle = el.getAttribute("style");
-      items.forEach((li, liIndex) => {
-        const wrapper = document.createElement(tagName);
-        // Each li becomes its own list so it can page-break independently;
-        // for ordered lists, carry the start number so 1,2,3 is preserved.
-        if (tagName === "ol" && liIndex > 0) wrapper.setAttribute("start", String(liIndex + 1));
-        // Carry the list's inline style (e.g. list-style-type) onto each wrapper.
-        if (listStyle) wrapper.setAttribute("style", listStyle);
-        wrapper.appendChild(li.cloneNode(true));
+      // Each li becomes its own list so it can page-break independently.
+      splitListItems(el, items).forEach((wrapper, liIndex) => {
+        const li = items[liIndex];
         blocks.push({
           id: `${sectionId}-li-${index}-${liIndex}`,
           sectionId,
@@ -149,22 +167,92 @@ function escapeHtml(text: string) {
     .replaceAll("'", "&#039;");
 }
 
-function makeSplitHtml(tagName: string, text: string, originalHtml: string) {
-  const safe = escapeHtml(text);
+/**
+ * Splits a block's HTML after its first `wordCount` words (counted the same
+ * way as `words(textContent)`). Both halves keep every wrapper and inline
+ * mark — list type, numbering and style; paragraph alignment, spacing and
+ * indent; bold, italic, font size, colour, links — so a block that breaks
+ * across a page prints the same formatting on both pages. Continued list items
+ * (nested ones too) hide their marker and keep their numbering.
+ */
+function splitHtmlAtWord(html: string, wordCount: number): { head: string; tail: string } {
+  const container = document.createElement("div");
+  container.innerHTML = html;
 
-  if (tagName === "li") {
-    return `<ul><li>${safe}</li></ul>`;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let seen = 0;
+  let inWord = false;
+  let splitNode: Text | null = null;
+  let splitOffset = 0;
+  for (let node = walker.nextNode() as Text | null; node && !splitNode; node = walker.nextNode() as Text | null) {
+    for (let i = 0; i < node.data.length; i += 1) {
+      const space = /\s/.test(node.data[i]);
+      if (!space) {
+        inWord = true;
+      } else if (inWord) {
+        inWord = false;
+        seen += 1;
+        if (seen === wordCount) {
+          splitNode = node;
+          splitOffset = i;
+          break;
+        }
+      }
+    }
   }
+  if (!splitNode) return { head: html, tail: "" };
 
-  if (tagName === "div") {
-    return `<div>${safe}</div>`;
-  }
+  const serialize = (range: Range) => {
+    const out = document.createElement("div");
+    out.appendChild(range.cloneContents());
+    return out;
+  };
+  const headRange = document.createRange();
+  headRange.setStart(container, 0);
+  headRange.setEnd(splitNode, splitOffset);
+  const tailRange = document.createRange();
+  tailRange.setStart(splitNode, splitOffset);
+  tailRange.setEnd(container, container.childNodes.length);
 
-  if (tagName === "p") {
-    return `<p>${safe}</p>`;
-  }
+  const head = serialize(headRange);
+  const tail = serialize(tailRange);
 
-  return originalHtml;
+  // Elements enclosing the split point, outermost first. In the clones they are
+  // the head's last-child chain and the tail's first-child chain.
+  const enclosing: HTMLElement[] = [];
+  for (let el = splitNode.parentElement; el && el !== container; el = el.parentElement) enclosing.unshift(el);
+  const chain = (root: Element, next: "firstElementChild" | "lastElementChild") => {
+    const out: HTMLElement[] = [];
+    for (let el = root[next]; el && out.length < enclosing.length; el = el[next]) out.push(el as HTMLElement);
+    return out;
+  };
+  const headChain = chain(head, "lastElementChild");
+  const tailChain = chain(tail, "firstElementChild");
+
+  enclosing.forEach((original, depth) => {
+    // A justified block continues on the next page, so its first half's last
+    // line is a full line, not the paragraph's ragged final line. Not when the
+    // half has hard line breaks: text-align-last would stretch those lines too.
+    const headPart = headChain[depth];
+    if (original.style.textAlign === "justify" && headPart && !headPart.querySelector("br")) {
+      headPart.style.setProperty("text-align-last", "justify");
+    }
+    const continued = tailChain[depth];
+    if (!continued) return;
+    // Every list item around the split continues on the next page: no new marker.
+    if (original.tagName === "LI") continued.style.setProperty("list-style-type", "none");
+    // Keep numbering: the tail's list starts at the item that was split.
+    if (original.tagName === "OL") {
+      const items = Array.from(original.children).filter((child) => child.tagName === "LI");
+      const index = items.indexOf(enclosing[depth + 1]);
+      if (index > 0) {
+        const start = Number.parseInt(original.getAttribute("start") ?? "1", 10);
+        continued.setAttribute("start", String((Number.isNaN(start) ? 1 : start) + index));
+      }
+    }
+  });
+
+  return { head: head.innerHTML, tail: tail.innerHTML };
 }
 
 function words(text: string) {
@@ -519,12 +607,7 @@ export default function ResumePreviewPanel({
 
       while (low <= high) {
         const mid = Math.floor((low + high) / 2);
-        const candidateText = allWords.slice(0, mid).join(" ");
-        const candidateHtml = makeSplitHtml(
-          block.tagName,
-          candidateText,
-          block.html
-        );
+        const candidateHtml = splitHtmlAtWord(block.html, mid).head;
         const candidateHeight = measureHtml(candidateHtml);
 
         if (candidateHeight <= availableHeight) {
@@ -539,17 +622,14 @@ export default function ResumePreviewPanel({
         return { headHtml: null, tailBlock: block };
       }
 
-      const headText = allWords.slice(0, best).join(" ");
       const tailWords = allWords.slice(best);
-
-      const headHtml = makeSplitHtml(block.tagName, headText, block.html);
+      const { head: headHtml, tail: tailHtml } = splitHtmlAtWord(block.html, best);
 
       if (tailWords.length === 0) {
         return { headHtml, tailBlock: null };
       }
 
       const tailText = tailWords.join(" ");
-      const tailHtml = makeSplitHtml(block.tagName, tailText, block.html);
 
       return {
         headHtml,

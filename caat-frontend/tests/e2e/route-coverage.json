@@ -293,7 +293,7 @@
         "tests/e2e/dual-mode.spec.ts",
         "tests/e2e/guided-rich.spec.ts"
       ],
-      "reason": "PR staging verifies saved section text survives reload; formatting, reorder, multi-resume switching, and delete journeys remain manual-only."
+      "reason": "PR staging verifies saved section text survives reload, and that a run-unique section's toolbar formatting (bold, italic, alignment, font size, line spacing, indent, numbered list style, a paragraph breaking across pages) survives reload and is what Print / PDF hands to the printer and renders to PDF pages; the section is then deleted. Reorder, rename, mode switch, multi-resume switching and resume delete are covered by unit tests only."
     },
     {
       "id": "profile-save-success",

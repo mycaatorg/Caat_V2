@@ -329,7 +329,7 @@ export default function ScholarshipsClient({
 
   return (
     <div className="p-6">
-      <main className="max-w-5xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         {/* View switcher */}
         <div className="flex items-center border border-foreground/70 mb-6 w-fit">
           <button
@@ -751,7 +751,7 @@ export default function ScholarshipsClient({
             )}
           </>
         )}
-      </main>
+      </div>
     </div>
   );
 }

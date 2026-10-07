@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { capIndents } from "@/extensions/Indent";
 import type { ResumeSection } from "./types";
 import {
   ResumePage,
@@ -14,6 +15,7 @@ import {
   SECTION_HEADER_MARGIN_PX,
   PAGE_BOTTOM_RESERVE_PX,
   SECTION_LABEL_FONT_PX,
+  splitListItems,
 } from "./ResumePreviewPanel";
 import type { PageModel, PageSectionChunk } from "./ResumePreviewPanel";
 import { publishedHtml } from "./publishedHtml";
@@ -46,6 +48,7 @@ function getTopLevelBlocks(
 
   const container = document.createElement("div");
   container.innerHTML = html || "";
+  capIndents(container);
 
   const nodes = Array.from(container.childNodes);
   const blocks: RenderBlock[] = [];
@@ -86,11 +89,8 @@ function getTopLevelBlocks(
         });
         return;
       }
-      const listStyle = el.getAttribute("style");
-      items.forEach((li, liIndex) => {
-        const wrapper = document.createElement(tagName);
-        if (listStyle) wrapper.setAttribute("style", listStyle);
-        wrapper.appendChild(li.cloneNode(true));
+      splitListItems(el, items).forEach((wrapper, liIndex) => {
+        const li = items[liIndex];
         blocks.push({
           id: `${sectionId}-li-${index}-${liIndex}`,
           sectionId,

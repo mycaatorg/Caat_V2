@@ -24,7 +24,7 @@ export default function Loading() {
       <PageHeader title="Community Campus" />
       <div className="p-6">
         <div className="max-w-5xl mx-auto flex gap-6 items-start">
-          <main className="flex-1 min-w-0 space-y-4">
+          <div className="flex-1 min-w-0 space-y-4">
             {/* Composer */}
             <Skeleton className="h-24 w-full rounded-xl" />
             {/* Search + tabs */}
@@ -34,7 +34,7 @@ export default function Loading() {
             <PostSkeleton />
             <PostSkeleton />
             <PostSkeleton />
-          </main>
+          </div>
           <aside className="w-72 shrink-0 sticky top-6 hidden lg:block space-y-4">
             <Skeleton className="h-40 w-full rounded-xl" />
             <Skeleton className="h-56 w-full rounded-xl" />
