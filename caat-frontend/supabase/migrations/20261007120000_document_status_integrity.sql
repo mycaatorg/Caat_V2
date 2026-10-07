@@ -3,6 +3,9 @@
 -- their own documents, including status and review_notes. Review fields now
 -- belong to reviewers (service role or direct database sessions). Students
 -- may still replace a file, which resets the document to pending review.
+-- One transaction: SET LOCAL takes effect, and a failed check below leaves
+-- nothing behind.
+begin;
 SET LOCAL lock_timeout = '5s';
 
 CREATE OR REPLACE FUNCTION public.guard_document_review_fields()
@@ -39,3 +42,4 @@ DROP TRIGGER IF EXISTS trg_guard_document_review_fields ON public.documents;
 CREATE TRIGGER trg_guard_document_review_fields
   BEFORE INSERT OR UPDATE ON public.documents
   FOR EACH ROW EXECUTE FUNCTION public.guard_document_review_fields();
+commit;
