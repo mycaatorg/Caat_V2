@@ -329,6 +329,14 @@
         "tests/e2e/staging-journeys.spec.ts"
       ],
       "reason": "PR staging verifies school notes and application status/checklist/notes persistence against local fixtures."
+    },
+    {
+      "id": "community-activity-notification",
+      "coverage": "isolated-ci",
+      "specs": [
+        "tests/e2e/staging-community.spec.ts"
+      ],
+      "reason": "PR staging posts in the synthetic community as the seeded student, likes and comments on it as the seeded peer, then verifies the student's notifications page lists one like and one comment from the peer (written by database triggers, PROD-100) and opens the post from the comment notification. Deleting the post removes the post and its notifications."
     }
   ]
 }

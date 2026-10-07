@@ -180,50 +180,13 @@ export async function addCommentAction(
   if (insertError || !row)
     return { comment: null, error: "Failed to post comment" };
 
+  // PROD-100: the database notifies the post author and, for a reply, the
+  // parent comment author from the inserted comment row.
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, first_name, last_name, avatar_url")
     .eq("id", user.id)
     .single();
-  const { data: post } = await supabase
-    .from("community_posts")
-    .select("user_id")
-    .eq("id", postId)
-    .single();
-
-  if (post && post.user_id !== user.id) {
-    await supabase
-      .from("notifications")
-      .insert({
-        user_id: post.user_id,
-        actor_id: user.id,
-        type: parentCommentId ? "reply" : "comment",
-        post_id: postId,
-        comment_id: row.id,
-      });
-  }
-  if (parentCommentId) {
-    const { data: parentComment } = await supabase
-      .from("community_comments")
-      .select("user_id")
-      .eq("id", parentCommentId)
-      .single();
-    if (
-      parentComment &&
-      parentComment.user_id !== user.id &&
-      parentComment.user_id !== post?.user_id
-    ) {
-      await supabase
-        .from("notifications")
-        .insert({
-          user_id: parentComment.user_id,
-          actor_id: user.id,
-          type: "reply",
-          post_id: postId,
-          comment_id: row.id,
-        });
-    }
-  }
 
   return {
     comment: {
@@ -381,19 +344,9 @@ export async function toggleCommentLikeAction(
   if (await isBlockedBetween(supabase, user.id, comment?.user_id as string))
     return { liked: false, error: "This comment isn't available" };
 
+  // PROD-100: the database notifies the comment author from the like row.
   await supabase
     .from("community_comment_likes")
     .insert({ comment_id: commentId, user_id: user.id });
-
-  // Notify the comment author (not on self-like).
-  if (comment && comment.user_id !== user.id) {
-    await supabase.from("notifications").insert({
-      user_id: comment.user_id,
-      actor_id: user.id,
-      type: "comment_like",
-      post_id: comment.post_id,
-      comment_id: commentId,
-    });
-  }
   return { liked: true, error: null };
 }

@@ -392,28 +392,20 @@ export async function approveJoinRequestAction(
   // Verify caller owns the group.
   const { data: group } = await supabase
     .from("community_groups")
-    .select("creator_id, name")
+    .select("creator_id")
     .eq("id", groupId)
     .maybeSingle();
   if (!group || group.creator_id !== user.id)
     return { error: "Not authorized" };
 
-  const { data: changed, error: approvalError } = await supabase.rpc(
+  // PROD-100: the database notifies the requester when this RPC moves the
+  // request to approved, so a repeated approval never notifies twice.
+  const { error: approvalError } = await supabase.rpc(
     "approve_group_join_request",
     { p_group_id: groupId, p_requester_user_id: requesterUserId },
   );
   if (approvalError)
     return { error: sanitizeError(approvalError, "Could not approve this join request.") };
-  // A repeated approval is successful but must not send a duplicate notification.
-  if (changed) {
-    await supabase.from("notifications").insert({
-      user_id: requesterUserId,
-      actor_id: user.id,
-      type: "request_approved",
-      post_id: null,
-      message: `Your request to join ${group.name as string} was approved`,
-    });
-  }
 
   revalidatePath("/communities");
   revalidatePath("/communities/groups");

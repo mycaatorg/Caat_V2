@@ -10,6 +10,7 @@ declare global {
 }
 
 const STUDENT_EMAIL = "e2e.student@caat.local.test";
+const PEER_EMAIL = "e2e.peer@caat.local.test";
 const GROUP_SLUG = "e2e-test-community";
 const RUN_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const GROUP_URL = `/communities/c/${GROUP_SLUG}`;
@@ -43,12 +44,16 @@ test.beforeAll(() => {
 });
 
 async function signInToLocalStudent(page: Page) {
+  await signInAs(page, STUDENT_EMAIL);
+}
+
+async function signInAs(page: Page, email: string) {
   await page.context().clearCookies();
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.context().clearCookies();
   await page.goto("/login");
-  await page.getByLabel("Email", { exact: true }).fill(STUDENT_EMAIL);
+  await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_TEST_PASSWORD!);
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL(/\/dashboard(?:$|\?)/, { timeout: 20_000 });
@@ -159,6 +164,68 @@ test("seeded community post, comment, and save persist across detail reloads", a
     // Preserve the original failure if Playwright already closed the page after
     // a timeout; otherwise require cleanup to succeed.
     if (!page.isClosed()) await removeSyntheticPost(page, content);
+  }
+});
+
+test("a peer's like and comment reach the post author's notifications", async ({ page }) => {
+  const content = `E2E notify ${RUN_ID}`;
+  const comment = `E2E notify comment ${RUN_ID}`;
+  let deleted = false;
+  await signInToLocalStudent(page);
+  try {
+    await page.goto(GROUP_URL);
+    const main = page.getByRole("main").last();
+    await main.locator("div.cursor-text").filter({ hasText: "Share your experience, results, or advice" }).click();
+    const editor = main.locator(".ProseMirror").first();
+    await expect(editor).toBeVisible({ timeout: 10_000 });
+    await editor.fill(content);
+    await page.getByText("Select a topic").click();
+    await page.getByRole("option", { name: "Advice", exact: true }).click();
+    await page.getByRole("button", { name: "Post", exact: true }).click();
+    await expect(page.getByText("Post shared.", { exact: true })).toBeVisible({ timeout: 15_000 });
+
+    // The peer likes and comments. Neither action writes a notification;
+    // the database derives recipient and actor from the like/comment rows.
+    await signInAs(page, PEER_EMAIL);
+    await page.goto(GROUP_URL);
+    const card = page.locator("div.bg-card").filter({ hasText: content }).first();
+    await expect(card.getByText(content, { exact: true })).toBeVisible({ timeout: 15_000 });
+    await card.getByRole("button", { name: /^Like post/ }).click();
+    await expect(card.getByRole("button", { name: /^Unlike post/ })).toHaveAttribute("aria-pressed", "true");
+    await card.getByRole("button", { name: /Show comments/ }).click();
+    const commentBox = card.getByPlaceholder(/Write a comment/);
+    await commentBox.fill(comment);
+    await commentBox.press("ControlOrMeta+Enter");
+    await expect(card.getByText(comment, { exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.reload();
+    const reloaded = page.locator("div.bg-card").filter({ hasText: content }).first();
+    await expect(reloaded.getByRole("button", { name: /^Unlike post/ })).toHaveAttribute("aria-pressed", "true", { timeout: 15_000 });
+
+    // The author sees both, named after the peer, and the comment opens the post.
+    await signInToLocalStudent(page);
+    await page.goto("/communities/notifications");
+    const list = page.getByRole("main").last();
+    const fromPeer = list.getByRole("link").filter({ hasText: "E2E Peer" }).filter({ hasText: content });
+    await expect(fromPeer.filter({ hasText: "liked your post" })).toHaveCount(1, { timeout: 15_000 });
+    await expect(fromPeer.filter({ hasText: "commented on your post" })).toHaveCount(1);
+    await fromPeer.filter({ hasText: "commented on your post" }).click();
+    await page.waitForURL(/\/communities\/[0-9a-f-]{36}$/i, { timeout: 15_000 });
+    const detail = page.locator("div.bg-card").filter({ hasText: content }).first();
+    await expect(detail.getByText(content, { exact: true })).toBeVisible({ timeout: 15_000 });
+
+    // Deleting the post removes its notifications with it (delete_post_children).
+    await detail.getByRole("button", { name: "More options" }).click();
+    await page.getByRole("menuitem", { name: "Delete post", exact: true }).click();
+    await expect(page.getByText("Post deleted.", { exact: true })).toBeVisible({ timeout: 10_000 });
+    deleted = true;
+    await page.goto("/communities/notifications");
+    await expect(page.getByRole("heading", { name: "Notifications", exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("main").last().getByRole("link").filter({ hasText: content })).toHaveCount(0);
+  } finally {
+    if (!page.isClosed() && !deleted) {
+      await signInToLocalStudent(page);
+      await removeSyntheticPost(page, content);
+    }
   }
 });
 

@@ -31,17 +31,10 @@ export async function followUserAction(
     return { error: "Follow limit reached." };
   }
 
+  // PROD-100: the database notifies the followed user from the follow row.
   await supabase
     .from("community_follows")
     .insert({ follower_id: user.id, followee_id: targetUserId });
-  await supabase
-    .from("notifications")
-    .insert({
-      user_id: targetUserId,
-      actor_id: user.id,
-      type: "follow",
-      post_id: null,
-    });
   // Refresh both the target's profile (their follower_count + is_following)
   // and the viewer's own profile (their following_count) so the UI updates
   // without a hard refresh after the server action returns.

@@ -317,20 +317,10 @@ export async function toggleLikeAction(
   if (await isBlockedBetween(supabase, user.id, post?.user_id as string))
     return { liked: false, error: "This post isn't available" };
 
+  // PROD-100: the database notifies the post author from the like row.
   await supabase
     .from("community_likes")
     .insert({ post_id: postId, user_id: user.id });
-
-  if (post && post.user_id !== user.id) {
-    await supabase
-      .from("notifications")
-      .insert({
-        user_id: post.user_id,
-        actor_id: user.id,
-        type: "like",
-        post_id: postId,
-      });
-  }
   revalidatePostSurfaces(postId);
   return { liked: true, error: null };
 }
