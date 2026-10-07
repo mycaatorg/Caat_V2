@@ -60,8 +60,9 @@ export const fakeResumeApi = {
   deleteResume: vi.fn(async () => {
     throw new Error("deleteResume is not used by these tests");
   }),
+  // Like the real API, deleting a section that has no row is a no-op success.
   deleteSection: vi.fn(async (id: string) => {
-    if (!store.sections.delete(id)) throw new Error("Section not found");
+    store.sections.delete(id);
   }),
 };
 
@@ -73,7 +74,7 @@ export function resetStore() {
   fakeResumeApi.listResumes.mockClear();
   fakeResumeApi.loadResumeById.mockClear();
   fakeResumeApi.deleteSection.mockReset().mockImplementation(async (id: string) => {
-    if (!store.sections.delete(id)) throw new Error("Section not found");
+    store.sections.delete(id);
   });
 }
 
