@@ -101,7 +101,10 @@ export function deriveTasks(input: TodayInput): TodayTask[] {
           id: `soon-${app.id}`,
           kind: "deadline-soon",
           title: `${app.schoolName} is ${dueLabel(days)}`,
-          detail: "Check what is left on the application before it closes.",
+          detail:
+            days < 0
+              ? "The closing date has passed. Update the status, or the date if it changed."
+              : "Check what is left on the application before it closes.",
           href: hub,
           dueISO: app.deadlineAt.slice(0, 10),
         });

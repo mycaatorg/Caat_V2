@@ -51,6 +51,7 @@ describe("deriveTasks", () => {
     );
     expect(tasks.map((t) => t.id)).toEqual(["soon-a2", "soon-a1", "deadline-a3"]);
     expect(tasks[0].title).toBe("University a2 is 2 days overdue");
+    expect(tasks[0].detail).toMatch(/closing date has passed/);
     expect(tasks[1].title).toBe("University a1 is due in 13 days");
   });
 

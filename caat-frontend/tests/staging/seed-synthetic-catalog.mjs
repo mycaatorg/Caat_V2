@@ -57,7 +57,8 @@ for (let i = 0; i < count; i += 1) {
     deadline_at: deadline.toISOString(),
     study_level: ['undergraduate'],
     funding_type: [rand() < 0.5 ? 'merit' : 'need'],
-    citizenships: domesticOnly ? ['Australia'] : null,
+    // Real citizenship codes, as the importer stores them.
+    citizenships: domesticOnly ? ['AU', 'AU-PR'] : rand() < 0.4 ? ['INTERNATIONAL'] : null,
     tags: [field],
     field_of_study: [field],
     is_active: rand() < 0.95,

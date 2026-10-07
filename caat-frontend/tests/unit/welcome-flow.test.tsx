@@ -5,7 +5,7 @@ import { button, click, flush, mountComponent, unmountAll } from "./dom-helpers"
 import type { OnboardingProfile } from "@/lib/onboarding";
 
 const io = vi.hoisted(() => ({
-  save: vi.fn(), complete: vi.fn(), dismiss: vi.fn(), track: vi.fn(), trackScholarship: vi.fn(), push: vi.fn(),
+  save: vi.fn(), complete: vi.fn(), dismiss: vi.fn(), track: vi.fn(), saveScholarship: vi.fn(), trackedIds: vi.fn(), push: vi.fn(),
   scholarships: { data: [] as unknown[], error: null as unknown },
   toast: { error: vi.fn() },
 }));
@@ -14,15 +14,16 @@ vi.mock("@/lib/onboarding", async (original) => ({
   saveOnboardingAnswers: io.save,
   completeOnboarding: io.complete,
   dismissOnboarding: io.dismiss,
+  saveScholarshipIfNew: io.saveScholarship,
+  fetchTrackedIds: io.trackedIds,
 }));
-vi.mock("@/lib/scholarship-tracking", () => ({ trackScholarship: io.trackScholarship }));
 vi.mock("@vercel/analytics", () => ({ track: io.track }));
 vi.mock("sonner", () => ({ toast: io.toast }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: io.push }) }));
 vi.mock("next/link", () => ({ default: ({ href, children, ...rest }: React.PropsWithChildren<{ href: string }>) => <a href={href} {...rest}>{children}</a> }));
 vi.mock("@/lib/supabase/client", () => {
   const q: Record<string, unknown> = {};
-  for (const m of ["select", "eq", "in", "limit"]) q[m] = () => q;
+  for (const m of ["select", "eq", "in", "limit", "or", "order"]) q[m] = () => q;
   q.then = (f: (v: unknown) => unknown) => Promise.resolve(io.scholarships).then(f);
   return { supabase: { from: () => q } };
 });
@@ -35,16 +36,17 @@ const blank = (patch: Partial<OnboardingProfile> = {}): OnboardingProfile => ({
 });
 const option = (name: RegExp) => [...document.querySelectorAll<HTMLButtonElement>('[role="radio"],[role="checkbox"]')].find((b) => name.test(b.textContent ?? ""))!;
 const heading = () => document.querySelector("h1")?.textContent ?? "";
-const scholarship = (id: string, title: string, tags: string[]) => ({
+const scholarship = (id: string, title: string, tags: string[], citizenships: string[] | null = null) => ({
   id, slug: id, title, provider_name: "Harbourside University", description: null, amount_display: "AUD $5,000",
-  country: "Australia", tags, citizenships: null, study_level: ["undergraduate"], school_name: "Harbourside University",
+  country: "Australia", tags, citizenships, study_level: ["undergraduate"], school_name: "Harbourside University", deadline_at: null,
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
   io.save.mockResolvedValue(undefined);
   io.complete.mockResolvedValue(undefined);
-  io.trackScholarship.mockResolvedValue(undefined);
+  io.saveScholarship.mockResolvedValue(undefined);
+  io.trackedIds.mockResolvedValue(new Set());
   io.scholarships = { data: [], error: null };
 });
 afterEach(() => unmountAll());
@@ -130,13 +132,49 @@ describe("onboarding", () => {
     expect(titles[0]).toBe("Engineering Excellence Scholarship");
     await click(button("Save"));
     await flush();
-    expect(io.trackScholarship).toHaveBeenCalledWith("s2", "interested");
+    expect(io.saveScholarship).toHaveBeenCalledWith("s2");
     expect(io.complete).toHaveBeenCalledTimes(1);
     expect(io.track).toHaveBeenCalledWith("first_item_saved", { kind: "scholarship" });
     expect(document.body.textContent).toContain("Saved to your shortlist");
     await click(button("Go to Today"));
     await flush();
     expect(io.push).toHaveBeenCalledWith("/today");
+  });
+
+  it("shows awards the student already tracks as saved and never re-saves them", async () => {
+    io.scholarships = { data: [scholarship("s1", "Engineering Award", ["Engineering"]), scholarship("s2", "Science Award", ["Science"])], error: null };
+    io.trackedIds.mockResolvedValue(new Set(["s1"]));
+    await mountComponent(<WelcomeFlow initial={blank({ year_level: "year_12", student_status: "domestic", preferred_countries: ["Australia"], target_majors: ["Engineering"], journey_stage: "applying" })} />);
+    await flush();
+    await flush();
+    const cards = [...document.querySelectorAll("li")];
+    const savedCard = cards.find((c) => c.textContent?.includes("Engineering Award"))!;
+    expect(savedCard.querySelector("button")!.textContent).toContain("Saved");
+    expect((savedCard.querySelector("button") as HTMLButtonElement).disabled).toBe(true);
+    // Saving a second award keeps the first shown as saved.
+    await click(button("Save"));
+    await flush();
+    expect(io.saveScholarship).toHaveBeenCalledTimes(1);
+    expect(io.saveScholarship).toHaveBeenCalledWith("s2");
+    expect([...document.querySelectorAll("li button")].every((b) => b.textContent?.includes("Saved"))).toBe(true);
+  });
+
+  it("re-derives the final school year when the student goes back and changes year level", async () => {
+    await mountComponent(<WelcomeFlow initial={blank()} />);
+    await click(option(/Year 12/));
+    await click(button(/Continue/));
+    await flush();
+    await click(button(/Back/));
+    await click(option(/Year 10/));
+    await click(button(/Continue/));
+    await flush();
+    expect(io.save).toHaveBeenLastCalledWith({ year_level: "year_10", graduation_year: new Date().getFullYear() + 2 });
+  });
+
+  it("moves focus to the results heading", async () => {
+    await mountComponent(<WelcomeFlow initial={blank({ year_level: "year_12", student_status: "domestic", preferred_countries: ["Australia"], target_majors: ["Law"], journey_stage: "exploring" })} />);
+    await flush();
+    expect(document.activeElement).toBe(document.querySelector("h1"));
   });
 
   it("offers a way forward when scholarships cannot load", async () => {

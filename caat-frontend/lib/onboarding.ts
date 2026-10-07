@@ -6,7 +6,9 @@
 import { supabase } from "@/lib/supabase/client";
 import { getClientUserId } from "@/lib/current-user";
 import { sanitizeError } from "@/lib/safe-error";
-import type { JourneyStage, StudentStatus, YearLevel } from "@/types/profile";
+import { matchScholarship } from "@/lib/profile-match";
+import type { JourneyStage, ProfileRow, StudentStatus, YearLevel } from "@/types/profile";
+import type { ScholarshipRow } from "@/types/scholarships";
 
 export interface OnboardingAnswers {
   year_level?: YearLevel | null;
@@ -88,4 +90,59 @@ export function graduationYearFor(level: YearLevel, now: Date = new Date()): num
 export function mergeUnique(existing: string[], added: string[]): string[] {
   const seen = new Set(existing.map((v) => v.toLowerCase()));
   return [...existing, ...added.filter((v) => !seen.has(v.toLowerCase()) && seen.add(v.toLowerCase()))];
+}
+
+// ─── Results step ────────────────────────────────────────────────────────────
+
+
+const DOMESTIC_ONLY = new Set(["AU", "AU-PR"]);
+
+export interface RankedScholarship {
+  scholarship: ScholarshipRow;
+  score: number;
+  reason: string | null;
+}
+
+/** Rank candidate scholarships for a student from their onboarding answers.
+ *  Domestic students are matched as Australian; awards limited to Australian
+ *  citizens and permanent residents are left out for international students.
+ *  Nothing here is written back to the profile. */
+export function rankOnboardingMatches(answers: OnboardingProfile, rows: ScholarshipRow[], take = 6): RankedScholarship[] {
+  const scoring = {
+    target_majors: answers.target_majors,
+    preferred_countries: answers.preferred_countries,
+    graduation_year: answers.graduation_year,
+    nationality: answers.student_status === "domestic" ? "Australian" : null,
+  } as unknown as ProfileRow;
+  return rows
+    .filter((s) => {
+      if (answers.student_status !== "international") return true;
+      const cits = Array.isArray(s.citizenships) ? (s.citizenships as string[]) : [];
+      return !(cits.length > 0 && cits.every((c) => DOMESTIC_ONLY.has(c)));
+    })
+    .map((s) => ({ scholarship: s, ...matchScholarship(scoring, s) }))
+    .sort((a, b) => b.score - a.score || (a.scholarship.deadline_at ?? "9").localeCompare(b.scholarship.deadline_at ?? "9"))
+    .slice(0, take);
+}
+
+/** Save a scholarship as "interested" without touching one already tracked
+ *  (a student who marked it applied or awarded keeps that status). */
+export async function saveScholarshipIfNew(scholarshipId: string): Promise<void> {
+  const id = await userId();
+  const { error } = await supabase
+    .from("user_bookmarked_scholarships")
+    .upsert({ user_id: id, scholarship_id: scholarshipId, status: "interested" }, { onConflict: "user_id,scholarship_id", ignoreDuplicates: true });
+  if (error) throw new Error(sanitizeError(error));
+}
+
+export async function fetchTrackedIds(scholarshipIds: string[]): Promise<Set<string>> {
+  if (scholarshipIds.length === 0) return new Set();
+  const id = await userId();
+  const { data, error } = await supabase
+    .from("user_bookmarked_scholarships")
+    .select("scholarship_id")
+    .eq("user_id", id)
+    .in("scholarship_id", scholarshipIds);
+  if (error) throw new Error(sanitizeError(error));
+  return new Set(((data ?? []) as { scholarship_id: string }[]).map((r) => r.scholarship_id));
 }

@@ -12,8 +12,11 @@ import {
   fetchOnboardingProfile,
   graduationYearFor,
   mergeUnique,
+  rankOnboardingMatches,
   saveOnboardingAnswers,
+  type OnboardingProfile,
 } from "@/lib/onboarding";
+import type { ScholarshipRow } from "@/types/scholarships";
 import { activeNavUrl } from "@/components/app-sidebar";
 
 function use(resolver: (ctx: QueryContext) => QueryResult) {
@@ -90,5 +93,33 @@ describe("navigation", () => {
     ["/scholarshipsx", null],
   ])("highlights only the best match for %s", (path, expected) => {
     expect(activeNavUrl(path)).toBe(expected);
+  });
+});
+
+describe("onboarding scholarship ranking", () => {
+  const answers = (patch: Partial<OnboardingProfile>): OnboardingProfile => ({
+    year_level: "year_12", student_status: "domestic", journey_stage: "applying", preferred_countries: ["Australia"],
+    target_majors: [], graduation_year: 2026, onboarding_completed_at: null, ...patch,
+  });
+  const row = (id: string, citizenships: string[] | null, tags: string[] = []) =>
+    ({ id, title: `Award ${id}`, description: null, tags, country: "Australia", citizenships, study_level: ["undergraduate"], deadline_at: null }) as unknown as ScholarshipRow;
+  const rows = [row("open", null), row("domestic", ["AU", "AU-PR"]), row("intl", ["INTERNATIONAL"])];
+
+  it("ranks domestic-only awards up for domestic students", () => {
+    const ranked = rankOnboardingMatches(answers({ student_status: "domestic" }), rows);
+    expect(ranked[0].scholarship.id).toBe("domestic");
+    expect(ranked[0].reason).toMatch(/citizenship|nationality/);
+  });
+
+  it("leaves domestic-only awards out for international students", () => {
+    const ids = rankOnboardingMatches(answers({ student_status: "international" }), rows).map((r) => r.scholarship.id);
+    expect(ids).not.toContain("domestic");
+    expect(ids).toEqual(expect.arrayContaining(["open", "intl"]));
+  });
+
+  it("keeps everything when the student is not sure, and prefers their interests", () => {
+    const ranked = rankOnboardingMatches(answers({ student_status: "not_sure", target_majors: ["Engineering"] }), [...rows, row("eng", null, ["Engineering"])]);
+    expect(ranked.map((r) => r.scholarship.id)).toHaveLength(4);
+    expect(ranked[0].scholarship.id).toBe("eng");
   });
 });

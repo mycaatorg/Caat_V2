@@ -3,7 +3,8 @@ import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { click, deferred, flush, hasText, link, mountComponent, queryLink, unmountAll } from "./dom-helpers";
 
-const io = vi.hoisted(() => ({ toggleTodo: vi.fn(), dismiss: vi.fn(), track: vi.fn(), toast: { error: vi.fn(), success: vi.fn() } }));
+const io = vi.hoisted(() => ({ toggleTodo: vi.fn(), dismiss: vi.fn(), track: vi.fn(), refresh: vi.fn(), toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: io.refresh }) }));
 vi.mock("@/components/dashboard/api", () => ({ toggleTodo: io.toggleTodo }));
 vi.mock("@/lib/onboarding", () => ({ dismissOnboarding: io.dismiss }));
 vi.mock("@vercel/analytics", () => ({ track: io.track }));
@@ -19,7 +20,7 @@ vi.mock("@/components/ui/checkbox", () => ({
   ),
 }));
 
-import { TodayView, type TodayViewProps } from "@/components/today/TodayView";
+import { TodayLoadError, TodayView, type TodayViewProps } from "@/components/today/TodayView";
 
 const props = (patch: Partial<TodayViewProps> = {}): TodayViewProps => ({
   name: "Mia",
@@ -96,6 +97,30 @@ describe("Today", () => {
     await click(document.querySelector('button[aria-label="Not now"]') as HTMLButtonElement);
     expect(io.dismiss).toHaveBeenCalledTimes(1);
     expect(queryLink(/^Start/)).toBeNull();
+  });
+
+  it("reports the browser's time zone once and refreshes when the server used another", async () => {
+    sessionStorage.clear();
+    document.cookie = "caat-tz=; max-age=0; path=/";
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    await mountComponent(<TodayView {...props({ timeZone: zone === "Australia/Perth" ? "Australia/Sydney" : "Australia/Perth" })} />);
+    expect(document.cookie).toContain(`caat-tz=${encodeURIComponent(zone)}`);
+    expect(io.refresh).toHaveBeenCalledTimes(1);
+    unmountAll();
+    await mountComponent(<TodayView {...props({ timeZone: zone === "Australia/Perth" ? "Australia/Sydney" : "Australia/Perth" })} />);
+    expect(io.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refresh when the server already used the browser's zone", async () => {
+    await mountComponent(<TodayView {...props({ timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })} />);
+    expect(io.refresh).not.toHaveBeenCalled();
+  });
+
+  it("shows a retry instead of an empty Today when data cannot load", async () => {
+    await mountComponent(<TodayLoadError />);
+    expect(document.body.textContent).toContain("Couldn't load Today.");
+    await click([...document.querySelectorAll("button")].find((b) => b.textContent === "Try again")!);
+    expect(io.refresh).toHaveBeenCalled();
   });
 
   it("does not repeat the onboarding note when onboarding is the next step", async () => {

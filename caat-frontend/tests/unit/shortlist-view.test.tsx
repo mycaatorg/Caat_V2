@@ -75,6 +75,20 @@ describe("My shortlist", () => {
     expect(io.toast.error).toHaveBeenCalledWith("Could not remove Civil Engineering. Please try again.");
   });
 
+  it("restores only the failed item when another removal succeeded meanwhile", async () => {
+    const first = deferred();
+    io.remove.mockReturnValueOnce(first.promise).mockResolvedValueOnce(undefined);
+    await mountComponent(<ShortlistView initial={list()} />);
+    await click(button("Remove Harbourside University from shortlist"));
+    await click(button("Remove Banksia College from shortlist"));
+    await flush();
+    await act(async () => first.reject(new Error("offline")));
+    await flush();
+    const names = [...document.querySelectorAll("a")].map((a) => a.textContent);
+    expect(names).toContain("Harbourside University");
+    expect(names).not.toContain("Banksia College");
+  });
+
   it("removes an item after the write succeeds", async () => {
     await mountComponent(<ShortlistView initial={list()} />);
     await click(button("Remove Regional Engineering Scholarship from shortlist"));

@@ -3,7 +3,7 @@ import { createMockSupabase, type QueryContext, type QueryResult } from "./mock-
 
 vi.mock("@/lib/unified-deadlines", () => ({ fetchUnifiedDeadlines: vi.fn().mockResolvedValue([]) }));
 
-import { loadToday, sydneyHour, sydneyTodayISO } from "@/lib/today-data";
+import { loadToday, resolveTimeZone, sydneyHour, sydneyTodayISO, zonedHour, zonedTodayISO } from "@/lib/today-data";
 
 describe("Sydney time", () => {
   it("uses the Australian date, not the server's UTC date", () => {
@@ -11,6 +11,27 @@ describe("Sydney time", () => {
     const now = new Date("2026-10-06T14:30:00Z");
     expect(sydneyTodayISO(now)).toBe("2026-10-07");
     expect(sydneyHour(now)).toBe(1);
+  });
+});
+
+describe("student time zone", () => {
+  it("uses the reported zone, falling back to Sydney when missing or invalid", () => {
+    expect(resolveTimeZone("Australia/Perth")).toBe("Australia/Perth");
+    expect(resolveTimeZone("Not/AZone")).toBe("Australia/Sydney");
+    expect(resolveTimeZone(undefined)).toBe("Australia/Sydney");
+  });
+
+  it("gives Perth its own date and hour", () => {
+    // 22:00 Tuesday in Perth is already Wednesday in Sydney.
+    const now = new Date("2026-10-06T14:00:00Z");
+    expect(zonedTodayISO("Australia/Perth", now)).toBe("2026-10-06");
+    expect(zonedHour("Australia/Perth", now)).toBe(22);
+    expect(zonedTodayISO("Australia/Sydney", now)).toBe("2026-10-07");
+  });
+
+  it("refuses to treat a failed read as an empty account", async () => {
+    const client = createMockSupabase({ resolver: (ctx) => (ctx.table === "user_school_applications" ? { data: null, error: { message: "timeout" } } : { data: [], error: null }) });
+    await expect(loadToday(client as never, "student-1")).rejects.toThrow("Could not load Today");
   });
 });
 
@@ -41,7 +62,7 @@ describe("loadToday", () => {
     expect(data.input.documentSchoolIds).toEqual([7]);
     expect(data.input.saved).toEqual({ scholarships: 1, schools: 0, majors: 1 });
     expect(data.recent.map((r) => r.kind)).toEqual(["essay", "application", "resume"]);
-    expect(data.recent[0]).toMatchObject({ title: "Why this course", detail: "Draft 2", href: "/essays?prompt=p1" });
+    expect(data.recent[0]).toMatchObject({ title: "Why this course", detail: "Essay", href: "/essays?prompt=p1" });
     expect(data.todos).toEqual([{ id: "t1", text: "Book open day", dueDate: null, priority: 2 }]);
     expect(data.savedPreview.map((s) => s.href)).toEqual(["/scholarships/s1", "/majors/m1"]);
   });

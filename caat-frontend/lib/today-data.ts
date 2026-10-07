@@ -8,22 +8,32 @@ import { fetchUnifiedDeadlines, type UnifiedDeadline } from "@/lib/unified-deadl
 import type { ApplicationStatus } from "@/types/applications";
 import type { TodayApplication, TodayInput } from "@/lib/today";
 
-/** Today's date in Australia/Sydney: the server runs in UTC, the audience does not. */
-export function sydneyTodayISO(now: Date = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Australia/Sydney",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-  return parts; // en-CA formats as YYYY-MM-DD
+export const DEFAULT_TIME_ZONE = "Australia/Sydney";
+export const TIME_ZONE_COOKIE = "caat-tz";
+
+/** The student's IANA time zone (reported by their browser in a cookie), or
+ *  Sydney when unknown or invalid. The server runs in UTC; students do not. */
+export function resolveTimeZone(value: string | null | undefined): string {
+  if (!value) return DEFAULT_TIME_ZONE;
+  try {
+    new Intl.DateTimeFormat("en-AU", { timeZone: value });
+    return value;
+  } catch {
+    return DEFAULT_TIME_ZONE;
+  }
 }
 
-export function sydneyHour(now: Date = new Date()): number {
-  return Number(
-    new Intl.DateTimeFormat("en-AU", { timeZone: "Australia/Sydney", hour: "numeric", hourCycle: "h23" }).format(now),
-  );
+/** Today's date (YYYY-MM-DD) in the given time zone. */
+export function zonedTodayISO(timeZone: string = DEFAULT_TIME_ZONE, now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
+
+export function zonedHour(timeZone: string = DEFAULT_TIME_ZONE, now: Date = new Date()): number {
+  return Number(new Intl.DateTimeFormat("en-AU", { timeZone, hour: "numeric", hourCycle: "h23" }).format(now));
+}
+
+export const sydneyTodayISO = (now: Date = new Date()) => zonedTodayISO(DEFAULT_TIME_ZONE, now);
+export const sydneyHour = (now: Date = new Date()) => zonedHour(DEFAULT_TIME_ZONE, now);
 
 export interface RecentWork {
   kind: "essay" | "resume" | "application";
@@ -57,8 +67,13 @@ export interface TodayData {
 
 type Row = Record<string, unknown>;
 
-export async function loadToday(supabase: SupabaseClient, userId: string, now: Date = new Date()): Promise<TodayData> {
-  const todayISO = sydneyTodayISO(now);
+export async function loadToday(
+  supabase: SupabaseClient,
+  userId: string,
+  now: Date = new Date(),
+  timeZone: string = DEFAULT_TIME_ZONE,
+): Promise<TodayData> {
+  const todayISO = zonedTodayISO(timeZone, now);
   const [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, todosRes, resumesRes, promptsRes, customRes, deadlines] =
     await Promise.all([
       supabase
@@ -105,6 +120,12 @@ export async function loadToday(supabase: SupabaseClient, userId: string, now: D
       fetchUnifiedDeadlines(supabase, userId).catch((): UnifiedDeadline[] => []),
     ]);
 
+  // A failed read must not look like an empty account (that would tell a
+  // student with applications to "save your first scholarship").
+  for (const res of [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, todosRes]) {
+    if (res.error) throw new Error("Could not load Today");
+  }
+
   const profile = (profileRes.data ?? null) as Row | null;
   const hasBasics = Boolean(
     profile &&
@@ -137,7 +158,8 @@ export async function loadToday(supabase: SupabaseClient, userId: string, now: D
     recent.push({
       kind: "essay",
       title: promptTitles.get(latestDraft.prompt_id as string) ?? "Essay draft",
-      detail: (latestDraft.label as string | null) ?? "Draft",
+      // The editor opens the prompt's current draft, so do not name one.
+      detail: "Essay",
       href: `/essays?prompt=${latestDraft.prompt_id as string}`,
       updatedAt: latestDraft.updated_at as string,
     });

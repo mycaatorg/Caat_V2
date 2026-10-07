@@ -8,18 +8,20 @@ import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Bookmark, BookmarkCheck, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase/client";
-import { matchScholarship } from "@/lib/profile-match";
-import { trackScholarship } from "@/lib/scholarship-tracking";
 import {
   completeOnboarding,
   dismissOnboarding,
+  fetchTrackedIds,
   graduationYearFor,
   mergeUnique,
+  rankOnboardingMatches,
   saveOnboardingAnswers,
+  saveScholarshipIfNew,
   type OnboardingAnswers,
   type OnboardingProfile,
+  type RankedScholarship,
 } from "@/lib/onboarding";
-import type { ProfileRow, JourneyStage, StudentStatus, YearLevel } from "@/types/profile";
+import type { JourneyStage, StudentStatus, YearLevel } from "@/types/profile";
 import type { ScholarshipRow } from "@/types/scholarships";
 
 const MAROON = "text-[#9a1a27] dark:text-[#e06b78]";
@@ -236,9 +238,11 @@ export function WelcomeFlow({ initial }: { initial: OnboardingProfile }) {
       body: (
         <RadioOptions label="Year level" options={YEAR_LEVELS} value={yearLevel} onChange={setYearLevel} />
       ),
+      // Only derive the final year when the student had none before onboarding,
+      // and re-derive it if they go back and change their year level.
       answer: () =>
         yearLevel
-          ? { year_level: yearLevel, ...(profile.graduation_year ? {} : { graduation_year: graduationYearFor(yearLevel) }) }
+          ? { year_level: yearLevel, ...(initial.graduation_year ? {} : { graduation_year: graduationYearFor(yearLevel) }) }
           : null,
       ready: yearLevel !== null,
     },
@@ -336,44 +340,47 @@ export function WelcomeFlow({ initial }: { initial: OnboardingProfile }) {
   );
 }
 
-type Match = { scholarship: ScholarshipRow; score: number; reason: string | null };
-
 function Results({ profile }: { profile: OnboardingProfile }) {
   const router = useRouter();
-  const [matches, setMatches] = useState<Match[] | null>(null);
+  const [matches, setMatches] = useState<RankedScholarship[] | null>(null);
   const [failed, setFailed] = useState(false);
-  const [saved, setSaved] = useState<string | null>(null);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const completed = useRef(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const countries = useMemo(() => (profile.preferred_countries.length ? profile.preferred_countries : ["Australia"]), [profile.preferred_countries]);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     let active = true;
     (async () => {
+      // Open, active awards in the chosen places, closing soonest first.
       const { data, error } = await supabase
         .from("scholarships")
         .select("*")
         .eq("is_active", true)
         .in("country", countries)
+        .or(`deadline_at.is.null,deadline_at.gte.${new Date().toISOString()}`)
+        .order("deadline_at", { ascending: true, nullsFirst: false })
         .limit(300);
       if (!active) return;
       if (error) {
         setFailed(true);
         return;
       }
-      // Matching reads nationality; "domestic" approximates it for scoring
-      // only. Nothing about nationality is written back.
-      const scoring = {
-        ...profile,
-        nationality: profile.student_status === "domestic" ? "Australia" : null,
-      } as unknown as ProfileRow;
-      const ranked = ((data ?? []) as unknown as ScholarshipRow[])
-        .map((s) => {
-          const { score, reason } = matchScholarship(scoring, s);
-          return { scholarship: s, score, reason };
-        })
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 6);
+      const ranked = rankOnboardingMatches(profile, (data ?? []) as unknown as ScholarshipRow[]);
       setMatches(ranked);
+      try {
+        const tracked = await fetchTrackedIds(ranked.map((m) => m.scholarship.id));
+        if (active) setSavedIds(tracked);
+      } catch {
+        // Unknown saved state only means a Save button may show for an award
+        // already saved; saving again never changes its status.
+      }
     })();
     return () => {
       active = false;
@@ -384,13 +391,15 @@ function Results({ profile }: { profile: OnboardingProfile }) {
     if (savingId) return;
     setSavingId(s.id);
     try {
-      await trackScholarship(s.id, "interested");
-      if (!saved) {
+      await saveScholarshipIfNew(s.id);
+      setSavedIds((cur) => new Set(cur).add(s.id));
+      setLastSaved(s.id);
+      if (!completed.current) {
+        completed.current = true;
         await completeOnboarding().catch(() => {});
         track("first_item_saved", { kind: "scholarship" });
         track("onboarding_completed");
       }
-      setSaved(s.id);
     } catch {
       toast.error("Could not save that scholarship. Please try again.");
     } finally {
@@ -404,12 +413,12 @@ function Results({ profile }: { profile: OnboardingProfile }) {
     router.push("/today");
   }
 
-  const savedScholarship = matches?.find((m) => m.scholarship.id === saved)?.scholarship;
+  const savedScholarship = matches?.find((m) => m.scholarship.id === lastSaved)?.scholarship;
 
   return (
     <div className="w-full max-w-3xl">
       <p className="font-code text-[10px] uppercase tracking-[0.15em] text-muted-foreground">All set</p>
-      <h1 className="text-3xl font-bold tracking-tight mt-2">
+      <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight mt-2 outline-none">
         Scholarships that could <span className={`italic ${MAROON}`}>fit</span>
       </h1>
       <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
@@ -454,7 +463,7 @@ function Results({ profile }: { profile: OnboardingProfile }) {
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2">
             {matches.map(({ scholarship: s, reason }) => {
-              const isSaved = saved === s.id;
+              const isSaved = savedIds.has(s.id);
               return (
                 <li key={s.id} className="border bg-card p-4 flex flex-col gap-2">
                   <p className="font-code text-[10px] uppercase tracking-[0.12em] text-muted-foreground truncate">{s.provider_name}</p>

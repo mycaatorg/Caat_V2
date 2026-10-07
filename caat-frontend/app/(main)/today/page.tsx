@@ -1,8 +1,9 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
-import { TodayView } from "@/components/today/TodayView";
+import { TodayLoadError, TodayView } from "@/components/today/TodayView";
 import { createServerClient } from "@/lib/supabase/server";
-import { loadToday, sydneyHour } from "@/lib/today-data";
+import { TIME_ZONE_COOKIE, loadToday, resolveTimeZone, zonedHour } from "@/lib/today-data";
 import { chooseNextStep, comingUp, deriveTasks } from "@/lib/today";
 
 export const metadata = { title: "Today" };
@@ -16,7 +17,18 @@ export default async function TodayPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/today");
 
-  const data = await loadToday(supabase, user.id);
+  const timeZone = resolveTimeZone((await cookies()).get(TIME_ZONE_COOKIE)?.value);
+  let data;
+  try {
+    data = await loadToday(supabase, user.id, new Date(), timeZone);
+  } catch {
+    return (
+      <>
+        <PageHeader title="Today" />
+        <TodayLoadError />
+      </>
+    );
+  }
   const tasks = deriveTasks(data.input);
   const name =
     data.firstName ||
@@ -29,7 +41,8 @@ export default async function TodayPage() {
       <PageHeader title="Today" />
       <TodayView
         name={name}
-        hour={sydneyHour()}
+        hour={zonedHour(timeZone)}
+        timeZone={timeZone}
         todayISO={data.input.todayISO}
         nextStep={chooseNextStep(data.input, tasks)}
         tasks={tasks}

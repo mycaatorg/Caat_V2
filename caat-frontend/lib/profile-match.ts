@@ -48,7 +48,7 @@ export function reasonFor(d: MatchDimensions): string | null {
     if (d.matchedCountry) parts.push("country");
     if (d.citizenshipEligible) parts.push("citizenship");
     if (d.levelMatches) parts.push("level");
-    return `Strong match — your ${joinWithAnd(parts)}`;
+    return `Strong match: your ${joinWithAnd(parts)}`;
   }
 
   if (d.matchedMajor && d.matchedCountry) {

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { track } from "@vercel/analytics";
 import { toast } from "sonner";
 import {
@@ -22,7 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toggleTodo } from "@/components/dashboard/api";
 import { dismissOnboarding } from "@/lib/onboarding";
 import { daysBetween, type NextStep, type TaskKind, type TodayTask } from "@/lib/today";
-import type { RecentWork, SavedPreview, TodayTodo } from "@/lib/today-data";
+import { TIME_ZONE_COOKIE, type RecentWork, type SavedPreview, type TodayTodo } from "@/lib/today-data";
 import type { UnifiedDeadline } from "@/lib/unified-deadlines";
 
 const MAROON = "text-[#9a1a27] dark:text-[#e06b78]";
@@ -93,6 +94,22 @@ function SectionHeading({ eyebrow, title, action }: { eyebrow: string; title: st
   );
 }
 
+/** Shown when Today's data could not be read; never an empty "new student" view. */
+export function TodayLoadError() {
+  const router = useRouter();
+  return (
+    <div className="p-6 pt-0 max-w-6xl">
+      <div role="alert" className="border px-6 py-10 text-center">
+        <p className="font-medium">Couldn&apos;t load Today.</p>
+        <p className="text-sm text-muted-foreground mt-1">Your work is safe. Try again in a moment.</p>
+        <Button variant="outline" className="mt-4 rounded-none" onClick={() => router.refresh()}>
+          Try again
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export interface TodayViewProps {
   name: string | null;
   hour: number;
@@ -105,10 +122,37 @@ export interface TodayViewProps {
   saved: { scholarships: number; schools: number; majors: number };
   savedPreview: SavedPreview[];
   showOnboardingNudge: boolean;
+  /** Zone the server used for dates; refreshed once if the browser's differs. */
+  timeZone?: string;
+}
+
+/** Reports the browser's time zone so dates and greetings match the student. */
+function useReportTimeZone(serverZone: string | undefined) {
+  const router = useRouter();
+  useEffect(() => {
+    if (!serverZone) return;
+    let zone: string;
+    try {
+      zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      return;
+    }
+    if (!zone || zone === serverZone) return;
+    document.cookie = `${TIME_ZONE_COOKIE}=${encodeURIComponent(zone)}; path=/; max-age=31536000; samesite=lax`;
+    // Refresh at most once per session, even if the server rejects the zone.
+    try {
+      if (sessionStorage.getItem(TIME_ZONE_COOKIE) === zone) return;
+      sessionStorage.setItem(TIME_ZONE_COOKIE, zone);
+    } catch {
+      return;
+    }
+    router.refresh();
+  }, [serverZone, router]);
 }
 
 export function TodayView(props: TodayViewProps) {
   const { name, hour, todayISO, nextStep, tasks, comingUp, recent, saved, savedPreview } = props;
+  useReportTimeZone(props.timeZone);
   const [todos, setTodos] = useState(props.todos);
   const [nudge, setNudge] = useState(props.showOnboardingNudge && nextStep.kind !== "onboarding");
   const savedTotal = saved.scholarships + saved.schools + saved.majors;
@@ -189,7 +233,7 @@ export function TodayView(props: TodayViewProps) {
                   const urgent = task.kind === "deadline-soon";
                   return (
                     <li key={task.id}>
-                      <Link href={task.href} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 focus-visible:bg-muted/50 outline-none">
+                      <Link href={task.href} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 outline-none focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#9a1a27]">
                         <Icon className={`h-4 w-4 shrink-0 ${urgent ? MAROON : "text-muted-foreground"}`} strokeWidth={1.5} />
                         <span className="flex-1 min-w-0">
                           <span className={`block text-sm font-medium ${urgent ? MAROON : ""}`}>{task.title}</span>
@@ -218,7 +262,7 @@ export function TodayView(props: TodayViewProps) {
                   const month = new Date(Date.UTC(2000, Number(m) - 1, 1)).toLocaleDateString("en-AU", { month: "short", timeZone: "UTC" });
                   return (
                     <li key={d.id}>
-                      <Link href={d.href} className="flex items-center gap-4 px-4 py-3 hover:bg-muted/50 focus-visible:bg-muted/50 outline-none">
+                      <Link href={d.href} className="flex items-center gap-4 px-4 py-3 hover:bg-muted/50 outline-none focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#9a1a27]">
                         <span className="w-10 text-center shrink-0">
                           <span className="block font-display text-xl leading-none">{Number(day)}</span>
                           <span className="block font-code text-[10px] uppercase tracking-[0.1em] text-muted-foreground">{month}</span>
@@ -250,7 +294,7 @@ export function TodayView(props: TodayViewProps) {
                   const Icon = RECENT_ICON[r.kind];
                   return (
                     <li key={`${r.kind}-${r.href}`}>
-                      <Link href={r.href} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 focus-visible:bg-muted/50 outline-none">
+                      <Link href={r.href} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 outline-none focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#9a1a27]">
                         <Icon className="h-4 w-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
                         <span className="flex-1 min-w-0">
                           <span className="block text-sm font-medium truncate">{r.title}</span>
@@ -335,7 +379,7 @@ export function TodayView(props: TodayViewProps) {
                     const Icon = SAVED_ICON[s.kind];
                     return (
                       <li key={`${s.kind}-${s.id}`}>
-                        <Link href={s.href} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-muted/50 focus-visible:bg-muted/50 outline-none">
+                        <Link href={s.href} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-muted/50 outline-none focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#9a1a27]">
                           <Icon className="h-4 w-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
                           <span className="truncate">{s.title}</span>
                         </Link>

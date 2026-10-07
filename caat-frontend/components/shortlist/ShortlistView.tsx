@@ -79,7 +79,15 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
   const router = useRouter();
   const [list, setList] = useState<Shortlist | null>(initial);
   const [filter, setFilter] = useState<Filter>("all");
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Set<string>>(new Set());
+  const isBusy = (key: string) => busy.has(key);
+  const setBusyKey = (key: string, on: boolean) =>
+    setBusy((cur) => {
+      const next = new Set(cur);
+      if (on) next.add(key);
+      else next.delete(key);
+      return next;
+    });
 
   if (!list) {
     return (
@@ -97,32 +105,40 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
   const total = list.scholarships.length + list.schools.length + list.majors.length;
   const show = (kind: ShortlistKind) => filter === "all" || filter === kind;
 
+  /** Remove one item optimistically; on failure put back only that item, at
+   *  its old position, so other removals that succeeded stay removed. */
   async function remove(kind: ShortlistKind, id: string | number, label: string) {
     const key = `${kind}-${id}`;
-    const previous = list!;
-    setBusy(key);
-    setList({
-      scholarships: kind === "scholarship" ? previous.scholarships.filter((s) => s.id !== id) : previous.scholarships,
-      schools: kind === "school" ? previous.schools.filter((s) => s.id !== id) : previous.schools,
-      majors: kind === "major" ? previous.majors.filter((m) => m.id !== id) : previous.majors,
-    });
+    if (isBusy(key)) return;
+    const field = kind === "scholarship" ? "scholarships" : kind === "school" ? "schools" : "majors";
+    const before = list![field] as { id: string | number }[];
+    const index = before.findIndex((item) => item.id === id);
+    const item = before[index];
+    setBusyKey(key, true);
+    setList((cur) => cur && { ...cur, [field]: (cur[field] as { id: string | number }[]).filter((x) => x.id !== id) });
     try {
       const userId = await getClientUserId();
       if (!userId) throw new Error("Not authenticated");
       await removeFromShortlist(supabase, userId, kind, id);
       toast.success(`Removed ${label}.`);
     } catch {
-      setList(previous);
+      setList((cur) => {
+        if (!cur || !item) return cur;
+        const items = cur[field] as { id: string | number }[];
+        if (items.some((x) => x.id === id)) return cur;
+        const at = Math.min(index, items.length);
+        return { ...cur, [field]: [...items.slice(0, at), item, ...items.slice(at)] } as Shortlist;
+      });
       toast.error(`Could not remove ${label}. Please try again.`);
     } finally {
-      setBusy(null);
+      setBusyKey(key, false);
     }
   }
 
   async function startApplication(schoolId: number, name: string) {
     const key = `apply-${schoolId}`;
-    if (busy) return;
-    setBusy(key);
+    if (isBusy(key)) return;
+    setBusyKey(key, true);
     try {
       const row = await addApplication(schoolId);
       setList((cur) =>
@@ -135,7 +151,7 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
     } catch {
       toast.error("Could not start the application. Please try again.");
     } finally {
-      setBusy(null);
+      setBusyKey(key, false);
     }
   }
 
@@ -210,7 +226,7 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
                   <Link href={`/scholarships/${s.id}`} className={`text-sm ${MAROON} hover:underline inline-flex items-center gap-1`}>
                     {s.status === "interested" ? "Check eligibility" : "Open"} <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
-                  <RemoveButton label={s.title} busy={busy === `scholarship-${s.id}`} onRemove={() => remove("scholarship", s.id, s.title)} />
+                  <RemoveButton label={s.title} busy={isBusy(`scholarship-${s.id}`)} onRemove={() => remove("scholarship", s.id, s.title)} />
                 </li>
               ))}
             </Section>
@@ -245,14 +261,14 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
                     <Button
                       size="sm"
                       className="rounded-none bg-[#9a1a27] hover:bg-[#7d141f] text-white"
-                      disabled={busy === `apply-${s.id}`}
+                      disabled={isBusy(`apply-${s.id}`)}
                       onClick={() => startApplication(s.id, s.name)}
                     >
-                      {busy === `apply-${s.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      {isBusy(`apply-${s.id}`) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                       Start application
                     </Button>
                   )}
-                  <RemoveButton label={s.name} busy={busy === `school-${s.id}`} onRemove={() => remove("school", s.id, s.name)} />
+                  <RemoveButton label={s.name} busy={isBusy(`school-${s.id}`)} onRemove={() => remove("school", s.id, s.name)} />
                 </li>
               ))}
             </Section>
@@ -279,7 +295,7 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
                   <Link href={`/majors/${m.id}`} className={`text-sm ${MAROON} hover:underline inline-flex items-center gap-1`}>
                     See where to study it <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
-                  <RemoveButton label={m.name} busy={busy === `major-${m.id}`} onRemove={() => remove("major", m.id, m.name)} />
+                  <RemoveButton label={m.name} busy={isBusy(`major-${m.id}`)} onRemove={() => remove("major", m.id, m.name)} />
                 </li>
               ))}
             </Section>

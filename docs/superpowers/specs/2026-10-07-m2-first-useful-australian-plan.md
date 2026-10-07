@@ -36,13 +36,13 @@ Mobile uses the existing off-canvas sidebar, so the same order applies; Today is
 Sections, each only shown when it has content (empty states give one starting action):
 
 - **Greeting + next step.** One sentence and one primary button chosen from real state, in order: finish onboarding → save a first scholarship or university → start an application from the shortlist → set a missing deadline → open the nearest deadline.
-- **Needs attention.** Concrete tasks derived from data: application without a deadline, application past "researching" with no essay draft for that school, required document categories not uploaded (hub rules), overdue own to-dos. Each links to the exact place to fix it.
+- **Needs attention.** Concrete tasks derived from data: saved scholarships still marked "interested" that close within 14 days, application deadlines within 14 days (including overdue), applications without a deadline, and for applications marked "applying" a missing essay or documents (the hub's "shared or tagged to this university" rule). Each links to the exact place to fix it. Overdue to-dos are flagged in the to-do list rather than repeated here.
 - **Coming up.** The next deadlines from the existing unified-deadline feed (applications, tracked scholarships, calendar events), 60 days ahead, with day counts.
 - **Pick up where you left off.** The most recently edited essay draft, resume and application, by `updated_at`.
 - **Your to-dos.** Open `user_todos`, due-date first, with quick complete.
 - **Shortlist snapshot.** Counts and up to three saved items with a link to My shortlist.
 
-Data: existing tables only; one server component fetch per section, no client waterfalls.
+Data: existing tables only; one parallel server read, no client waterfalls. A failed read shows "Couldn't load Today" with a retry, never an empty new-student view. Dates and greetings use the student's own time zone (reported once by the browser in a cookie), falling back to Australia/Sydney.
 
 ## Onboarding (`/welcome`)
 
@@ -56,7 +56,9 @@ Five steps, one question each, progress shown as "2 of 5", Back, Skip and "Not s
 
 Finish: three to six scholarships matched with the existing scoring, each with Save, plus "Browse all". Saving one completes onboarding and shows its next step ("Check eligibility, then add the deadline"). Completion stamps `onboarding_completed_at`; "Skip for now" stamps `onboarding_dismissed_at` so we never nag.
 
-Schema (additive, nullable, owner-only RLS already covers `profiles`): `year_level text`, `student_status text`, `journey_stage text`, `onboarding_completed_at timestamptz`, `onboarding_dismissed_at timestamptz`. Migration file in `supabase/migrations`, applied to the isolated stack only. **Production needs explicit approval at release time.**
+Schema (additive, nullable, owner-only RLS already covers `profiles`): `year_level text`, `student_status text`, `journey_stage text`, `onboarding_completed_at timestamptz`, `onboarding_dismissed_at timestamptz`, with CHECK constraints on the three answer columns and a 5 s lock timeout. Migration file in `supabase/migrations`, applied to the isolated stack only. **Production needs explicit approval at release time, and the migration must be applied before the code deploys**; code without the columns would fail its profile reads.
+
+Results: active scholarships in the chosen places that are still open, soonest closing first, ranked by the existing matcher. Domestic students are matched as Australian; awards limited to Australian citizens and permanent residents are left out for international students. Saving never overwrites a scholarship the student already tracks.
 
 First-use events (Vercel Analytics `track`, no profile values, no essay or document content): `onboarding_started`, `onboarding_step_completed` {step, skipped}, `onboarding_completed`, `first_item_saved` {kind}, `today_next_step_clicked` {kind}.
 
