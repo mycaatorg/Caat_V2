@@ -622,3 +622,51 @@ describe("essay draft autosave coordination", () => {
     await unmountEditor(root);
   });
 });
+
+describe("custom essay list loading", () => {
+  const custom = { id: "custom-1", user_id: "user-1", title: "Why law at Monash", created_at: "2026-10-07T00:00:00.000Z" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  });
+  afterEach(() => {
+    act(() => { for (const root of mountedRoots.splice(0)) root.unmount(); });
+    document.body.innerHTML = "";
+  });
+
+  async function createCustom(title: string) {
+    await act(async () => { (document.querySelector('button[aria-label="Add custom essay"]') as HTMLButtonElement).click(); });
+    editInput(document.querySelector('input[placeholder="Essay title…"]') as HTMLInputElement, title);
+    await act(async () => { (document.querySelector('button[aria-label="Confirm"]') as HTMLButtonElement).click(); });
+    await settleEffects();
+  }
+
+  it("keeps an essay created before the initial custom list finished loading", async () => {
+    let finishLoad!: (value: unknown[]) => void;
+    mocks.fetchCustomPrompts.mockReturnValue(new Promise((resolve) => { finishLoad = resolve; }));
+    mocks.createCustomPrompt.mockResolvedValue(custom);
+    await mountEditor([]);
+
+    await createCustom("Why law at Monash");
+    expect(mocks.createCustomPrompt).toHaveBeenCalledWith("Why law at Monash");
+    // The load was issued before the create, so its response does not include it.
+    await act(async () => { finishLoad([]); });
+    await settleEffects();
+
+    expect(buttonNamed("Why law at Monash")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("No custom essays yet");
+  });
+
+  it("shows a retryable error instead of an empty list when custom essays fail to load", async () => {
+    mocks.fetchCustomPrompts.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([custom]);
+    await mountEditor([]);
+    expect(document.body.textContent).toContain("Couldn't load your essays.");
+    expect(document.body.textContent).not.toContain("No custom essays yet");
+
+    await act(async () => { buttonNamed("Try again").click(); });
+    await settleEffects();
+    expect(buttonNamed("Why law at Monash")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("Couldn't load your essays.");
+  });
+});
