@@ -169,9 +169,9 @@ const GROUPS: FaqGroup[] = [
         a: (
           <>
             Yes, any time. You can export your data or delete your account
-            from Settings, which removes your profile and the work saved in
-            it. Uploaded files are cleared separately, so email us if you want
-            those removed as well and we will sort it.
+            from Settings, which removes your profile, the work saved in it
+            and your uploaded files. If you ever want a hand with that, email
+            us and we will sort it.
           </>
         ),
       },
