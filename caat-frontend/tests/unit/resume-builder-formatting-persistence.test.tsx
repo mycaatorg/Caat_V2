@@ -4,10 +4,11 @@
 // survive a save and a reload, and a failed save must not lose them.
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { change, unmountAll } from "./dom-helpers";
+import { change, deferred, unmountAll } from "./dom-helpers";
 import {
   activeEditor,
   advanceAutosave,
+  applySave,
   editorSurface,
   fakeResumeApi,
   installLayoutStubs,
@@ -218,6 +219,41 @@ describe("resume formatting and section edits survive save and reload", () => {
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
     expect(printed).toContain("Experience SYN free draft");
     expect(printed).not.toContain("Guided SYN Co");
+  });
+
+  it("keeps a deleted section deleted after a reload, even when a save was already in flight", async () => {
+    seedResume([
+      personal,
+      { id: "summary", type: "custom", label: "Summary", mode: "free", contentHtml: "<p>Summary SYN</p>" },
+      { id: "projects", type: "custom", label: "Projects", mode: "free", contentHtml: "<p>Projects SYN</p>" },
+    ]);
+    const inFlight = deferred<void>();
+    fakeResumeApi.saveResumeState.mockImplementationOnce(async (payload) => {
+      // The upsert lands only after the user has deleted the section.
+      await inFlight.promise;
+      applySave(payload);
+    });
+    await mountBuilder();
+    await openSection("Projects");
+    await selectText("Projects SYN");
+    await pressToolbar("Bold");
+    await advanceAutosave();
+    expect(fakeResumeApi.saveResumeState).toHaveBeenCalledTimes(1);
+
+    await clickRowButton("Projects", "Delete section");
+    expect(window.confirm).toHaveBeenCalledWith('Delete the "Projects" section? This cannot be undone.');
+    expect(structureOrder()).toEqual(["Personal Information", "Summary"]);
+    expect(fakeResumeApi.deleteSection).not.toHaveBeenCalled();
+    await act(async () => inFlight.resolve());
+    await settle();
+    await advanceAutosave();
+
+    expect(fakeResumeApi.deleteSection).toHaveBeenCalledWith("projects");
+    expect(toastError).not.toHaveBeenCalled();
+    expect(savedSections().map((s) => s.label)).toEqual(["Personal Information", "Summary"]);
+    await reload();
+    expect(structureOrder()).toEqual(["Personal Information", "Summary"]);
+    expect(printedPages().join(" ")).not.toContain("PROJECTS");
   });
 
   it("keeps formatting and section edits through a failed save and persists them on retry", async () => {
