@@ -105,13 +105,34 @@ test("custom essay draft content autosaves and reloads from the real account", a
   await signInToIsolatedStudent(page);
   const title = marker("E2E essay");
   const content = marker("Persisted essay response");
+  // Hold the initial custom-essay list until the new essay is saved, so the
+  // stale list response always lands after the create (PROD-93 race).
+  const CUSTOM_PROMPTS = "**/rest/v1/custom_essay_prompts**";
+  let releaseList!: () => void;
+  const listGate = new Promise<void>((resolve) => { releaseList = resolve; });
+  let heldLists = 0;
+  await page.route(CUSTOM_PROMPTS, async (route) => {
+    if (route.request().method() !== "GET" || heldLists > 0) return route.continue();
+    heldLists += 1;
+    // Read the list now (before the create), deliver it after: a stale response.
+    const response = await route.fetch();
+    await listGate;
+    await route.fulfill({ response });
+  });
   await page.goto("/essays");
   await expect(page.getByRole("main").getByText("Essay prompts", { exact: true })).toBeVisible({ timeout: 15_000 });
 
   try {
     await page.getByRole("button", { name: "Add custom essay" }).click();
     await page.getByPlaceholder("Essay title…").fill(title);
+    const created = page.waitForResponse((r) => r.url().includes("/rest/v1/custom_essay_prompts") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Confirm" }).click();
+    expect((await created).ok()).toBe(true);
+    // Let the stale list response land now; the new essay must survive it.
+    const staleList = page.waitForResponse((r) => r.url().includes("/rest/v1/custom_essay_prompts") && r.request().method() === "GET");
+    releaseList();
+    await staleList;
+    await expect(page.getByRole("button", { name: new RegExp(title) }).first()).toBeVisible({ timeout: 10_000 });
 
     await page.getByRole("button", { name: /new draft/i }).first().click();
     const editor = page.getByPlaceholder("Start writing your essay here.");
@@ -131,6 +152,10 @@ test("custom essay draft content autosaves and reloads from the real account", a
     await page.getByRole("button", { name: new RegExp(title) }).click();
     await expect(page.getByPlaceholder("Start writing your essay here.")).toHaveValue(content, { timeout: 15_000 });
   } finally {
+    releaseList();
+    await page.unroute(CUSTOM_PROMPTS).catch(() => {});
+    // Reload so cleanup sees the persisted list even if the UI dropped the row.
+    await page.reload().catch(() => {});
     await removeCustomEssay(page, title).catch(() => {});
   }
 });
