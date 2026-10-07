@@ -5,7 +5,7 @@ import { SignupForm } from "@/components/signup-form";
 
 export const metadata: Metadata = {
   title: "Sign up",
-  description: "Create your free CAAT account to compare universities, track applications, and match scholarships to your profile.",
+  description: "Create your free CAAT account to shortlist Australian universities and courses, track applications and deadlines, and match scholarships to your profile.",
 };
 
 export default function SignupPage() {
@@ -62,13 +62,13 @@ export default function SignupPage() {
             Your journey starts <span style={{ color: "#9a1a27" }}>here.</span>
           </blockquote>
           <p className="text-[#888] text-base font-serif leading-relaxed max-w-sm">
-            Get organized from day one. CAAT keeps your applications, deadlines, and documents in one place so nothing slips through.
+            Get organised early. CAAT keeps your university shortlist, applications, deadlines and documents in one place, so nothing slips through in Year 12.
           </p>
 
           {/* Mini stats */}
           <div className="grid grid-cols-2 gap-4 pt-4">
             {[
-              { stat: "10,000+", label: "Universities" },
+              { stat: "10 to 12", label: "Year levels" },
               { stat: "Early", label: "Access" },
             ].map(({ stat, label }) => (
               <div key={label} className="border border-white/20 p-4">
@@ -82,7 +82,7 @@ export default function SignupPage() {
         {/* Bottom */}
         <div className="relative border-t border-white/20 pt-6">
           <p className="text-[11px] text-[#666] font-code tracking-[0.12em]">
-            FREE TO START — NO CREDIT CARD REQUIRED
+            FREE TO START · NO CREDIT CARD REQUIRED
           </p>
         </div>
       </div>

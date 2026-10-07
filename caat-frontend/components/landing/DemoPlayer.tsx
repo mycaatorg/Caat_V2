@@ -59,7 +59,7 @@ export function DemoPlayer() {
       />
       <span className="absolute inset-0 bg-black/20 transition-colors group-hover:bg-black/10" />
       <span className="absolute inset-0 flex items-center justify-center">
-        <span className="flex h-20 w-20 items-center justify-center rounded-full bg-[#9a1a27] text-white shadow-[6px_6px_0_0_rgba(0,0,0,0.85)] transition-transform group-hover:scale-110">
+        <span className="flex h-20 w-20 items-center justify-center bg-[#9a1a27] text-white shadow-[6px_6px_0_0_rgba(0,0,0,0.85)] transition-transform group-hover:scale-110">
           <Play size={32} strokeWidth={2} fill="currentColor" />
         </span>
       </span>
