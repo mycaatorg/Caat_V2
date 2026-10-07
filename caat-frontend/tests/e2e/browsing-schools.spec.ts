@@ -11,7 +11,7 @@ test.describe("Schools browsing", () => {
     // Wait for the loading state to resolve — either cards or empty state
     await expect(
       page.locator("a[href^='/schools/']").first()
-        .or(page.getByText(/no schools found/i))
+        .or(page.getByText(/no (schools|universities) found/i))
     ).toBeVisible({ timeout: 15_000 });
   });
 

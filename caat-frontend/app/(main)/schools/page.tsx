@@ -80,7 +80,7 @@ export default async function SchoolsPage({
   if (activeFilter === "Bookmarked") {
     return (
       <>
-        <PageHeader title="Schools" />
+        <PageHeader title="Universities" />
 
         <div className="p-6">
           <main className="max-w-5xl mx-auto">
@@ -212,7 +212,7 @@ export default async function SchoolsPage({
 
   return (
     <>
-      <PageHeader title="Schools" />
+      <PageHeader title="Universities" />
 
       <div className="p-6">
         <main className="max-w-5xl mx-auto">
@@ -305,7 +305,7 @@ export default async function SchoolsPage({
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-              <p className="text-lg font-medium">No schools found</p>
+              <p className="text-lg font-medium">No universities found</p>
               <p className="text-sm mt-1">Try adjusting your search query or country filter.</p>
             </div>
           )}

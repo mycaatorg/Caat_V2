@@ -375,7 +375,7 @@ export default function ApplicationsClient() {
             className="gap-1.5 bg-[#9a1a27] text-white hover:bg-[#7d141f] border-[#9a1a27] dark:border-[#e06b78]"
           >
             <Plus className="h-4 w-4" />
-            Add School
+            Add university
           </Button>
         </div>
       </div>
@@ -388,7 +388,7 @@ export default function ApplicationsClient() {
             <Input
               value={searchQuery}
               onChange={(e) => handleSearchInput(e.target.value)}
-              placeholder="Search for a school by name..."
+              placeholder="Search for a university by name..."
               className="pl-9"
               autoFocus
             />
@@ -431,7 +431,7 @@ export default function ApplicationsClient() {
             </div>
           )}
           {searchQuery && !searching && searchResults.length === 0 && (
-            <p className="text-sm text-muted-foreground">No schools found.</p>
+            <p className="text-sm text-muted-foreground">No universities found.</p>
           )}
         </div>
       )}
@@ -471,7 +471,7 @@ export default function ApplicationsClient() {
           </p>
           {apps.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              Click &quot;Add School&quot; to start tracking your first
+              Click &quot;Add university&quot; to start tracking your first
               application.
             </p>
           )}

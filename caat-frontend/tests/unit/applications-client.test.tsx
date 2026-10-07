@@ -384,12 +384,12 @@ describe("removal", () => {
 
 describe("adding schools", () => {
   async function search(query: string) {
-    await click(button(/Add School/));
-    await change(document.querySelector('input[placeholder="Search for a school by name..."]') as HTMLInputElement, query);
+    await click(button(/Add university/));
+    await change(document.querySelector('input[placeholder="Search for a university by name..."]') as HTMLInputElement, query);
     await advance(300);
     await flush();
   }
-  const searchBox = () => document.querySelector('input[placeholder="Search for a school by name..."]') as HTMLInputElement | null;
+  const searchBox = () => document.querySelector('input[placeholder="Search for a university by name..."]') as HTMLInputElement | null;
 
   it("adds a searched school once even when clicked twice", async () => {
     io.searchSchools.mockResolvedValue([{ id: 42, name: "Gamma Institute", country: "Australia" }]);

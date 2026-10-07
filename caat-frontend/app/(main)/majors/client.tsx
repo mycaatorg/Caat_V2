@@ -208,7 +208,7 @@ export default function MajorsClient({
                 </Button>
               </>
             ) : (
-              "No majors found. Try adjusting your search or filters."
+              "No courses found. Try adjusting your search or filters."
             )}
           </div>
         ) : (
