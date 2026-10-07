@@ -46,7 +46,7 @@ export default async function NotificationsPage() {
       </header>
 
       <div className="p-6">
-        <main className="max-w-2xl mx-auto space-y-4">
+        <div className="max-w-2xl mx-auto space-y-4">
           <div className="flex items-center gap-2 mb-2">
             <Bell className="size-4" />
             <h1 className="text-base font-semibold">Notifications</h1>
@@ -105,7 +105,7 @@ export default async function NotificationsPage() {
               })}
             </div>
           )}
-        </main>
+        </div>
       </div>
     </>
   );
