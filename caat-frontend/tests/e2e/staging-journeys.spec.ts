@@ -536,11 +536,15 @@ test("school notes and application status/checklist persist across list and deta
     await expect(page.getByRole("heading", { name: "E2E Test University", exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Status", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /Applying/ })).toBeVisible();
-    await expect(page.getByText("Readiness", { exact: true })).toBeVisible();
+    await expect(page.getByText("Preparation checklist", { exact: true })).toBeVisible();
     await expect(page.getByText("Deadline is set", { exact: true })).toBeVisible();
-    await expect(page.getByText("At least one essay drafted", { exact: true })).toBeVisible();
-    await expect(page.getByText("Key documents uploaded", { exact: true })).toBeVisible();
-    await expect(page.getByText("Status reached Submitted", { exact: false })).toBeVisible();
+    await expect(page.getByText("An essay drafted for this school or shared", { exact: true })).toBeVisible();
+    await expect(page.getByText("A document attached here or a shared key document", { exact: true })).toBeVisible();
+    // The checklist is preparation only; the status is not one of its steps.
+    await expect(page.locator("li[data-state]")).toHaveCount(3);
+    await expect(page.getByText("Status reached Submitted", { exact: false })).toHaveCount(0);
+    // The seeded active scholarship recorded for this university (by school name) is listed.
+    await expect(page.locator("[data-hub-scholarship]").filter({ hasText: "E2E Test Scholarship" })).toBeVisible({ timeout: 15_000 });
   } finally {
     await page.goto("/applications").catch(() => {});
     const schoolLink = page.getByRole("link", { name: /E2E Test University/ }).first();
@@ -615,8 +619,10 @@ test("application checklist edits recover from failed writes and persist after r
 
     const checklist = (label: string) => page.locator("li[data-state]").filter({ hasText: label });
     const statusButton = page.getByRole("button", { name: /^(Researching|Submitted)$/ });
+    // The student's own Submitted status shows in the status card, not as a checklist step.
+    const submittedNote = page.getByText("Nice work. Now you wait.", { exact: true });
     await expect(checklist("Deadline is set")).toHaveAttribute("data-state", "todo");
-    await expect(checklist("Status reached Submitted")).toHaveAttribute("data-state", "todo");
+    await expect(submittedNote).toHaveCount(0);
 
     // The checklist follows a saved deadline without a reload.
     const deadlineSaved = page.waitForResponse((r) => r.url().includes("/rest/v1/user_school_applications") && r.request().method() === "PATCH" && r.ok());
@@ -624,7 +630,7 @@ test("application checklist edits recover from failed writes and persist after r
     await deadlineSaved;
     await expect(checklist("Deadline is set")).toHaveAttribute("data-state", "done");
 
-    // A failed status write reverts the status and checklist, then a retry saves.
+    // A failed status write reverts the status, then a retry saves.
     let failure = await failNextApplicationWrite(page, '"status":"submitted"');
     await statusButton.click();
     await page.getByRole("menuitem", { name: "Submitted", exact: true }).click();
@@ -632,20 +638,20 @@ test("application checklist edits recover from failed writes and persist after r
     await expect(page.locator("[data-sonner-toast]").filter({ hasText: /went wrong|try again/i }).first()).toBeVisible();
     await expect(statusButton).toHaveText("Researching");
     await expect(statusButton).toBeEnabled();
-    await expect(checklist("Status reached Submitted")).toHaveAttribute("data-state", "todo");
+    await expect(submittedNote).toHaveCount(0);
 
     const statusSaved = page.waitForResponse((r) => r.url().includes("/rest/v1/user_school_applications") && r.request().method() === "PATCH" && r.ok());
     await statusButton.click();
     await page.getByRole("menuitem", { name: "Submitted", exact: true }).click();
     await statusSaved;
-    await expect(checklist("Status reached Submitted")).toHaveAttribute("data-state", "done");
+    await expect(submittedNote).toBeVisible();
     await page.unroute(APPLICATION_WRITES);
 
     await page.reload();
     await expect(statusButton).toHaveText("Submitted", { timeout: 15_000 });
     await expect(page.locator("#hub-deadline")).toHaveValue("2027-03-15");
     await expect(checklist("Deadline is set")).toHaveAttribute("data-state", "done");
-    await expect(checklist("Status reached Submitted")).toHaveAttribute("data-state", "done");
+    await expect(submittedNote).toBeVisible();
 
     // A failed notes save keeps the text and says so; Save retries it.
     await page.goto("/applications");
@@ -805,13 +811,17 @@ test("Today turns a missing application deadline into a task that clears once fi
     await expect(task).toBeVisible({ timeout: 15_000 });
     await task.click();
     await page.waitForURL(/\/applications\/[0-9a-f-]+$/i);
+    const hubPath = new URL(page.url()).pathname;
     const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/user_school_applications") && r.request().method() === "PATCH" && r.ok());
     const soon = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
     await page.locator("#hub-deadline").fill(soon);
     await saved;
 
     await page.goto("/today");
-    await expect(page.getByRole("region", { name: "Coming up" }).getByRole("link", { name: /E2E Test University/ })).toBeVisible({ timeout: 15_000 });
+    const comingUp = page.getByRole("region", { name: "Coming up" }).getByRole("link", { name: /E2E Test University/ });
+    await expect(comingUp).toBeVisible({ timeout: 15_000 });
+    // The deadline opens this application's hub, not the applications list.
+    await expect(comingUp).toHaveAttribute("href", hubPath);
     await expect(page.getByRole("region", { name: "Needs attention" }).getByText(/Add the deadline for E2E Test University/)).toHaveCount(0);
   } finally {
     if (!page.isClosed()) await removeSeededApplication(page).catch(() => {});

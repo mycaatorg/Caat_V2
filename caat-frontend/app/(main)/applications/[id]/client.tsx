@@ -194,14 +194,16 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
     schoolDocuments,
     sharedDocuments,
     scholarships,
+    scholarshipsUnavailable,
   } = hub;
   const dl = deadlineParts(application.deadline_at);
-  // The checklist follows the application as edited here; essay and document
-  // signals come from the load.
+  // The preparation checklist follows the deadline as edited here; essay and
+  // document signals come from the load. The status is not a preparation step.
   const deadlineSet = !!application.deadline_at;
   const submitted = isSubmittedStatus(application.status);
-  const readyScore =
-    (deadlineSet ? 1 : 0) + (readiness.essayDrafted ? 1 : 0) + (readiness.keyDocsUploaded ? 1 : 0) + (submitted ? 1 : 0);
+  const PREP_STEPS = 3;
+  const prepScore =
+    (deadlineSet ? 1 : 0) + (readiness.essayDrafted ? 1 : 0) + (readiness.keyDocsUploaded ? 1 : 0);
 
   return (
     <div className="p-6">
@@ -228,27 +230,29 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           {/* LEFT */}
           <div className="flex-1 min-w-0 w-full space-y-6">
-            {/* readiness */}
-            <Card className="shadow-sm">
+            {/* preparation checklist */}
+            <Card className="shadow-sm" data-prep-checklist>
               <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base">Readiness</CardTitle>
-                <span className="text-sm text-muted-foreground">{readyScore} of 4 ready</span>
+                <CardTitle className="text-base">Preparation checklist</CardTitle>
+                <span className="text-sm text-muted-foreground">
+                  {prepScore} of {PREP_STEPS} steps
+                </span>
               </CardHeader>
               <CardContent>
                 <div className="h-1.5 w-full rounded-full bg-muted mb-5">
                   <div
                     className="h-full rounded-full bg-[#9a1a27] transition-all"
-                    style={{ width: `${(readyScore / 4) * 100}%` }}
+                    style={{ width: `${(prepScore / PREP_STEPS) * 100}%` }}
                   />
                 </div>
                 <ul className="space-y-3">
                   <ReadyItem done={deadlineSet}>Deadline is set</ReadyItem>
-                  <ReadyItem done={readiness.essayDrafted}>At least one essay drafted</ReadyItem>
-                  <ReadyItem done={readiness.keyDocsUploaded}>Key documents uploaded</ReadyItem>
-                  <ReadyItem done={submitted}>
-                    Status reached <span className="font-medium text-foreground">Submitted</span>
-                  </ReadyItem>
+                  <ReadyItem done={readiness.essayDrafted}>An essay drafted for this school or shared</ReadyItem>
+                  <ReadyItem done={readiness.keyDocsUploaded}>A document attached here or a shared key document</ReadyItem>
                 </ul>
+                <p className="text-xs text-muted-foreground mt-4">
+                  Tracks what you have prepared in CAAT. It does not send anything to the university.
+                </p>
               </CardContent>
             </Card>
 
@@ -384,13 +388,16 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
                     ) : null}
                   </div>
                 ) : null}
-                {scholarships.length === 0 && trackedScholarships.length === 0 ? (
+                {scholarshipsUnavailable && scholarships.length === 0 ? (
+                  <p className="rounded-lg border border-dashed bg-muted/20 px-6 py-6 text-center text-sm text-muted-foreground">
+                    Couldn&apos;t load scholarships for this university right now.
+                  </p>
+                ) : scholarships.length === 0 && trackedScholarships.length === 0 ? (
                   <div className="rounded-lg border border-dashed bg-muted/20 px-6 py-8 text-center">
-                    <p className="font-medium mb-1">No scholarships found for this school yet</p>
+                    <p className="font-medium mb-1">No scholarships recorded for this university yet</p>
                     <p className="text-sm text-muted-foreground">
-                      We don&apos;t have scholarships for {schoolCountry ?? "this country"} in our
-                      database yet. As we add them, the best matches for your profile will appear
-                      here automatically.
+                      We haven&apos;t recorded an active scholarship for {schoolName}. Others you
+                      may be eligible for are under Browse all.
                     </p>
                   </div>
                 ) : scholarships.length === 0 ? null : (
@@ -399,6 +406,7 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
                       {scholarships.map((s) => (
                         <li
                           key={s.id}
+                          data-hub-scholarship={s.id}
                           className="rounded-lg border bg-muted/20 px-4 py-3 flex items-start justify-between gap-3"
                         >
                           <div className="min-w-0 flex-1">
@@ -414,7 +422,7 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
                       ))}
                     </ul>
                     <p className="text-xs text-muted-foreground mt-3">
-                      Listed for {schoolName}, best fit first.
+                      Active scholarships recorded for {schoolName}, soonest deadline first.
                     </p>
                   </>
                 )}

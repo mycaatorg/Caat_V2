@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { sanitizeError } from "@/lib/safe-error";
-import { isSubmittedStatus, type ApplicationRow, type ApplicationStatus } from "@/types/applications";
+import type { ApplicationRow, ApplicationStatus } from "@/types/applications";
 import type { ScholarshipRow } from "@/types/scholarships";
 import type { ProfileRow } from "@/types/profile";
 import { matchScholarship } from "@/lib/profile-match";
@@ -10,8 +10,8 @@ import { assertApplicationWritten } from "@/app/(main)/applications/api";
 /**
  * Per-school application hub data. Aggregates everything a student needs for
  * one school in one place: status + deadline, a readiness rollup, their essay
- * drafts, their document vault status, and scholarships matched to the
- * school's country. All client-side via the browser supabase client, matching
+ * drafts, their document vault status, and the active scholarships recorded
+ * for this university. All client-side via the browser supabase client, matching
  * the applications list.
  */
 
@@ -24,12 +24,18 @@ async function getUser() {
   return user;
 }
 
+/**
+ * The hub's preparation checklist. It tracks what the student has prepared in
+ * CAAT for THIS application; it never says the application was sent (the
+ * student's own status does that).
+ */
 export interface ReadinessSignals {
   deadlineSet: boolean;
+  /** an essay drafted for this school (per-school prompt) or a shared prompt */
   essayDrafted: boolean;
+  /** a document attached to this application, or a shared key document */
   keyDocsUploaded: boolean;
-  submitted: boolean;
-  /** 0-4 */
+  /** 0-3 */
   score: number;
 }
 
@@ -58,6 +64,7 @@ export interface HubScholarship {
   title: string;
   provider: string;
   amount: string | null;
+  deadline: string | null;
   fit: number;
 }
 
@@ -80,7 +87,54 @@ export interface ApplicationHub {
   schoolDocuments: SchoolDocLine[];
   /** the standard category checklist, computed from untagged (shared) documents */
   sharedDocuments: DocLine[];
+  /** active scholarships recorded for this university, soonest deadline first */
   scholarships: HubScholarship[];
+  /** true when the catalogue read failed, so the panel must not say "none" */
+  scholarshipsUnavailable: boolean;
+}
+
+export const HUB_SCHOLARSHIP_LIMIT = 5;
+const HUB_SCHOLARSHIP_COLUMNS =
+  "id, title, provider_name, amount_display, deadline_at, country, school_name, tags, citizenships, study_level";
+
+type ScholarshipQueryResult = { data: unknown[] | null; error: unknown };
+
+/**
+ * Active scholarships for one university, from the public catalogue. The
+ * scholarship_schools junction is the primary link; when it holds no row for
+ * this school, fall back to the scraped school_name (with and without a
+ * leading "The"), as the school page does. Both reads are ordered by deadline
+ * (undated last) then title and capped, so the result is stable.
+ */
+async function fetchSchoolScholarships(
+  schoolId: number,
+  schoolName: string | null
+): Promise<{ rows: ScholarshipRow[]; error: boolean }> {
+  const linked = (await supabase
+    .from("scholarships")
+    .select(`${HUB_SCHOLARSHIP_COLUMNS}, scholarship_schools!inner(school_id)`)
+    .eq("scholarship_schools.school_id", schoolId)
+    .eq("is_active", true)
+    .order("deadline_at", { ascending: true, nullsFirst: false })
+    .order("title", { ascending: true })
+    .limit(HUB_SCHOLARSHIP_LIMIT)) as ScholarshipQueryResult;
+  if (linked.error) return { rows: [], error: true };
+  if ((linked.data ?? []).length > 0 || !schoolName) {
+    return { rows: (linked.data ?? []) as ScholarshipRow[], error: false };
+  }
+
+  const bare = schoolName.trim().replace(/^the\s+/i, "");
+  const names = Array.from(new Set([schoolName.trim(), bare, `The ${bare}`])).filter(Boolean);
+  const named = (await supabase
+    .from("scholarships")
+    .select(HUB_SCHOLARSHIP_COLUMNS)
+    .in("school_name", names)
+    .eq("is_active", true)
+    .order("deadline_at", { ascending: true, nullsFirst: false })
+    .order("title", { ascending: true })
+    .limit(HUB_SCHOLARSHIP_LIMIT)) as ScholarshipQueryResult;
+  if (named.error) return { rows: [], error: true };
+  return { rows: (named.data ?? []) as ScholarshipRow[], error: false };
 }
 
 const KEY_DOC_CATEGORIES: { category: string; label: string }[] = [
@@ -98,11 +152,6 @@ function docStatusFor(rows: { category: string; status: string | null }[], categ
   if (matches.length === 0) return "missing";
   if (matches.some((r) => (r.status ?? "").toLowerCase() === "verified")) return "verified";
   return "pending";
-}
-
-/** Loose school-name match: lowercase, trim, drop a leading "the ". */
-function normaliseSchoolName(n: string): string {
-  return n.trim().toLowerCase().replace(/^the\s+/, "");
 }
 
 export async function fetchApplicationHub(applicationId: string): Promise<ApplicationHub> {
@@ -123,7 +172,7 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
   const schoolCountry = school?.country ?? null;
 
   // Parallel: profile, prompts (+scope), all essay drafts (+school_id), all
-  // documents (+school_id), scholarships in the school's country.
+  // documents (+school_id), active scholarships recorded for this school.
   const [profileRes, promptsRes, draftsRes, docsRes, schRes] = await Promise.all([
     supabase
       .from("profiles")
@@ -133,15 +182,7 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     supabase.from("essay_prompts").select("id, slug, title, scope, sort_order").order("sort_order"),
     supabase.from("essay_drafts").select("prompt_id, school_id, updated_at").eq("user_id", user.id),
     supabase.from("documents").select("id, file_name, category, status, school_id").eq("user_id", user.id),
-    schoolCountry
-      ? supabase
-          .from("scholarships")
-          .select(
-            "id, title, provider_name, description, amount_display, country, school_name, tags, citizenships, study_level"
-          )
-          .eq("country", schoolCountry)
-          .limit(80)
-      : Promise.resolve({ data: [], error: null }),
+    fetchSchoolScholarships(schoolId, school?.name ?? null),
   ]);
 
   const profile = (profileRes.data as Partial<ProfileRow> | null) ?? null;
@@ -199,44 +240,36 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     status: docStatusFor(sharedDocRows, d.category),
   }));
 
-  // Readiness — "shared OR tagged-to-this-school" counts (the chosen rule).
+  // Preparation checklist, derived from exactly what the hub shows for this
+  // application, so a tick always has a matching line on the page:
+  //  - an essay: the per-school prompt draft tagged to THIS school, or a
+  //    shared prompt's untagged draft (null school_id means shared across
+  //    applications, as in the documents and essays tools);
+  //  - documents: one attached to this application, or a shared document in
+  //    one of the key categories the checklist lists.
+  // Other schools' drafts and documents never count, and the application's
+  // status is not a preparation step.
   const deadlineSet = !!application.deadline_at;
-  const essayDrafted = drafts.some((d) => d.school_id == null || d.school_id === schoolId);
-  const keyDocsUploaded = docRows.some((d) => d.school_id == null || d.school_id === schoolId);
-  const submitted = isSubmittedStatus(application.status);
+  const essayDrafted = [...essaysForSchool, ...essaysShared].some((e) => e.status === "drafted");
+  const keyDocsUploaded =
+    schoolDocuments.length > 0 || sharedDocuments.some((d) => d.status !== "missing");
   const readiness: ReadinessSignals = {
     deadlineSet,
     essayDrafted,
     keyDocsUploaded,
-    submitted,
-    score:
-      (deadlineSet ? 1 : 0) + (essayDrafted ? 1 : 0) + (keyDocsUploaded ? 1 : 0) + (submitted ? 1 : 0),
+    score: (deadlineSet ? 1 : 0) + (essayDrafted ? 1 : 0) + (keyDocsUploaded ? 1 : 0),
   };
 
-  // Scholarships specific to THIS school. We fetch the country's scholarships
-  // then match on a normalised school name (handles e.g. "The University of
-  // Melbourne" vs "University of Melbourne"). If none belong to this school,
-  // the panel truthfully shows "none yet" rather than other schools' awards.
-  let scholarships: HubScholarship[] = [];
-  if (!schRes.error && schRes.data) {
-    const target = normaliseSchoolName(schoolName);
-    const rows = (schRes.data as unknown as ScholarshipRow[]).filter(
-      (s) => s.school_name && normaliseSchoolName(s.school_name) === target
-    );
-    scholarships = rows
-      .map((s) => {
-        const { score } = matchScholarship((profile as ProfileRow) ?? null, s);
-        return {
-          id: s.id,
-          title: s.title,
-          provider: s.provider_name,
-          amount: s.amount_display ?? null,
-          fit: score,
-        };
-      })
-      .sort((a, b) => b.fit - a.fit)
-      .slice(0, 5);
-  }
+  // Active scholarships recorded for THIS school, already in deadline-then-
+  // title order from the query. Fit is kept for display, not for ordering.
+  const scholarships: HubScholarship[] = schRes.rows.map((s) => ({
+    id: s.id,
+    title: s.title,
+    provider: s.provider_name,
+    amount: s.amount_display ?? null,
+    deadline: s.deadline_at ?? null,
+    fit: matchScholarship((profile as ProfileRow) ?? null, s).score,
+  }));
 
   const trackedScholarships = await fetchTrackedForSchool(schoolName);
 
@@ -254,6 +287,7 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     schoolDocuments,
     sharedDocuments,
     scholarships,
+    scholarshipsUnavailable: schRes.error,
   };
 }
 

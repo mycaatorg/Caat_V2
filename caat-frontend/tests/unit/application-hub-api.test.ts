@@ -36,6 +36,25 @@ const application = {
   schools: SCHOOL,
 };
 
+const scholarship = (id: string, title: string, deadline_at: string | null, school_name = "University of Melbourne") => ({
+  id,
+  title,
+  provider_name: "UoM",
+  amount_display: "$10k",
+  deadline_at,
+  country: "Australia",
+  school_name,
+  tags: [],
+  citizenships: [],
+  study_level: [],
+});
+// What the database returns for this school's active scholarships, already in
+// deadline-then-title order (the order is asserted on the query, not re-sorted).
+const linkedScholarships = [
+  scholarship("s1", "Melbourne Award", "2026-11-01"),
+  scholarship("s2", "Melbourne Bursary", null),
+];
+
 function use(resolver: (ctx: QueryContext) => QueryResult, user: { id: string } | null = { id: "student-1" }) {
   io.client = createMockSupabase({ resolver, user });
 }
@@ -75,13 +94,7 @@ function hubResolver(overrides: Partial<Record<string, QueryResult>> = {}) {
           error: null,
         };
       case "scholarships":
-        return {
-          data: [
-            { id: "s1", title: "Melbourne Award", provider_name: "UoM", amount_display: "$10k", country: "Australia", school_name: "University of Melbourne", tags: [], citizenships: [], study_level: [] },
-            { id: "s2", title: "Other School Award", provider_name: "Other", amount_display: null, country: "Australia", school_name: "Monash University", tags: [], citizenships: [], study_level: [] },
-          ],
-          error: null,
-        };
+        return { data: linkedScholarships, error: null };
       default:
         return { data: [], error: null };
     }
@@ -121,33 +134,25 @@ describe("fetchApplicationHub", () => {
     await expect(fetchApplicationHub("app-1")).rejects.toThrow("read failed");
   });
 
-  it("builds the readiness checklist from the application, drafts and documents", async () => {
+  it("builds the preparation checklist from the application, drafts and documents", async () => {
     const hub = await fetchApplicationHub("app-1");
     expect(hub.readiness).toEqual({
       deadlineSet: false,
       essayDrafted: true,
       keyDocsUploaded: true,
-      submitted: false,
       score: 2,
     });
   });
 
-  it.each(["submitted", "decision_pending", "accepted", "rejected", "waitlisted"])(
-    "counts %s as submitted",
+  it.each(["submitted", "decision_pending", "accepted", "withdrawn", "researching"])(
+    "never counts the %s status as a preparation step",
     async (status) => {
       use(hubResolver({ user_school_applications: { data: { ...application, status, deadline_at: "2026-12-01" }, error: null } }));
       const hub = await fetchApplicationHub("app-1");
-      expect(hub.readiness.submitted).toBe(true);
-      expect(hub.readiness.deadlineSet).toBe(true);
+      expect(hub.readiness).toEqual({ deadlineSet: true, essayDrafted: true, keyDocsUploaded: true, score: 3 });
+      expect(hub.readiness).not.toHaveProperty("submitted");
     },
   );
-
-  it("does not count withdrawn or researching applications as submitted", async () => {
-    for (const status of ["withdrawn", "researching"]) {
-      use(hubResolver({ user_school_applications: { data: { ...application, status }, error: null } }));
-      expect((await fetchApplicationHub("app-1")).readiness.submitted).toBe(false);
-    }
-  });
 
   it("ignores drafts and documents tagged to other schools for readiness", async () => {
     use(
@@ -158,6 +163,59 @@ describe("fetchApplicationHub", () => {
     );
     const hub = await fetchApplicationHub("app-1");
     expect(hub.readiness).toMatchObject({ essayDrafted: false, keyDocsUploaded: false, score: 0 });
+  });
+
+  it("counts only essays and documents attached to this application or shared, with mixed items", async () => {
+    use(
+      hubResolver({
+        essay_drafts: {
+          data: [
+            // per-school prompt drafted for ANOTHER school: not this application's essay
+            { prompt_id: "p-why", school_id: 99, updated_at: "2026-09-01T00:00:00Z" },
+            // per-school prompt left untagged: the hub's essay panel does not show it for this school
+            { prompt_id: "p-why", school_id: null, updated_at: "2026-09-03T00:00:00Z" },
+          ],
+          error: null,
+        },
+        documents: {
+          data: [
+            // shared, but not one of the key documents the checklist lists
+            { id: "d5", file_name: "photo.png", category: "other", status: null, school_id: null },
+            // another school's key document
+            { id: "d4", file_name: "elsewhere.pdf", category: "letters", status: "verified", school_id: 99 },
+          ],
+          error: null,
+        },
+      }),
+    );
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.essaysForSchool[0].status).toBe("to-write");
+    expect(hub.essaysShared[0].status).toBe("to-write");
+    expect(hub.schoolDocuments).toEqual([]);
+    expect(hub.sharedDocuments.every((d) => d.status === "missing")).toBe(true);
+    expect(hub.readiness).toEqual({ deadlineSet: false, essayDrafted: false, keyDocsUploaded: false, score: 0 });
+  });
+
+  it("counts a draft tagged to this school and a document attached to this application", async () => {
+    use(
+      hubResolver({
+        essay_drafts: { data: [{ prompt_id: "p-why", school_id: 7, updated_at: "2026-09-04T00:00:00Z" }], error: null },
+        documents: { data: [{ id: "d3", file_name: "unimelb-form.pdf", category: "other", status: null, school_id: 7 }], error: null },
+      }),
+    );
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.readiness).toMatchObject({ essayDrafted: true, keyDocsUploaded: true, score: 2 });
+  });
+
+  it("counts a shared essay draft and a shared key document", async () => {
+    use(
+      hubResolver({
+        essay_drafts: { data: [{ prompt_id: "p-personal", school_id: null, updated_at: null }], error: null },
+        documents: { data: [{ id: "d2", file_name: "passport.pdf", category: "identity", status: "pending", school_id: null }], error: null },
+      }),
+    );
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.readiness).toMatchObject({ essayDrafted: true, keyDocsUploaded: true, score: 2 });
   });
 
   it("groups essays by scope and documents by school tag", async () => {
@@ -176,13 +234,80 @@ describe("fetchApplicationHub", () => {
     });
   });
 
-  it("lists only scholarships for this school and passes tracked ones through", async () => {
+  it("passes tracked scholarships and intended majors through", async () => {
     io.tracked.mockResolvedValue([{ id: "t1", title: "Tracked", provider: "P", amount: null, status: "applied" }]);
     const hub = await fetchApplicationHub("app-1");
-    expect(hub.scholarships.map((s) => s.id)).toEqual(["s1"]);
     expect(io.tracked).toHaveBeenCalledWith("The University of Melbourne");
     expect(hub.trackedScholarships).toHaveLength(1);
     expect(hub.intendedMajors).toEqual(["Law"]);
+  });
+});
+
+describe("hub scholarships for this university", () => {
+  const scholarshipQueries = () => io.client.queries.filter((q) => q.table === "scholarships");
+  const callsOf = (q: QueryContext, method: string) => q.calls.filter((c) => c.method === method).map((c) => c.args);
+  const STABLE_ORDER = [
+    ["deadline_at", { ascending: true, nullsFirst: false }],
+    ["title", { ascending: true }],
+  ];
+
+  it("queries active scholarships linked to this school, soonest deadline then name, with a limit", async () => {
+    const hub = await fetchApplicationHub("app-1");
+    expect(scholarshipQueries()).toHaveLength(1);
+    const [q] = scholarshipQueries();
+    expect(String(callsOf(q, "select")[0][0])).toContain("scholarship_schools!inner(school_id)");
+    expect(callsOf(q, "eq")).toEqual([
+      ["scholarship_schools.school_id", 7],
+      ["is_active", true],
+    ]);
+    expect(callsOf(q, "order")).toEqual(STABLE_ORDER);
+    expect(callsOf(q, "limit")).toEqual([[5]]);
+    expect(hub.scholarships.map((s) => s.id)).toEqual(["s1", "s2"]);
+    expect(hub.scholarships[0]).toMatchObject({ title: "Melbourne Award", provider: "UoM", amount: "$10k", deadline: "2026-11-01" });
+    expect(hub.scholarshipsUnavailable).toBe(false);
+  });
+
+  it("falls back to the recorded school name when no catalogue link exists", async () => {
+    use((ctx) => {
+      if (ctx.table === "scholarships") {
+        const linked = ctx.calls.some((c) => c.method === "eq" && c.args[0] === "scholarship_schools.school_id");
+        return linked ? { data: [], error: null } : { data: [scholarship("s9", "Named Award", "2026-12-01")], error: null };
+      }
+      return hubResolver()(ctx);
+    });
+    const hub = await fetchApplicationHub("app-1");
+    expect(scholarshipQueries()).toHaveLength(2);
+    const fallback = scholarshipQueries()[1];
+    expect(String(callsOf(fallback, "select")[0][0])).not.toContain("scholarship_schools");
+    expect(callsOf(fallback, "in")).toEqual([["school_name", ["The University of Melbourne", "University of Melbourne"]]]);
+    expect(callsOf(fallback, "eq")).toEqual([["is_active", true]]);
+    expect(callsOf(fallback, "order")).toEqual(STABLE_ORDER);
+    expect(callsOf(fallback, "limit")).toEqual([[5]]);
+    expect(hub.scholarships.map((s) => s.id)).toEqual(["s9"]);
+  });
+
+  it("returns an empty list when none are recorded for this university", async () => {
+    use(hubResolver({ scholarships: { data: [], error: null } }));
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.scholarships).toEqual([]);
+    expect(hub.scholarshipsUnavailable).toBe(false);
+  });
+
+  it("marks scholarships unavailable on a read error instead of claiming there are none", async () => {
+    use(hubResolver({ scholarships: { data: null, error: { message: "boom" } } }));
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.scholarships).toEqual([]);
+    expect(hub.scholarshipsUnavailable).toBe(true);
+    expect(scholarshipQueries()).toHaveLength(1);
+  });
+
+  it("reads the public catalogue without a country sweep or a user filter", async () => {
+    await fetchApplicationHub("app-1");
+    for (const q of scholarshipQueries()) {
+      const cols = callsOf(q, "eq").map(([col]) => col);
+      expect(cols).not.toContain("country");
+      expect(cols).not.toContain("user_id");
+    }
   });
 });
 
