@@ -43,3 +43,10 @@ Source audit: 4,224 production rows, zero verified in last 90 days. Source re-ve
 
 Review rulings: use explicit AU citizenship code for a match; country-only fields remain unknown because geographic eligibility is ambiguous. Explicit NZ-only citizenship does not match a listed Australian nationality, with dual-citizenship caveat; no overall eligibility determination. Cost: fewer automated conclusions, safer manual checking. Database student_status is string|null, so evaluator accepts that boundary and treats unrecognized values conservatively.
 Independent review P2 addressed by preserving distinct free-text eligibility even beside structured requirements; regression RED→GREEN. Panel heading/region semantics corrected. Claude review medium finding addressed with country-only and stale-unmet regression cases.
+
+
+## Release hardening after exact-head review
+
+Claude's final review found that an AU citizenship match could ignore unfamiliar excluded-country text. All nonempty exclusions now keep the result unknown, and recorded rules remain visible next to positive results or profile conflicts. Regression tests failed before the fix. The same review exposed malformed JSON career/coursework values crashing comparison; the catalogue boundary now keeps string arrays only and uses a new cache key. Nine additional cases bring the unit suite to 793 passing tests.
+
+Release run 39912658274 rejected one flaky browser assertion because a CSS selector matched a visible panel plus a hidden retained page. The test now targets the accessible named region and asserts exactly one match; it does not hide the issue with first() or added retries. Run 39912629053 passed, but production release remains gated on corrected CI and final review. PROD-75 and PROD-142 track this work.

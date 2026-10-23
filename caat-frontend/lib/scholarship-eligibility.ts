@@ -53,9 +53,9 @@ export function explainEligibility(
   let status: CriterionStatus = 'unknown';
   let reason = rules ? `${rules} Confirm the exact citizenship or residency rules with the provider.` : 'No clear citizenship rule is recorded. This does not mean everyone is eligible.';
   if (conflicting) reason = `${rules} These recorded restrictions conflict; check the provider before relying on them.`;
-  else if (isAustralian && profile?.student_status && !['domestic', 'not_sure'].includes(profile.student_status)) reason = 'Your nationality and Australian student-status answers may conflict. Check your profile and the provider’s definitions.';
-  else if (isAustralian && citizenshipIncludesAU) {
-    status = 'matched'; reason = 'Your listed Australian nationality matches the recorded Australian citizenship criterion. Other requirements still need checking.';
+  else if (isAustralian && profile?.student_status && !['domestic', 'not_sure'].includes(profile.student_status)) reason = `${rules} Your nationality and Australian student-status answers may conflict. Check your profile and the provider’s definitions.`;
+  else if (isAustralian && citizenshipIncludesAU && !excluded.length) {
+    status = 'matched'; reason = `${rules} Your listed Australian nationality matches the recorded Australian citizenship criterion. Other requirements still need checking.`;
   } else if (isAustralian && !included.length && !excluded.length && cits.length > 0 && cits.every(code => code === 'NZ')) {
     status = 'unmet'; reason = 'The recorded citizenship rule requires New Zealand citizenship, while your profile lists Australian nationality. Check with the provider if you also hold New Zealand citizenship or an exception applies.';
   }

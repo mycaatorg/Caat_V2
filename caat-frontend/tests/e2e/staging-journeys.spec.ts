@@ -453,7 +453,9 @@ test("scholarship status persists on detail and tracked-list views after reload"
   await signInToIsolatedStudent(page);
   await assertIsolatedDetailRoute(page, "/scholarships/[id]", `/scholarships/${SCHOLARSHIP_ID}`);
   await expect(page.getByRole("heading", { name: "E2E Test Scholarship" })).toBeVisible();
-  const eligibility = page.locator('[aria-labelledby="eligibility-check-title"]');
+  // Next.js may retain a hidden previous page; assert against the accessible region.
+  const eligibility = page.getByRole('region', { name: 'Check your eligibility', exact: true });
+  await expect(eligibility).toHaveCount(1);
   await expect(eligibility.getByRole('heading', { name: 'Check your eligibility', level: 2 })).toBeVisible();
   await expect(eligibility.getByText('No valid verification date is available. Eligibility remains unconfirmed.')).toBeVisible();
   await expect(eligibility.getByText('Needs checking', { exact: true }).first()).toBeVisible();
