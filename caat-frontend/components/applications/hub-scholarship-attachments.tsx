@@ -76,8 +76,9 @@ export function HubScholarshipAttachments({
     if (busyId) return;
     setBusyId(s.id);
     try {
-      if (to === null) await detachScholarship(s.id);
-      else await attachScholarship(s.id, to);
+      // Pass the attachment this tab saw, so a change made elsewhere is refused.
+      if (to === null) await detachScholarship(s.id, s.schoolId ?? schoolId);
+      else await attachScholarship(s.id, to, s.schoolId);
       onSavedChange(
         saved.map((row) => (row.id === s.id ? { ...row, schoolId: to, attachedSchoolName: to === null ? null : schoolName } : row)),
       );
