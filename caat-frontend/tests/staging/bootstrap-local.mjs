@@ -23,5 +23,10 @@ const onboarding = spawnSync(process.execPath, [join(here, 'apply-onboarding-mig
 });
 if (onboarding.error) throw onboarding.error;
 if (onboarding.status !== 0) throw new Error('Local onboarding migration failed.');
+const search = spawnSync(process.execPath, [join(here, 'apply-search-migration.mjs')], {
+  stdio: 'inherit', env: process.env,
+});
+if (search.error) throw search.error;
+if (search.status !== 0) throw new Error('Local scholarship search migration failed.');
 runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, 'seed.sql')]);
 console.log('Local-only CAAT schema and synthetic catalog fixtures installed.');

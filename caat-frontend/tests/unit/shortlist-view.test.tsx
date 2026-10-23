@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { button, click, deferred, flush, hasText, link, mountComponent, queryButton, queryLink, unmountAll } from "./dom-helpers";
+import { button, change, click, deferred, flush, hasText, link, mountComponent, queryButton, queryLink, unmountAll } from "./dom-helpers";
 import type { Shortlist } from "@/lib/shortlist";
 
 const io = vi.hoisted(() => ({ remove: vi.fn(), addApplication: vi.fn(), refresh: vi.fn(), toast: { error: vi.fn(), success: vi.fn() } }));
@@ -30,7 +30,27 @@ beforeEach(() => {
   vi.clearAllMocks();
   io.remove.mockResolvedValue(undefined);
 });
-afterEach(() => unmountAll());
+afterEach(() => {
+  unmountAll();
+  window.history.replaceState({}, "", "/shortlist");
+});
+
+const manySaved = (count: number): Shortlist => ({
+  scholarships: Array.from({ length: count }, (_, i) => ({
+    id: `sch-${i + 1}`,
+    title: `Scholarship ${i + 1}`,
+    provider: "Test provider",
+    amount: "$1,000",
+    deadlineAt: null,
+    status: i % 2 === 0 ? "interested" : "applied",
+  })),
+  schools: Array.from({ length: count }, (_, i) => ({ id: i + 1, name: `University ${i + 1}`, country: "Australia", application: null })),
+  majors: Array.from({ length: count }, (_, i) => ({ id: `course-${i + 1}`, name: `Course ${i + 1}`, category: "Study" })),
+});
+
+function setSearch(search: string) {
+  window.history.replaceState({}, "", `/shortlist${search}`);
+}
 
 describe("My shortlist", () => {
   it("shows each saved item with its next action", async () => {
@@ -48,6 +68,105 @@ describe("My shortlist", () => {
     expect(queryLink(/Regional Engineering Scholarship/)).toBeNull();
     expect(queryLink(/Civil Engineering/)).not.toBeNull();
     expect(button("Courses").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("limits the all view to five items per category and opens all scholarships in the category view", async () => {
+    setSearch("");
+    await mountComponent(<ShortlistView initial={manySaved(100)} />);
+
+    expect(document.querySelectorAll('[aria-label="Scholarships"] li')).toHaveLength(5);
+    expect(document.querySelectorAll('[aria-label="Universities"] li')).toHaveLength(5);
+    expect(document.querySelectorAll('[aria-label="Courses"] li')).toHaveLength(5);
+    await click(button("View all scholarships (100)"));
+    expect(document.querySelectorAll('[aria-label="Scholarships"] li')).toHaveLength(20);
+    expect(queryLink(/Scholarship 20/)).not.toBeNull();
+    expect(queryLink(/Scholarship 21/)).toBeNull();
+    expect(new URLSearchParams(window.location.search).get("tab")).toBe("scholarship");
+    await click(button("All"));
+    await click(button("View all universities (100)"));
+    expect(document.querySelectorAll('[aria-label="Universities"] li')).toHaveLength(20);
+    expect(new URLSearchParams(window.location.search).get("tab")).toBe("school");
+    await click(button("All"));
+    await click(button("View all courses (100)"));
+    expect(document.querySelectorAll('[aria-label="Courses"] li')).toHaveLength(20);
+    expect(new URLSearchParams(window.location.search).get("tab")).toBe("major");
+  });
+
+  it("paginates a category and writes the selected page to the URL", async () => {
+    setSearch("");
+    await mountComponent(<ShortlistView initial={manySaved(21)} />);
+    await click(button("Universities"));
+    expect(document.querySelectorAll('[aria-label="Universities"] li')).toHaveLength(20);
+    await click(button("Next page"));
+    expect(document.querySelectorAll('[aria-label="Universities"] li')).toHaveLength(1);
+    expect(queryLink(/University 21/)).not.toBeNull();
+    expect(new URLSearchParams(window.location.search).get("page")).toBe("2");
+  });
+
+  it("resets pagination when search or scholarship status changes", async () => {
+    setSearch("?tab=scholarship&page=2");
+    await mountComponent(<ShortlistView initial={manySaved(100)} />);
+    const search = document.querySelector<HTMLInputElement>('input[aria-label="Search scholarships"]');
+    expect(search).not.toBeNull();
+    await change(search!, "Scholarship 1");
+    expect(document.querySelectorAll('[aria-label="Scholarships"] li')).toHaveLength(12);
+    expect(new URLSearchParams(window.location.search).get("page")).toBeNull();
+    expect(new URLSearchParams(window.location.search).get("q")).toBe("Scholarship 1");
+
+    setSearch("?tab=scholarship&page=2");
+    unmountAll();
+    await mountComponent(<ShortlistView initial={manySaved(25)} />);
+    const status = document.querySelector<HTMLSelectElement>('select[aria-label="Scholarship status"]');
+    expect(status).not.toBeNull();
+    await change(status!, "applied");
+    expect(document.querySelectorAll('[aria-label="Scholarships"] li')).toHaveLength(12);
+    expect(new URLSearchParams(window.location.search).get("page")).toBeNull();
+    expect(new URLSearchParams(window.location.search).get("status")).toBe("applied");
+  });
+
+  it("restores a valid tab, page, search and status from the URL and safely ignores invalid state", async () => {
+    setSearch("?tab=scholarship&page=2&q=Scholarship&status=applied");
+    await mountComponent(<ShortlistView initial={manySaved(100)} />);
+    expect(button("Scholarships").getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelectorAll('[aria-label="Scholarships"] li')).toHaveLength(20);
+    expect(queryLink(/Scholarship 42/)).not.toBeNull();
+    expect((document.querySelector('input[aria-label="Search scholarships"]') as HTMLInputElement).value).toBe("Scholarship");
+    expect((document.querySelector('select[aria-label="Scholarship status"]') as HTMLSelectElement).value).toBe("applied");
+
+    setSearch("?tab=not-a-category&page=-3&q=%20%20&status=not-a-status");
+    unmountAll();
+    await mountComponent(<ShortlistView initial={manySaved(25)} />);
+    expect(button("All").getAttribute("aria-pressed")).toBe("true");
+    expect(document.querySelectorAll('[aria-label="Scholarships"] li')).toHaveLength(5);
+    expect(document.querySelectorAll('[aria-label="Universities"] li')).toHaveLength(5);
+    expect(document.querySelectorAll('[aria-label="Courses"] li')).toHaveLength(5);
+  });
+
+  it("clamps to the last available page after removing the only item on that page", async () => {
+    setSearch("?tab=school&page=2");
+    await mountComponent(<ShortlistView initial={manySaved(21)} />);
+    expect(queryLink(/University 21/)).not.toBeNull();
+    await click(button("Remove University 21 from shortlist"));
+    await flush();
+    expect(document.querySelectorAll('[aria-label="Universities"] li')).toHaveLength(20);
+    expect(document.body.textContent).toContain("20 saved");
+    expect(new URLSearchParams(window.location.search).get("page")).toBeNull();
+    expect(queryButton("Next page")).toBeNull();
+  });
+
+  it("restores a failed removal from the last page after pagination clamps", async () => {
+    const removal = deferred();
+    io.remove.mockReturnValueOnce(removal.promise);
+    setSearch("?tab=school&page=2");
+    await mountComponent(<ShortlistView initial={manySaved(21)} />);
+    await click(button("Remove University 21 from shortlist"));
+    await flush();
+    expect(new URLSearchParams(window.location.search).get("page")).toBeNull();
+    await act(async () => removal.reject(new Error("offline")));
+    await flush();
+    expect(document.body.textContent).toContain("21 saved");
+    await click(button("Next page"));
+    expect(queryLink(/University 21/)).not.toBeNull();
   });
 
   it("starts an application once and swaps the button for a link", async () => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { click, deferred, flush, hasText, link, mountComponent, queryLink, unmountAll } from "./dom-helpers";
+import { click, deferred, flush, hasText, link, mountComponent, queryAll, queryButton, queryLink, unmountAll } from "./dom-helpers";
 
 const io = vi.hoisted(() => ({ toggleTodo: vi.fn(), dismiss: vi.fn(), track: vi.fn(), refresh: vi.fn(), toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: io.refresh }) }));
@@ -46,6 +46,7 @@ beforeEach(() => {
   io.dismiss.mockResolvedValue(undefined);
 });
 afterEach(() => unmountAll());
+beforeEach(() => window.history.replaceState(null, "", "/today"));
 
 describe("Today", () => {
   it("greets the student and leads with one next step that links to its destination", async () => {
@@ -65,7 +66,9 @@ describe("Today", () => {
     expect(link(/Why engineering/).getAttribute("href")).toBe("/essays?prompt=p1");
     expect(hasText("Edited yesterday", document.body) || document.body.textContent?.includes("Edited yesterday")).toBe(true);
     expect(link(/Regional Engineering Scholarship/).getAttribute("href")).toBe("/scholarships/s1");
-    expect(document.body.textContent).toContain("3 saved");
+    expect(document.body.textContent).toContain("2Scholarships");
+    expect(document.body.textContent).toContain("1Universities");
+    expect(document.body.textContent).toContain("0Courses");
   });
 
   it("explains empty sections instead of showing blank boxes", async () => {
@@ -76,19 +79,72 @@ describe("Today", () => {
     expect(queryLink(/Why engineering/)).toBeNull();
   });
 
-  it("flags overdue to-dos and completes one, restoring it if the save fails", async () => {
+  it("keeps a completed to-do visible in place and restores it if the save fails", async () => {
     const save = deferred();
     io.toggleTodo.mockReturnValueOnce(save.promise);
     await mountComponent(<TodayView {...props()} />);
     expect(document.body.textContent).toContain("Overdue");
     const box = document.querySelector<HTMLInputElement>('input[aria-label="Mark \\"Ask Ms Lee for a reference\\" done"]')!;
     await click(box);
-    expect(document.body.textContent).not.toContain("Ask Ms Lee for a reference");
+    expect(document.body.textContent).toContain("Ask Ms Lee for a reference");
+    expect(box.checked).toBe(true);
+    expect(box.closest("li")?.className).toContain("opacity");
+    expect(box.disabled).toBe(true);
     expect(io.toggleTodo).toHaveBeenCalledWith("t1", true);
     await act(async () => save.reject(new Error("offline")));
     await flush();
     expect(document.body.textContent).toContain("Ask Ms Lee for a reference");
+    expect(box.checked).toBe(false);
     expect(io.toast.error).toHaveBeenCalled();
+  });
+
+  it("offers Undo after saving a completion and persists the restore", async () => {
+    await mountComponent(<TodayView {...props()} />);
+    const box = document.querySelector<HTMLInputElement>('input[aria-label="Mark \\"Ask Ms Lee for a reference\\" done"]')!;
+    await click(box);
+    await flush();
+
+    expect(box.checked).toBe(true);
+    expect(io.toast.success).toHaveBeenCalled();
+    const action = io.toast.success.mock.calls[0][1].action;
+    await act(async () => action.onClick());
+    await flush();
+
+    expect(box.checked).toBe(false);
+    expect(io.toggleTodo).toHaveBeenNthCalledWith(1, "t1", true);
+    expect(io.toggleTodo).toHaveBeenNthCalledWith(2, "t1", false);
+
+    await click(box);
+    await flush();
+    await action.onClick();
+    await flush();
+    expect(box.checked).toBe(true);
+    expect(io.toggleTodo).toHaveBeenNthCalledWith(3, "t1", true);
+  });
+
+  it("rolls back a failed Undo and hides the completed task on a fresh visit", async () => {
+    await mountComponent(<TodayView {...props()} />);
+    const box = document.querySelector<HTMLInputElement>('input[aria-label="Mark \\"Ask Ms Lee for a reference\\" done"]')!;
+    await click(box);
+    await flush();
+    const undo = io.toast.success.mock.calls[0][1].action;
+
+    const restore = deferred();
+    io.toggleTodo.mockReturnValueOnce(restore.promise);
+    await act(async () => undo.onClick());
+    await flush();
+    expect(box.checked).toBe(false);
+    expect(box.disabled).toBe(true);
+
+    await act(async () => restore.reject(new Error("offline")));
+    await flush();
+    expect(box.checked).toBe(true);
+    expect(io.toast.error).toHaveBeenCalled();
+
+    unmountAll();
+    await mountComponent(<TodayView {...props({ todos: [] })} />);
+    expect(document.body.textContent).not.toContain("Ask Ms Lee for a reference");
+    expect(document.body.textContent).toContain("No open to-dos.");
   });
 
   it("offers onboarding once as a dismissible note when it is not already the next step", async () => {
@@ -128,5 +184,92 @@ describe("Today", () => {
       <TodayView {...props({ showOnboardingNudge: true, nextStep: { kind: "onboarding", title: "Tell us where you are up to", body: "", cta: "Get started", href: "/welcome" } })} />,
     );
     expect(document.querySelector('button[aria-label="Not now"]')).toBeNull();
+  });
+
+  it("caps each Today preview while keeping the section counts available", async () => {
+    const many = (count: number) => Array.from({ length: count }, (_, i) => i + 1);
+    await mountComponent(<TodayView {...props({
+      tasks: many(8).map((i) => ({ id: `task-${i}`, kind: "set-deadline" as const, title: `Task ${i}`, detail: "Add a deadline", href: `/applications/${i}` })),
+      comingUp: many(24).map((i) => ({ id: `event-${i}`, source: "app" as const, title: `Event ${i}`, dateISO: "2026-10-10", href: `/applications/${i}` })),
+      recent: many(8).map((i) => ({ kind: "essay" as const, title: `Recent ${i}`, detail: "Draft", href: `/essays/${i}`, updatedAt: "2026-10-06T10:00:00Z" })),
+      todos: many(8).map((i) => ({ id: `todo-${i}`, text: `To-do ${i}`, dueDate: null, priority: 1 })),
+      savedPreview: many(8).map((i) => ({ kind: "scholarship" as const, id: `saved-${i}`, title: `Saved ${i}`, href: `/scholarships/${i}` })),
+    })} />);
+
+    expect(document.querySelector('[aria-label="Needs attention"] ul')?.children.length).toBe(3);
+    expect(document.querySelector('[aria-label="Coming up"] ul')?.children.length).toBe(4);
+    expect(document.querySelector('[aria-label="Recent work"] ul')?.children.length).toBe(3);
+    expect(document.querySelector('[aria-label="Your to-dos"] ul')?.children.length).toBe(3);
+    expect(document.querySelector('[aria-label="My shortlist"] ul')?.children.length).toBe(3);
+    expect(queryLink("View all Needs attention")).not.toBeNull();
+    expect(queryLink("View all Coming up")).not.toBeNull();
+    expect(queryLink("View all Recent work")).not.toBeNull();
+    expect(queryLink("View all to-dos")).not.toBeNull();
+  });
+
+  it("opens a focused upcoming list and pages through items beyond the preview", async () => {
+    const comingUp = Array.from({ length: 24 }, (_, i) => ({
+      id: `event-${i + 1}`, source: "app" as const, title: `Event ${i + 1}`, dateISO: "2026-10-10", href: `/applications/${i + 1}`,
+    }));
+    await mountComponent(<TodayView {...props({ comingUp })} />);
+
+    await click(link("View all Coming up"));
+    expect(document.querySelector("h1")?.textContent).toBe("Coming up");
+    expect(document.querySelector('[aria-label="Coming up"] ul')?.children.length).toBe(10);
+    expect(document.body.textContent).toContain("Event 10");
+    expect(document.body.textContent).not.toContain("Good afternoon");
+    expect(window.location.search).toBe("?view=upcoming&page=1");
+
+    await click(queryButton("Next page")!);
+    expect(document.querySelector('[aria-label="Coming up"] ul')?.children.length).toBe(10);
+    expect(document.body.textContent).toContain("Event 11");
+    expect(document.body.textContent).toContain("Page 2 of 3");
+    expect(window.location.search).toBe("?view=upcoming&page=2");
+  });
+
+  it("restores a focused list and clamps an out-of-range URL page", async () => {
+    const comingUp = Array.from({ length: 24 }, (_, i) => ({
+      id: `event-${i + 1}`, source: "app" as const, title: `Event ${i + 1}`, dateISO: "2026-10-10", href: `/applications/${i + 1}`,
+    }));
+    window.history.replaceState(null, "", "/today?view=upcoming&page=9");
+    await mountComponent(<TodayView {...props({ comingUp })} />);
+
+    expect(document.querySelector("h1")?.textContent).toBe("Coming up");
+    expect(document.querySelector('[aria-label="Coming up"] ul')?.children.length).toBe(4);
+    expect(document.body.textContent).toContain("Event 24");
+    expect(document.body.textContent).toContain("Page 3 of 3");
+    expect(window.location.search).toBe("?view=upcoming&page=3");
+  });
+
+  it("keeps completed to-dos visible on the final page while a save is pending", async () => {
+    const todos = Array.from({ length: 11 }, (_, i) => ({ id: `todo-${i + 1}`, text: `To-do ${i + 1}`, dueDate: null, priority: 1 }));
+    const save = deferred();
+    io.toggleTodo.mockReturnValueOnce(save.promise);
+    window.history.replaceState(null, "", "/today?view=todos&page=2");
+    await mountComponent(<TodayView {...props({ todos })} />);
+    expect(document.body.textContent).toContain("To-do 11");
+
+    await click(queryAll("input", 'Mark "To-do 11" done')[0]);
+    expect(document.body.textContent).toContain("Page 2 of 2");
+    expect(document.body.textContent).toContain("To-do 11");
+    expect(document.querySelector<HTMLInputElement>('input[id="todo-todo-11"]')?.checked).toBe(true);
+    await act(async () => save.reject(new Error("offline")));
+    await flush();
+    expect(document.body.textContent).toContain("To-do 11");
+    expect(window.location.search).toBe("?view=todos&page=2");
+    expect(io.toast.error).toHaveBeenCalled();
+    expect((queryAll("input", 'Mark "To-do 11" done')[0] as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("keeps the last completed to-do on its page", async () => {
+    const todos = Array.from({ length: 11 }, (_, i) => ({ id: `todo-${i + 1}`, text: `To-do ${i + 1}`, dueDate: null, priority: 1 }));
+    window.history.replaceState(null, "", "/today?view=todos&page=2");
+    await mountComponent(<TodayView {...props({ todos })} />);
+    await click(queryAll("input", 'Mark "To-do 11" done')[0]);
+
+    expect(document.body.textContent).toContain("Page 2 of 2");
+    expect(document.body.textContent).toContain("To-do 11");
+    expect(window.location.search).toBe("?view=todos&page=2");
+    expect(io.toggleTodo).toHaveBeenCalledWith("todo-11", true);
   });
 });

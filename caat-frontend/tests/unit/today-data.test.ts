@@ -1,7 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createMockSupabase, type QueryContext, type QueryResult } from "./mock-supabase";
-
-vi.mock("@/lib/unified-deadlines", () => ({ fetchUnifiedDeadlines: vi.fn().mockResolvedValue([]) }));
 
 import { loadToday, resolveTimeZone, sydneyHour, sydneyTodayISO, zonedHour, zonedTodayISO } from "@/lib/today-data";
 
@@ -30,7 +28,7 @@ describe("student time zone", () => {
   });
 
   it("refuses to treat a failed read as an empty account", async () => {
-    const client = createMockSupabase({ resolver: (ctx) => (ctx.table === "user_school_applications" ? { data: null, error: { message: "timeout" } } : { data: [], error: null }) });
+    const client = createMockSupabase({ resolver: (ctx) => (ctx.table === "user_school_applications" && ctx.calls.some((call) => call.method === "select" && String(call.args[0]).includes("school_id")) ? { data: null, error: { message: "timeout" } } : { data: [], error: null }) });
     await expect(loadToday(client as never, "student-1")).rejects.toThrow("Could not load Today");
   });
 });
@@ -84,5 +82,76 @@ describe("loadToday", () => {
     const data = await loadToday(client as never, "student-1");
     expect(data.firstName).toBeNull();
     expect(data.input.onboarding).toEqual({ completed: false, dismissed: false, hasBasics: false });
+  });
+
+  // Keep the real unified feed in these tests: replacing it with an empty
+  // success hid deadline outages from the original loader tests (PROD-103).
+  const sources = [
+    ["user_school_applications", "id, deadline_at, status, schools(name)"],
+    ["user_bookmarked_scholarships", "scholarship_id, scholarships(id, title, deadline_at)"],
+    ["calendar_events", "id, title, event_date, time_start, time_end"],
+  ];
+  const event = { id: "event-1", title: "University open day", event_date: "2099-10-25", time_start: null, time_end: null };
+
+  it.each(sources)("rejects a result error from the %s deadline read and recovers on retry", async (table, selection) => {
+    let failing = true;
+    const client = createMockSupabase({ resolver: (ctx) => {
+      if (failing && ctx.table === table && ctx.calls.some((call) => call.method === "select" && call.args[0] === selection)) {
+        return { data: null, error: { message: "simulated deadline outage" } };
+      }
+      if (ctx.table === "calendar_events") return { data: [event], error: null };
+      return resolver(ctx);
+    } });
+    await expect(loadToday(client as never, "student-1")).rejects.toThrow();
+    failing = false;
+    const recovered = await loadToday(client as never, "student-1");
+    expect(recovered.input.deadlines).toEqual([
+      { id: "evt-event-1", source: "event", title: "University open day", dateISO: "2099-10-25", href: "/dashboard", timeStart: undefined, timeEnd: undefined },
+    ]);
+  });
+
+  it.each(sources)("rejects thrown failures from the %s deadline read", async (table, selection) => {
+    const client = createMockSupabase({ resolver: (ctx) => {
+      if (ctx.table === table && ctx.calls.some((call) => call.method === "select" && call.args[0] === selection)) {
+        throw new Error("connection interrupted");
+      }
+      return resolver(ctx);
+    } });
+    await expect(loadToday(client as never, "student-1")).rejects.toThrow("connection interrupted");
+  });
+
+  it("accepts genuinely empty deadline sources", async () => {
+    const client = createMockSupabase({ resolver: () => ({ data: [], error: null }) });
+    const data = await loadToday(client as never, "student-1");
+    expect(data.input.deadlines).toEqual([]);
+  });
+
+  it("loads every open task across database pages instead of truncating View all", async () => {
+    const tasks = Array.from({ length: 205 }, (_, i) => ({ id: `todo-${i}`, text: `Task ${i + 1}`, due_date: null, priority: 2 }));
+    const client = createMockSupabase({ resolver: (ctx) => {
+      if (ctx.table !== "user_todos") return resolver(ctx);
+      const range = ctx.calls.find((c) => c.method === "range")?.args as [number, number] | undefined;
+      const limit = ctx.calls.find((c) => c.method === "limit")?.args[0] as number | undefined;
+      return { data: range ? tasks.slice(range[0], range[1] + 1) : tasks.slice(0, limit ?? 200), error: null };
+    } });
+    const data = await loadToday(client as never, "student-1");
+    expect(data.todos).toHaveLength(205);
+    expect(data.todos.at(-1)).toMatchObject({ id: "todo-204", text: "Task 205" });
+    for (const q of client.queries.filter((q) => q.table === "user_todos")) {
+      expect(q.calls).toContainEqual({ method: "eq", args: ["user_id", "student-1"] });
+      expect(q.calls).toContainEqual({ method: "eq", args: ["done", false] });
+      expect(q.calls).toContainEqual({ method: "order", args: ["id", { ascending: true }] });
+    }
+  });
+
+  it("rejects a later task page failure rather than returning a partial list", async () => {
+    const client = createMockSupabase({ resolver: (ctx) => {
+      if (ctx.table !== "user_todos") return resolver(ctx);
+      const start = Number(ctx.calls.find((c) => c.method === "range")?.args[0] ?? 0);
+      return start === 0
+        ? { data: Array.from({ length: 200 }, (_, i) => ({ id: `todo-${i}`, text: `Task ${i}`, due_date: null, priority: 2 })), error: null }
+        : { data: null, error: { message: "page unavailable" } };
+    } });
+    await expect(loadToday(client as never, "student-1")).rejects.toThrow();
   });
 });

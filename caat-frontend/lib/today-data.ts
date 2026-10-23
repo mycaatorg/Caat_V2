@@ -4,7 +4,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchUnifiedDeadlines, type UnifiedDeadline } from "@/lib/unified-deadlines";
+import { fetchUnifiedDeadlines } from "@/lib/unified-deadlines";
 import type { ApplicationStatus } from "@/types/applications";
 import type { TodayApplication, TodayInput } from "@/lib/today";
 
@@ -67,6 +67,26 @@ export interface TodayData {
 
 type Row = Record<string, unknown>;
 
+/** View all needs more than the overview's first six tasks. Read bounded
+ * pages with a stable tie-breaker; any failed page invalidates the whole list. */
+async function loadOpenTodos(supabase: SupabaseClient, userId: string) {
+  const pageSize = 200;
+  const rows: Row[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from("user_todos")
+      .select("id, text, due_date, priority")
+      .eq("user_id", userId)
+      .eq("done", false)
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .order("id", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw new Error("Could not load Today", { cause: error });
+    rows.push(...(data ?? []));
+    if (!data || data.length < pageSize) return rows;
+  }
+}
+
 export async function loadToday(
   supabase: SupabaseClient,
   userId: string,
@@ -74,7 +94,7 @@ export async function loadToday(
   timeZone: string = DEFAULT_TIME_ZONE,
 ): Promise<TodayData> {
   const todayISO = zonedTodayISO(timeZone, now);
-  const [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, todosRes, resumesRes, promptsRes, customRes, deadlines] =
+  const [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, todos, resumesRes, promptsRes, customRes, deadlines] =
     await Promise.all([
       supabase
         .from("profiles")
@@ -102,13 +122,7 @@ export async function loadToday(
         .select("major_id, created_at, majors(id, name)")
         .eq("user_id", userId)
         .order("created_at", { ascending: false }),
-      supabase
-        .from("user_todos")
-        .select("id, text, due_date, priority")
-        .eq("user_id", userId)
-        .eq("done", false)
-        .order("due_date", { ascending: true, nullsFirst: false })
-        .limit(6),
+      loadOpenTodos(supabase, userId),
       supabase
         .from("resumes")
         .select("id, title, updated_at")
@@ -117,12 +131,12 @@ export async function loadToday(
         .limit(1),
       supabase.from("essay_prompts").select("id, title"),
       supabase.from("custom_essay_prompts").select("id, title").eq("user_id", userId),
-      fetchUnifiedDeadlines(supabase, userId).catch((): UnifiedDeadline[] => []),
+      fetchUnifiedDeadlines(supabase, userId),
     ]);
 
   // A failed read must not look like an empty account (that would tell a
   // student with applications to "save your first scholarship").
-  for (const res of [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, todosRes]) {
+  for (const res of [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes]) {
     if (res.error) throw new Error("Could not load Today");
   }
 
@@ -218,7 +232,7 @@ export async function loadToday(
       scholarshipStatuses: Object.fromEntries(savedSch.map((r) => [r.scholarship_id as string, (r.status as string | null) ?? "interested"])),
     },
     recent,
-    todos: ((todosRes.data ?? []) as Row[]).map((t) => ({
+    todos: todos.map((t) => ({
       id: t.id as string,
       text: t.text as string,
       dueDate: (t.due_date as string | null) ?? null,

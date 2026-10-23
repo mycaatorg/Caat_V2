@@ -115,6 +115,12 @@ export async function fetchUnifiedDeadlines(
       .eq("user_id", userId),
   ]);
 
+  // Supabase returns query failures alongside data; a successful promise is
+  // not proof that every source loaded. Never present a partial feed as empty.
+  for (const result of [appRes, schRes, evtRes]) {
+    if (result.error) throw new Error("Could not load deadlines", { cause: result.error });
+  }
+
   const apps: RawAppDeadline[] = (appRes.data ?? []).flatMap((row: unknown) => {
     const r = row as {
       id: string;

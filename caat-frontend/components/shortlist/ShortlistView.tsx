@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -15,6 +15,40 @@ import { STATUS_CONFIG } from "@/types/applications";
 
 const MAROON = "text-[#9a1a27] dark:text-[#e06b78]";
 type Filter = "all" | ShortlistKind;
+type ScholarshipStatus = "all" | "interested" | "applied" | "awarded" | "not_selected";
+type ViewState = { filter: Filter; page: number; search: string; status: ScholarshipStatus };
+
+const PAGE_SIZE = 20;
+const OVERVIEW_LIMIT = 5;
+const VALID_FILTERS = new Set<Filter>(["all", "scholarship", "school", "major"]);
+const VALID_STATUSES = new Set<ScholarshipStatus>(["all", "interested", "applied", "awarded", "not_selected"]);
+
+function readViewState(): ViewState {
+  if (typeof window === "undefined") return { filter: "all", page: 1, search: "", status: "all" };
+  const params = new URLSearchParams(window.location.search);
+  const rawFilter = params.get("tab") as Filter | null;
+  const rawStatus = params.get("status") as ScholarshipStatus | null;
+  const rawPage = Number(params.get("page"));
+  return {
+    filter: rawFilter && VALID_FILTERS.has(rawFilter) ? rawFilter : "all",
+    page: Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1,
+    search: params.get("q")?.trim() ?? "",
+    status: rawStatus && VALID_STATUSES.has(rawStatus) ? rawStatus : "all",
+  };
+}
+
+function writeViewState(state: ViewState) {
+  const url = new URL(window.location.href);
+  if (state.filter === "all") url.searchParams.delete("tab");
+  else url.searchParams.set("tab", state.filter);
+  if (state.page === 1) url.searchParams.delete("page");
+  else url.searchParams.set("page", String(state.page));
+  if (state.search) url.searchParams.set("q", state.search);
+  else url.searchParams.delete("q");
+  if (state.status === "all") url.searchParams.delete("status");
+  else url.searchParams.set("status", state.status);
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
@@ -41,12 +75,16 @@ function Section({
   count,
   icon: Icon,
   empty,
+  hasItems,
+  viewAll,
   children,
 }: {
   title: string;
   count: number;
   icon: typeof School;
   empty: React.ReactNode;
+  hasItems?: boolean;
+  viewAll?: { label: string; onClick: () => void };
   children: React.ReactNode;
 }) {
   return (
@@ -56,8 +94,25 @@ function Section({
         <h2 className="text-lg font-semibold">{title}</h2>
         <span className="font-code text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{count} saved</span>
       </div>
-      {count ? <ul className="border divide-y bg-card">{children}</ul> : <div className="border border-dashed px-4 py-5 text-sm text-muted-foreground">{empty}</div>}
+      {hasItems ?? count > 0 ? <ul className="border divide-y bg-card">{children}</ul> : <div className="border border-dashed px-4 py-5 text-sm text-muted-foreground">{empty}</div>}
+      {viewAll ? (
+        <button type="button" onClick={viewAll.onClick} className={`mt-3 text-sm ${MAROON} hover:underline`}>
+          {viewAll.label}
+        </button>
+      ) : null}
     </section>
+  );
+}
+
+function Pagination({ kind, page, pages, onPage }: { kind: ShortlistKind; page: number; pages: number; onPage: (page: number) => void }) {
+  if (pages < 2) return null;
+  const name = kind === "scholarship" ? "Scholarship" : kind === "school" ? "University" : "Course";
+  return (
+    <nav aria-label={`${name} pages`} className="flex items-center justify-between gap-3 pt-3">
+      <Button variant="outline" className="rounded-none" disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous page</Button>
+      <span className="text-sm text-muted-foreground" aria-live="polite">Page {page} of {pages}</span>
+      <Button variant="outline" className="rounded-none" disabled={page >= pages} onClick={() => onPage(page + 1)}>Next page</Button>
+    </nav>
   );
 }
 
@@ -78,7 +133,7 @@ function RemoveButton({ label, onRemove, busy }: { label: string; onRemove: () =
 export function ShortlistView({ initial }: { initial: Shortlist | null }) {
   const router = useRouter();
   const [list, setList] = useState<Shortlist | null>(initial);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [view, setView] = useState<ViewState>({ filter: "all", page: 1, search: "", status: "all" });
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const isBusy = (key: string) => busy.has(key);
   const setBusyKey = (key: string, on: boolean) =>
@@ -88,6 +143,32 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
       else next.delete(key);
       return next;
     });
+
+  function updateView(next: ViewState) {
+    setView(next);
+    writeViewState(next);
+  }
+
+  useEffect(() => {
+    const restore = () => setView(readViewState());
+    const initialView = readViewState();
+    setView(initialView);
+    writeViewState(initialView);
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
+
+  useEffect(() => {
+    if (!list || view.filter === "all") return;
+    const term = view.search.toLowerCase();
+    const count = view.filter === "scholarship"
+      ? list.scholarships.filter((s) => (view.status === "all" || s.status === view.status) && `${s.title} ${s.provider ?? ""} ${s.amount ?? ""}`.toLowerCase().includes(term)).length
+      : view.filter === "school"
+        ? list.schools.filter((s) => `${s.name} ${s.country ?? ""}`.toLowerCase().includes(term)).length
+        : list.majors.filter((m) => `${m.name} ${m.category ?? ""}`.toLowerCase().includes(term)).length;
+    const page = Math.min(view.page, Math.max(1, Math.ceil(count / PAGE_SIZE)));
+    if (page !== view.page) updateView({ ...view, page });
+  }, [list, view]);
 
   if (!list) {
     return (
@@ -103,7 +184,23 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
   }
 
   const total = list.scholarships.length + list.schools.length + list.majors.length;
-  const show = (kind: ShortlistKind) => filter === "all" || filter === kind;
+  const show = (kind: ShortlistKind) => view.filter === "all" || view.filter === kind;
+  const filteredScholarships = list.scholarships.filter((s) =>
+    (view.status === "all" || s.status === view.status) &&
+    `${s.title} ${s.provider ?? ""} ${s.amount ?? ""}`.toLowerCase().includes(view.search.toLowerCase()),
+  );
+  const filteredSchools = list.schools.filter((s) => `${s.name} ${s.country ?? ""}`.toLowerCase().includes(view.search.toLowerCase()));
+  const filteredMajors = list.majors.filter((m) => `${m.name} ${m.category ?? ""}`.toLowerCase().includes(view.search.toLowerCase()));
+  const paged = <T,>(items: T[], matching: T[]) => {
+    const pageCount = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
+    const page = Math.min(view.page, pageCount);
+    const visible = view.filter === "all" ? items.slice(0, OVERVIEW_LIMIT) : matching.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    return { visible, matchingCount: matching.length, pageCount, page };
+  };
+  const scholarshipPage = paged(list.scholarships, filteredScholarships);
+  const schoolPage = paged(list.schools, filteredSchools);
+  const majorPage = paged(list.majors, filteredMajors);
+  const searchLabel = view.filter === "scholarship" ? "Search scholarships" : view.filter === "school" ? "Search universities" : "Search courses";
 
   /** Remove one item optimistically; on failure put back only that item, at
    *  its old position, so other removals that succeeded stay removed. */
@@ -190,16 +287,45 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
               <button
                 key={f.key}
                 type="button"
-                aria-pressed={filter === f.key}
-                onClick={() => setFilter(f.key)}
+                aria-pressed={view.filter === f.key}
+                onClick={() => updateView({ filter: f.key, page: 1, search: "", status: "all" })}
                 className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 font-code text-[11px] uppercase tracking-[0.1em] sm:tracking-[0.12em] ${
-                  filter === f.key ? "bg-[#9a1a27] text-white" : "text-muted-foreground hover:bg-muted"
+                  view.filter === f.key ? "bg-[#9a1a27] text-white" : "text-muted-foreground hover:bg-muted"
                 }`}
               >
                 {f.label}
               </button>
             ))}
           </div>
+
+          {view.filter !== "all" ? (
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-end max-w-2xl">
+              <label className="flex-1 text-sm font-medium">
+                Search {view.filter === "scholarship" ? "scholarships" : view.filter === "school" ? "universities" : "courses"}
+                <input
+                  type="search"
+                  aria-label={searchLabel}
+                  value={view.search}
+                  onChange={(event) => updateView({ ...view, search: event.target.value, page: 1 })}
+                  className="mt-1 block w-full h-10 border bg-background px-3 font-normal"
+                />
+              </label>
+              {view.filter === "scholarship" ? (
+                <label className="text-sm font-medium">
+                  Status
+                  <select
+                    aria-label="Scholarship status"
+                    value={view.status}
+                    onChange={(event) => updateView({ ...view, status: event.target.value as ScholarshipStatus, page: 1 })}
+                    className="mt-1 block w-full sm:w-44 h-10 border bg-background px-3 font-normal"
+                  >
+                    <option value="all">Any status</option>
+                    {Object.entries(SCHOLARSHIP_STATUS_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+          ) : null}
 
           {show("scholarship") ? (
             <Section
@@ -208,12 +334,17 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
               icon={GraduationCap}
               empty={
                 <>
-                  No saved scholarships.{" "}
+                  {view.filter === "all" ? "No saved scholarships." : "No scholarships match these filters."}{" "}
                   <Link href="/scholarships" className={`${MAROON} hover:underline`}>Browse scholarships</Link>
                 </>
               }
+              hasItems={scholarshipPage.visible.length > 0}
+              viewAll={view.filter === "all" && list.scholarships.length > OVERVIEW_LIMIT ? {
+                label: `View all scholarships (${list.scholarships.length})`,
+                onClick: () => updateView({ filter: "scholarship", page: 1, search: "", status: "all" }),
+              } : undefined}
             >
-              {list.scholarships.map((s) => (
+              {scholarshipPage.visible.map((s) => (
                 <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
                   <div className="flex-1 min-w-[14rem]">
                     <Link href={`/scholarships/${s.id}`} className="font-medium text-sm hover:underline">{s.title}</Link>
@@ -231,6 +362,7 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
               ))}
             </Section>
           ) : null}
+          {view.filter === "scholarship" && scholarshipPage.matchingCount > 0 ? <Pagination kind="scholarship" page={scholarshipPage.page} pages={scholarshipPage.pageCount} onPage={(page) => updateView({ ...view, page })} /> : null}
 
           {show("school") ? (
             <Section
@@ -239,12 +371,17 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
               icon={School}
               empty={
                 <>
-                  No saved universities.{" "}
+                  {view.filter === "all" ? "No saved universities." : "No universities match your search."}{" "}
                   <Link href="/schools" className={`${MAROON} hover:underline`}>Browse universities</Link>
                 </>
               }
+              hasItems={schoolPage.visible.length > 0}
+              viewAll={view.filter === "all" && list.schools.length > OVERVIEW_LIMIT ? {
+                label: `View all universities (${list.schools.length})`,
+                onClick: () => updateView({ filter: "school", page: 1, search: "", status: "all" }),
+              } : undefined}
             >
-              {list.schools.map((s) => (
+              {schoolPage.visible.map((s) => (
                 <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
                   <div className="flex-1 min-w-[14rem]">
                     <Link href={`/schools/${s.id}`} className="font-medium text-sm hover:underline">{s.name}</Link>
@@ -273,6 +410,7 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
               ))}
             </Section>
           ) : null}
+          {view.filter === "school" && schoolPage.matchingCount > 0 ? <Pagination kind="school" page={schoolPage.page} pages={schoolPage.pageCount} onPage={(page) => updateView({ ...view, page })} /> : null}
 
           {show("major") ? (
             <Section
@@ -281,12 +419,17 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
               icon={BookOpen}
               empty={
                 <>
-                  No saved courses.{" "}
+                  {view.filter === "all" ? "No saved courses." : "No courses match your search."}{" "}
                   <Link href="/majors" className={`${MAROON} hover:underline`}>Browse courses</Link>
                 </>
               }
+              hasItems={majorPage.visible.length > 0}
+              viewAll={view.filter === "all" && list.majors.length > OVERVIEW_LIMIT ? {
+                label: `View all courses (${list.majors.length})`,
+                onClick: () => updateView({ filter: "major", page: 1, search: "", status: "all" }),
+              } : undefined}
             >
-              {list.majors.map((m) => (
+              {majorPage.visible.map((m) => (
                 <li key={m.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
                   <div className="flex-1 min-w-[14rem]">
                     <Link href={`/majors/${m.id}`} className="font-medium text-sm hover:underline">{m.name}</Link>
@@ -300,6 +443,7 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
               ))}
             </Section>
           ) : null}
+          {view.filter === "major" && majorPage.matchingCount > 0 ? <Pagination kind="major" page={majorPage.page} pages={majorPage.pageCount} onPage={(page) => updateView({ ...view, page })} /> : null}
         </>
       )}
     </div>
