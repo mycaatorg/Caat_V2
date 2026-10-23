@@ -3,7 +3,6 @@ import { sanitizeError } from "@/lib/safe-error";
 import type { ApplicationRow, ApplicationStatus } from "@/types/applications";
 import type { ScholarshipRow } from "@/types/scholarships";
 import type { ProfileRow } from "@/types/profile";
-import { matchScholarship } from "@/lib/profile-match";
 import { fetchTrackedForSchool, type TrackedScholarship } from "@/lib/scholarship-tracking";
 import { assertApplicationWritten } from "@/app/(main)/applications/api";
 import {
@@ -60,7 +59,6 @@ export interface HubScholarship {
   provider: string;
   amount: string | null;
   deadline: string | null;
-  fit: number;
 }
 
 export interface ApplicationHub {
@@ -89,47 +87,56 @@ export interface ApplicationHub {
 }
 
 export const HUB_SCHOLARSHIP_LIMIT = 5;
-const HUB_SCHOLARSHIP_COLUMNS =
-  "id, title, provider_name, amount_display, deadline_at, country, school_name, tags, citizenships, study_level";
+const HUB_SCHOLARSHIP_COLUMNS = "id, title, provider_name, amount_display, deadline_at";
 
 type ScholarshipQueryResult = { data: unknown[] | null; error: unknown };
+type HubScholarshipRow = Pick<ScholarshipRow, "id" | "title" | "provider_name" | "amount_display" | "deadline_at">;
 
 /**
- * Active scholarships for one university, from the public catalogue. The
- * scholarship_schools junction is the primary link; when it holds no row for
- * this school, fall back to the scraped school_name (with and without a
- * leading "The"), as the school page does. Both reads are ordered by deadline
- * (undated last) then title and capped, so the result is stable.
+ * Open, active scholarships for one university, from the public catalogue.
+ *
+ * The scholarship_schools junction is the primary link. When it holds no open
+ * row for this school, fall back to the school page's name match
+ * (SchoolScholarshipsSection): school_name or provider_name containing the
+ * school's name, case-insensitive, with a leading "The" dropped. The value is
+ * double-quoted so commas and parentheses in a name stay literal, and embedded
+ * quotes and backslashes are stripped so they cannot break out.
+ *
+ * Both reads keep only scholarships with no deadline or one not yet passed
+ * (as the welcome flow does), order by deadline (undated last) then title,
+ * and are capped, so the result is stable.
  */
 async function fetchSchoolScholarships(
   schoolId: number,
   schoolName: string | null
-): Promise<{ rows: ScholarshipRow[]; error: boolean }> {
+): Promise<{ rows: HubScholarshipRow[]; error: boolean }> {
+  const open = `deadline_at.is.null,deadline_at.gte.${new Date().toISOString()}`;
   const linked = (await supabase
     .from("scholarships")
     .select(`${HUB_SCHOLARSHIP_COLUMNS}, scholarship_schools!inner(school_id)`)
     .eq("scholarship_schools.school_id", schoolId)
     .eq("is_active", true)
+    .or(open)
     .order("deadline_at", { ascending: true, nullsFirst: false })
     .order("title", { ascending: true })
     .limit(HUB_SCHOLARSHIP_LIMIT)) as ScholarshipQueryResult;
   if (linked.error) return { rows: [], error: true };
-  if ((linked.data ?? []).length > 0 || !schoolName) {
-    return { rows: (linked.data ?? []) as ScholarshipRow[], error: false };
+  const name = (schoolName ?? "").replace(/^\s*the\s+/i, "").replace(/["\\]/g, "").trim();
+  if ((linked.data ?? []).length > 0 || !name) {
+    return { rows: (linked.data ?? []) as HubScholarshipRow[], error: false };
   }
 
-  const bare = schoolName.trim().replace(/^the\s+/i, "");
-  const names = Array.from(new Set([schoolName.trim(), bare, `The ${bare}`])).filter(Boolean);
   const named = (await supabase
     .from("scholarships")
     .select(HUB_SCHOLARSHIP_COLUMNS)
-    .in("school_name", names)
     .eq("is_active", true)
+    .or(open)
+    .or(`school_name.ilike."%${name}%",provider_name.ilike."%${name}%"`)
     .order("deadline_at", { ascending: true, nullsFirst: false })
     .order("title", { ascending: true })
     .limit(HUB_SCHOLARSHIP_LIMIT)) as ScholarshipQueryResult;
   if (named.error) return { rows: [], error: true };
-  return { rows: (named.data ?? []) as ScholarshipRow[], error: false };
+  return { rows: (named.data ?? []) as HubScholarshipRow[], error: false };
 }
 
 /** Map a document's verification state to our three buckets. The documents
@@ -164,7 +171,7 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
   const [profileRes, promptsRes, draftsRes, docsRes, schRes] = await Promise.all([
     supabase
       .from("profiles")
-      .select("nationality, graduation_year, target_majors, preferred_countries")
+      .select("target_majors")
       .eq("id", user.id)
       .maybeSingle(),
     supabase.from("essay_prompts").select("id, slug, title, scope, sort_order").order("sort_order"),
@@ -172,6 +179,11 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     supabase.from("documents").select("id, file_name, category, status, school_id").eq("user_id", user.id),
     fetchSchoolScholarships(schoolId, school?.name ?? null),
   ]);
+
+  // The prompt catalogue decides which drafts count for this school (a draft
+  // whose prompt is not in it is treated as a custom prompt), so a failed
+  // read must not silently become a wrong checklist.
+  if (promptsRes.error) throw new Error(sanitizeError(promptsRes.error));
 
   const profile = (profileRes.data as Partial<ProfileRow> | null) ?? null;
   const targetMajor = profile?.target_majors?.[0] ?? null;
@@ -234,15 +246,14 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
   // categories), and the application's status is not a step.
   const readiness: ReadinessSignals = preparationFor(application, { prompts, drafts, documents: docRows });
 
-  // Active scholarships recorded for THIS school, already in deadline-then-
-  // title order from the query. Fit is kept for display, not for ordering.
+  // Open, active scholarships recorded for THIS school, already in deadline-
+  // then-title order from the query.
   const scholarships: HubScholarship[] = schRes.rows.map((s) => ({
     id: s.id,
     title: s.title,
     provider: s.provider_name,
     amount: s.amount_display ?? null,
     deadline: s.deadline_at ?? null,
-    fit: matchScholarship((profile as ProfileRow) ?? null, s).score,
   }));
 
   const trackedScholarships = await fetchTrackedForSchool(schoolName);

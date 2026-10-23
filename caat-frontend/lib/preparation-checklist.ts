@@ -50,8 +50,6 @@ export interface PreparationInputs {
   documents: PrepDocument[];
 }
 
-export const EMPTY_PREPARATION_INPUTS: PreparationInputs = { prompts: [], drafts: [], documents: [] };
-
 export interface PreparationChecklist {
   deadlineSet: boolean;
   /** an essay drafted for this school (per-school prompt) or a shared prompt */
@@ -75,8 +73,22 @@ export function draftCountsFor(prompt: PrepPrompt, draft: PrepDraft, schoolId: n
   return isSharedPrompt(prompt) ? draft.school_id == null : draft.school_id === schoolId;
 }
 
+/**
+ * Whether the student has an essay drafted for this school:
+ *  - a catalogue prompt draft, by the rule above (per-school prompts need the
+ *    draft tagged to this school; shared prompts need the untagged draft). An
+ *    untagged draft for a per-school prompt counts for no school until the
+ *    student tags it.
+ *  - a draft for a custom prompt (the student's own; its prompt_id is not in
+ *    essay_prompts): untagged counts as a shared essay for every school, and
+ *    one tagged to a school counts for that school only.
+ */
 export function essayDraftedFor(schoolId: number, inputs: Pick<PreparationInputs, "prompts" | "drafts">): boolean {
-  return inputs.prompts.some((p) => inputs.drafts.some((d) => draftCountsFor(p, d, schoolId)));
+  const catalogue = new Set(inputs.prompts.map((p) => p.id));
+  return inputs.drafts.some((d) => {
+    if (!catalogue.has(d.prompt_id)) return d.school_id == null || d.school_id === schoolId;
+    return inputs.prompts.some((p) => draftCountsFor(p, d, schoolId));
+  });
 }
 
 export function documentsReadyFor(schoolId: number, documents: PrepDocument[]): boolean {

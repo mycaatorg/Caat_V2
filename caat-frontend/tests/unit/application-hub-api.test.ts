@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockSupabase, type QueryContext, type QueryResult } from "./mock-supabase";
 
 const io = vi.hoisted(() => ({
@@ -127,6 +127,11 @@ describe("fetchApplicationHub", () => {
     use(hubResolver({ user_school_applications: { data: null, error: null } }));
     await expect(fetchApplicationHub("someone-elses")).rejects.toThrow("Application not found");
     expect(io.client.queries.map((q) => q.table)).toEqual(["user_school_applications"]);
+  });
+
+  it("refuses to build a checklist when the prompt catalogue fails to load", async () => {
+    use(hubResolver({ essay_prompts: { data: null, error: { message: "prompts down" } } }));
+    await expect(fetchApplicationHub("app-1")).rejects.toThrow("prompts down");
   });
 
   it("surfaces a sanitized read failure", async () => {
@@ -263,15 +268,16 @@ describe("hub scholarships for this university", () => {
     expect(callsOf(q, "order")).toEqual(STABLE_ORDER);
     expect(callsOf(q, "limit")).toEqual([[5]]);
     expect(hub.scholarships.map((s) => s.id)).toEqual(["s1", "s2"]);
-    expect(hub.scholarships[0]).toMatchObject({ title: "Melbourne Award", provider: "UoM", amount: "$10k", deadline: "2026-11-01" });
+    expect(hub.scholarships[0]).toEqual({ id: "s1", title: "Melbourne Award", provider: "UoM", amount: "$10k", deadline: "2026-11-01" });
+    expect(hub.scholarships[0]).not.toHaveProperty("fit");
     expect(hub.scholarshipsUnavailable).toBe(false);
   });
 
-  it("falls back to the recorded school name when no catalogue link exists", async () => {
+  it("falls back to the school page's name match (school or provider, case-insensitive) when no catalogue link exists", async () => {
     use((ctx) => {
       if (ctx.table === "scholarships") {
         const linked = ctx.calls.some((c) => c.method === "eq" && c.args[0] === "scholarship_schools.school_id");
-        return linked ? { data: [], error: null } : { data: [scholarship("s9", "Named Award", "2026-12-01")], error: null };
+        return linked ? { data: [], error: null } : { data: [scholarship("s9", "Named Award", "2099-12-01")], error: null };
       }
       return hubResolver()(ctx);
     });
@@ -279,11 +285,61 @@ describe("hub scholarships for this university", () => {
     expect(scholarshipQueries()).toHaveLength(2);
     const fallback = scholarshipQueries()[1];
     expect(String(callsOf(fallback, "select")[0][0])).not.toContain("scholarship_schools");
-    expect(callsOf(fallback, "in")).toEqual([["school_name", ["The University of Melbourne", "University of Melbourne"]]]);
+    expect(callsOf(fallback, "in")).toEqual([]);
+    expect(callsOf(fallback, "or")[1]).toEqual([
+      'school_name.ilike."%University of Melbourne%",provider_name.ilike."%University of Melbourne%"',
+    ]);
     expect(callsOf(fallback, "eq")).toEqual([["is_active", true]]);
     expect(callsOf(fallback, "order")).toEqual(STABLE_ORDER);
     expect(callsOf(fallback, "limit")).toEqual([[5]]);
     expect(hub.scholarships.map((s) => s.id)).toEqual(["s9"]);
+  });
+
+  it("quotes a school name with reserved characters in the fallback and strips embedded quotes", async () => {
+    const odd = { ...application, schools: { id: 7, name: 'The University of California, "Berkeley" (UCB)', country: "United States" } };
+    use((ctx) => {
+      if (ctx.table === "user_school_applications") return { data: odd, error: null };
+      if (ctx.table === "scholarships") return { data: [], error: null };
+      return hubResolver()(ctx);
+    });
+    await fetchApplicationHub("app-1");
+    const fallback = scholarshipQueries()[1];
+    expect(callsOf(fallback, "or")[1]).toEqual([
+      'school_name.ilike."%University of California, Berkeley (UCB)%",provider_name.ilike."%University of California, Berkeley (UCB)%"',
+    ]);
+  });
+
+  describe("passed deadlines", () => {
+    const NOW = new Date("2026-10-23T08:00:00.000Z");
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(NOW);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    // Applies the query's open-deadline filter to the rows, like PostgREST would.
+    const open = (ctx: QueryContext, rows: ReturnType<typeof scholarship>[]) => {
+      const filter = ctx.calls.find((c) => c.method === "or" && String(c.args[0]).startsWith("deadline_at."));
+      if (!filter) return rows;
+      const since = String(filter.args[0]).split("deadline_at.gte.")[1];
+      return rows.filter((r) => r.deadline_at == null || r.deadline_at >= since);
+    };
+
+    it("excludes an expired scholarship from both the linked and the name queries", async () => {
+      const rows = [scholarship("expired", "Closed Award", "2026-10-01"), scholarship("open", "Open Award", "2026-12-01"), scholarship("rolling", "Rolling Award", null)];
+      use((ctx) => {
+        if (ctx.table !== "scholarships") return hubResolver()(ctx);
+        const linked = ctx.calls.some((c) => c.method === "eq" && c.args[0] === "scholarship_schools.school_id");
+        return { data: linked ? open(ctx, [rows[0]]) : open(ctx, rows), error: null };
+      });
+      const hub = await fetchApplicationHub("app-1");
+      for (const q of scholarshipQueries()) {
+        expect(callsOf(q, "or")[0]).toEqual([`deadline_at.is.null,deadline_at.gte.${NOW.toISOString()}`]);
+      }
+      // The only linked row has expired, so the linked query is empty and the name fallback runs.
+      expect(scholarshipQueries()).toHaveLength(2);
+      expect(hub.scholarships.map((s) => s.id)).toEqual(["open", "rolling"]);
+    });
   });
 
   it("returns an empty list when none are recorded for this university", async () => {

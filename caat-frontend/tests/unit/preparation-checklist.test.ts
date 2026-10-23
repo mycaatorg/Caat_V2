@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import * as checklist from "@/lib/preparation-checklist";
 import {
   PREP_STEP_LABELS,
+  essayDraftedFor,
   prepScoreLabel,
   preparationFor,
   type PreparationInputs,
@@ -26,7 +28,7 @@ describe("preparationFor", () => {
           { prompt_id: "p-why", school_id: null },
           { prompt_id: "p-legacy", school_id: null },
           { prompt_id: "p-personal", school_id: 7 },
-          { prompt_id: "unknown", school_id: null },
+          { prompt_id: "custom-1", school_id: 99 },
         ],
         documents: [
           { category: "other", school_id: null },
@@ -53,6 +55,18 @@ describe("preparationFor", () => {
     expect(result).toMatchObject({ essayDrafted: true, keyDocsUploaded: true, score: 2 });
   });
 
+  it("treats an untagged draft for a custom prompt (not in the catalogue) as a shared essay", () => {
+    const custom = inputs({ drafts: [{ prompt_id: "custom-1", school_id: null }] });
+    expect(essayDraftedFor(7, custom)).toBe(true);
+    expect(essayDraftedFor(8, custom)).toBe(true);
+  });
+
+  it("counts a custom-prompt draft tagged to a school for that school only", () => {
+    const custom = inputs({ drafts: [{ prompt_id: "custom-1", school_id: 7 }] });
+    expect(essayDraftedFor(7, custom)).toBe(true);
+    expect(essayDraftedFor(8, custom)).toBe(false);
+  });
+
   it("gives two applications different results from the same mixed items", () => {
     const shared = inputs({
       drafts: [{ prompt_id: "p-why", school_id: 7 }],
@@ -60,6 +74,12 @@ describe("preparationFor", () => {
     });
     expect(preparationFor({ school_id: 7, deadline_at: null }, shared)).toMatchObject({ essayDrafted: true, keyDocsUploaded: false, score: 1 });
     expect(preparationFor({ school_id: 8, deadline_at: null }, shared)).toMatchObject({ essayDrafted: false, keyDocsUploaded: true, score: 1 });
+  });
+});
+
+describe("module surface", () => {
+  it("exports no unused empty-inputs constant", () => {
+    expect("EMPTY_PREPARATION_INPUTS" in checklist).toBe(false);
   });
 });
 

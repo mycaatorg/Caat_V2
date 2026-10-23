@@ -545,8 +545,11 @@ test("school notes and application status/checklist persist across list and deta
     // The checklist is preparation only; the status is not one of its steps.
     await expect(page.locator("li[data-state]")).toHaveCount(3);
     await expect(page.getByText("Status reached Submitted", { exact: false })).toHaveCount(0);
-    // The seeded active scholarship recorded for this university (by school name) is listed.
-    await expect(page.locator("[data-hub-scholarship]").filter({ hasText: "E2E Test Scholarship" })).toBeVisible({ timeout: 15_000 });
+    // The seeded open scholarship linked to this university (scholarship_schools) is listed and links to its page.
+    const seededScholarship = page.locator("[data-hub-scholarship]").filter({ hasText: "E2E Test Scholarship" });
+    await expect(seededScholarship).toBeVisible({ timeout: 15_000 });
+    await expect(seededScholarship.getByRole("link")).toHaveAttribute("href", "/scholarships/e2000000-0000-4000-8000-000000000002");
+    await expect(seededScholarship).toContainText("No closing date listed");
   } finally {
     await page.goto("/applications").catch(() => {});
     const schoolLink = page.getByRole("link", { name: /E2E Test University/ }).first();

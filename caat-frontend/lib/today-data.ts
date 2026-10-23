@@ -106,7 +106,7 @@ export async function loadToday(
         .select("id, school_id, status, deadline_at, updated_at, schools(name)")
         .eq("user_id", userId),
       supabase.from("essay_drafts").select("id, prompt_id, label, school_id, updated_at").eq("user_id", userId),
-      supabase.from("documents").select("school_id").eq("user_id", userId),
+      supabase.from("documents").select("category, school_id").eq("user_id", userId),
       supabase
         .from("user_bookmarked_scholarships")
         .select("scholarship_id, status, created_at, scholarships(id, title)")
@@ -129,14 +129,16 @@ export async function loadToday(
         .eq("user_id", userId)
         .order("updated_at", { ascending: false })
         .limit(1),
-      supabase.from("essay_prompts").select("id, title"),
+      supabase.from("essay_prompts").select("id, title, scope"),
       supabase.from("custom_essay_prompts").select("id, title").eq("user_id", userId),
       fetchUnifiedDeadlines(supabase, userId),
     ]);
 
   // A failed read must not look like an empty account (that would tell a
   // student with applications to "save your first scholarship").
-  for (const res of [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes]) {
+  // The prompt catalogue decides which drafts count for which school, so a
+  // failed read would turn into wrong "start an essay" tasks.
+  for (const res of [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, promptsRes]) {
     if (res.error) throw new Error("Could not load Today");
   }
 
@@ -225,8 +227,21 @@ export async function loadToday(
         hasBasics,
       },
       applications,
-      essayDraftSchoolIds: drafts.map((d) => (d.school_id as number | null) ?? null),
-      documentSchoolIds: ((docsRes.data ?? []) as Row[]).map((d) => (d.school_id as number | null) ?? null),
+      // The hub's preparation-checklist inputs (lib/preparation-checklist).
+      preparation: {
+        prompts: ((promptsRes.data ?? []) as Row[]).map((p) => ({
+          id: p.id as string,
+          scope: (p.scope as string | null) ?? null,
+        })),
+        drafts: drafts.map((d) => ({
+          prompt_id: d.prompt_id as string,
+          school_id: (d.school_id as number | null) ?? null,
+        })),
+        documents: ((docsRes.data ?? []) as Row[]).map((d) => ({
+          category: d.category as string,
+          school_id: (d.school_id as number | null) ?? null,
+        })),
+      },
       saved: { scholarships: savedSch.length, schools: savedSchools.length, majors: savedMajors.length },
       deadlines,
       scholarshipStatuses: Object.fromEntries(savedSch.map((r) => [r.scholarship_id as string, (r.status as string | null) ?? "interested"])),
