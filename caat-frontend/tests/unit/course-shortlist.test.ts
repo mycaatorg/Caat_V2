@@ -11,10 +11,29 @@ describe('course shortlist continuity', () => {
     };
     const client = createMockSupabase({ resolver: ctx => ({ data: rows[ctx.table] ?? [], error: null }) });
     const list = await loadShortlist(client as never, 'owner');
-    expect(list.courses).toEqual([{ id: 'course-1', name: 'Computing', institutionName: 'Example University', campus: 'Main', active: false, sourceUrl: 'https://example.edu.au/computing' }]);
+    expect(list.courses).toEqual([{ id: 'course-1', name: 'Computing', institutionName: 'Example University', campus: 'Main', active: false, sourceUrl: 'https://example.edu.au/computing', schoolId: null, application: null }]);
     expect(client.queries.find(q => q.table === 'user_course_bookmarks')?.calls[0].args[0]).toContain('source_url');
+    expect(client.queries.find(q => q.table === 'user_course_bookmarks')?.calls[0].args[0]).toContain('school_id');
     expect(list.majors).toHaveLength(1); expect(list.schools).toHaveLength(1);
     expect(client.queries.find(q => q.table === 'user_course_bookmarks')?.calls).toContainEqual({ method: 'eq', args: ['user_id', 'owner'] });
+  });
+  it('attaches the owner application at the course university, and none when the course has no school', async () => {
+    const rows: Record<string, unknown[]> = {
+      user_course_bookmarks: [
+        { course_id: 'c-linked', course_offerings: { id: 'c-linked', name: 'Computing', institution_name: 'UNSW Sydney', campus: null, active: true, source_url: 'https://example.edu.au/a', school_id: 7 } },
+        { course_id: 'c-other', course_offerings: { id: 'c-other', name: 'Commerce', institution_name: 'Other', campus: null, active: true, source_url: 'https://example.edu.au/b', school_id: 9 } },
+        { course_id: 'c-unlinked', course_offerings: { id: 'c-unlinked', name: 'Law', institution_name: 'Nowhere', campus: null, active: true, source_url: 'https://example.edu.au/c', school_id: null } },
+      ],
+      user_school_applications: [{ id: 'app-7', school_id: 7, status: 'applying' }],
+    };
+    const client = createMockSupabase({ resolver: ctx => ({ data: rows[ctx.table] ?? [], error: null }) });
+    const list = await loadShortlist(client as never, 'owner');
+    expect(list.courses.map(c => [c.id, c.schoolId, c.application])).toEqual([
+      ['c-linked', 7, { id: 'app-7', status: 'applying' }],
+      ['c-other', 9, null],
+      ['c-unlinked', null, null],
+    ]);
+    expect(client.queries.find(q => q.table === 'user_school_applications')?.calls).toContainEqual({ method: 'eq', args: ['user_id', 'owner'] });
   });
   it('does not silently omit courses when their save query fails', async () => {
     const client = createMockSupabase({ resolver: ctx => ctx.table === 'user_course_bookmarks' ? { data: null, error: { message: 'offline' } } : { data: [], error: null } });

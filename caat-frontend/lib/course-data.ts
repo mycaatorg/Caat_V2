@@ -30,6 +30,23 @@ export function normalizeCourse(value: unknown): CourseOffering | null {
   };
 }
 
+/** A saved course as the application hub shows it (PROD-148): the same
+ *  safe-URL and valid-date rules as the catalogue, but a row is kept (with an
+ *  unsafe link dropped) because hiding a saved course would misreport it. */
+export type HubCourse = Pick<CourseOffering, 'id' | 'name' | 'campus' | 'application_route' | 'application_url' | 'verified_at' | 'active'> & { source_url: string | null };
+
+export function normalizeHubCourse(value: unknown): HubCourse | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const r = value as Record<string, unknown>;
+  const id = text(r.id), name = text(r.name);
+  if (!id || !name) return null;
+  return {
+    id, name, campus: text(r.campus), application_route: text(r.application_route),
+    application_url: safeHref(text(r.application_url)), source_url: safeHref(text(r.source_url)),
+    verified_at: checkedDate(r.verified_at), active: r.active === true,
+  };
+}
+
 export function courseFreshness(value: string | null, now = new Date()): 'recent' | 'stale' | 'unverified' {
   const date = checkedDate(value);
   if (!date || Date.parse(date) > now.getTime()) return 'unverified';

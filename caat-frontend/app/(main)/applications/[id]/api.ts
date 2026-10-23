@@ -5,6 +5,9 @@ import type { ScholarshipRow } from "@/types/scholarships";
 import type { ProfileRow } from "@/types/profile";
 import { fetchTrackedForSchool, type TrackedScholarship } from "@/lib/scholarship-tracking";
 import { assertApplicationWritten } from "@/app/(main)/applications/api";
+import { normalizeHubCourse, type HubCourse } from "@/lib/course-data";
+
+export type { HubCourse };
 import {
   KEY_DOC_CATEGORIES,
   draftCountsFor,
@@ -84,6 +87,10 @@ export interface ApplicationHub {
   scholarships: HubScholarship[];
   /** true when the catalogue read failed, so the panel must not say "none" */
   scholarshipsUnavailable: boolean;
+  /** PROD-148: the caller's saved courses whose offering is at this university */
+  savedCourses: HubCourse[];
+  /** true when that read failed, so the card shows Retry rather than "none saved" */
+  savedCoursesUnavailable: boolean;
 }
 
 export const HUB_SCHOLARSHIP_LIMIT = 5;
@@ -139,6 +146,30 @@ async function fetchSchoolScholarships(
   return { rows: (named.data ?? []) as HubScholarshipRow[], error: false };
 }
 
+const SAVED_COURSE_COLUMNS =
+  "course_id, course_offerings!inner(id, name, campus, application_route, application_url, source_url, verified_at, active, school_id)";
+
+/** Owner-scoped read of the caller's saved courses at one university. Throws on
+ *  a read error so the caller can show "unavailable", never an empty list. */
+async function readSavedCourses(userId: string, schoolId: number): Promise<HubCourse[]> {
+  const { data, error } = await supabase
+    .from("user_course_bookmarks")
+    .select(SAVED_COURSE_COLUMNS)
+    .eq("user_id", userId)
+    .eq("course_offerings.school_id", schoolId);
+  if (error) throw new Error("Could not load your saved courses");
+  return ((data ?? []) as { course_offerings: unknown }[]).flatMap((row) => {
+    const course = normalizeHubCourse(row.course_offerings);
+    return course ? [course] : [];
+  });
+}
+
+/** The hub card's own Retry: re-reads only the saved courses. */
+export async function fetchSavedCoursesForSchool(schoolId: number): Promise<HubCourse[]> {
+  const user = await getUser();
+  return readSavedCourses(user.id, schoolId);
+}
+
 /** Map a document's verification state to our three buckets. The documents
  *  table stores a status string; treat anything verified as verified, anything
  *  present-but-not-verified as pending, absent as missing. */
@@ -168,7 +199,7 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
 
   // Parallel: profile, prompts (+scope), all essay drafts (+school_id), all
   // documents (+school_id), active scholarships recorded for this school.
-  const [profileRes, promptsRes, draftsRes, docsRes, schRes] = await Promise.all([
+  const [profileRes, promptsRes, draftsRes, docsRes, schRes, coursesRes] = await Promise.all([
     supabase
       .from("profiles")
       .select("target_majors")
@@ -178,6 +209,10 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     supabase.from("essay_drafts").select("prompt_id, school_id, updated_at").eq("user_id", user.id),
     supabase.from("documents").select("id, file_name, category, status, school_id").eq("user_id", user.id),
     fetchSchoolScholarships(schoolId, school?.name ?? null),
+    readSavedCourses(user.id, schoolId).then(
+      (courses) => ({ courses, unavailable: false }),
+      () => ({ courses: [] as HubCourse[], unavailable: true }),
+    ),
   ]);
 
   // The prompt catalogue decides which drafts count for this school (a draft
@@ -273,6 +308,8 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     sharedDocuments,
     scholarships,
     scholarshipsUnavailable: schRes.error,
+    savedCourses: coursesRes.courses,
+    savedCoursesUnavailable: coursesRes.unavailable,
   };
 }
 
