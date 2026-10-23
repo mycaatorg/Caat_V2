@@ -12,6 +12,7 @@ import {
   fetchUnifiedDeadlines,
   type UnifiedDeadline,
 } from "@/lib/unified-deadlines";
+import { resolveTimeZone, zonedTodayISO } from "@/lib/today-data";
 
 function daysUntil(dateISO: string): number {
   const target = new Date(dateISO + "T00:00:00");
@@ -74,7 +75,12 @@ export function UpcomingDeadlinesWidget() {
       try {
         const userId = await getClientUserId();
         if (!userId) return;
-        const all = await fetchUnifiedDeadlines(supabase, userId);
+        const all = await fetchUnifiedDeadlines(
+          supabase,
+          userId,
+          // The student's calendar day, as Today computes it (PROD-152).
+          zonedTodayISO(resolveTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone)),
+        );
         if (!cancelled) setItems(all.slice(0, DISPLAY_LIMIT));
       } catch {
         // D2 — a real failure shows an error+retry, not a "no deadlines" empty.

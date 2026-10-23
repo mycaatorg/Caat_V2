@@ -18,6 +18,7 @@ import {
   fetchUnifiedDeadlines,
   type UnifiedDeadline,
 } from "@/lib/unified-deadlines";
+import { resolveTimeZone, zonedTodayISO } from "@/lib/today-data";
 
 interface CalendarEvent {
   id: string;
@@ -98,7 +99,12 @@ export function CalendarWidget() {
       // Events come from calendar_events natively above — exclude them here
       // to avoid double-rendering.
       try {
-        const all = await fetchUnifiedDeadlines(supabase, userId);
+        const all = await fetchUnifiedDeadlines(
+          supabase,
+          userId,
+          // The student's calendar day, as Today computes it (PROD-152).
+          zonedTodayISO(resolveTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone)),
+        );
         setDeadlines(all.filter((d) => d.source !== "event"));
       } catch {
         // non-critical

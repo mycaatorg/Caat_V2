@@ -132,7 +132,7 @@ export async function loadToday(
         .limit(1),
       supabase.from("essay_prompts").select("id, title, scope"),
       supabase.from("custom_essay_prompts").select("id, title").eq("user_id", userId),
-      fetchUnifiedDeadlines(supabase, userId),
+      fetchUnifiedDeadlines(supabase, userId, todayISO),
     ]);
 
   // A failed read must not look like an empty account (that would tell a
