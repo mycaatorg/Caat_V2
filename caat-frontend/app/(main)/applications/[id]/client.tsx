@@ -41,6 +41,8 @@ import { SavedCoursesCard } from "@/components/applications/saved-courses-card";
 import { updateApplicationMajors } from "@/app/(main)/applications/api";
 import { mentionsSchool, type SavedScholarshipForHub } from "@/lib/scholarship-tracking";
 import { HubScholarshipAttachments } from "@/components/applications/hub-scholarship-attachments";
+import { HubLinkedDocuments } from "@/components/applications/hub-linked-documents";
+import { fetchEvidenceLinksForApplication, type EvidenceLink } from "@/lib/evidence-links";
 import {
   PREP_CHECKLIST_TITLE,
   PREP_STEP_COUNT,
@@ -88,6 +90,7 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
   const [checkedAt] = useState(() => new Date().toISOString());
   const [retryingCourses, setRetryingCourses] = useState(false);
   const [retryingScholarships, setRetryingScholarships] = useState(false);
+  const [retryingLinks, setRetryingLinks] = useState(false);
   const [checklistNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -136,6 +139,21 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
       setRetryingScholarships(false);
     }
   };
+  /** PROD-78: the linked-documents group retries its own read. */
+  const retryEvidenceLinks = async () => {
+    if (!hub || retryingLinks) return;
+    setRetryingLinks(true);
+    try {
+      const evidenceLinks = await fetchEvidenceLinksForApplication(hub.application.id);
+      setHub((cur) => (cur ? { ...cur, evidenceLinks, evidenceLinksUnavailable: false } : cur));
+    } catch {
+      setHub((cur) => (cur ? { ...cur, evidenceLinksUnavailable: true } : cur));
+    } finally {
+      setRetryingLinks(false);
+    }
+  };
+  const setEvidenceLinks = (evidenceLinks: EvidenceLink[]) =>
+    setHub((cur) => (cur ? { ...cur, evidenceLinks } : cur));
   const setSavedScholarships = (savedScholarships: SavedScholarshipForHub[]) =>
     setHub((cur) => (cur ? { ...cur, savedScholarships } : cur));
 
@@ -243,6 +261,8 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
     scholarshipsUnavailable,
     savedCourses,
     savedCoursesUnavailable,
+    evidenceLinks,
+    evidenceLinksUnavailable,
   } = hub;
   const dl = deadlineParts(application.deadline_at);
   // The preparation checklist follows the deadline as edited here; essay and
@@ -389,6 +409,16 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
                     </ul>
                   </>
                 ) : null}
+                {/* PROD-78: library documents linked here; not a preparation step */}
+                <HubLinkedDocuments
+                  applicationId={application.id}
+                  schoolName={schoolName}
+                  links={evidenceLinks}
+                  unavailable={evidenceLinksUnavailable}
+                  retrying={retryingLinks}
+                  onRetry={() => void retryEvidenceLinks()}
+                  onLinksChange={setEvidenceLinks}
+                />
                 <GroupLabel>Shared documents</GroupLabel>
                 <ul className="divide-y">
                   {sharedDocuments.map((d) => (
