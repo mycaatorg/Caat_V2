@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase/client";
 import { sanitizeError } from "@/lib/safe-error";
 import { getClientUserId } from "@/lib/current-user";
 import type { ApplicationRow, ApplicationStatus } from "@/types/applications";
+import type { PreparationInputs } from "@/lib/preparation-checklist";
 
 // C5: resolve the user id via local JWT claims (getClientUserId) instead of a
 // /auth/v1/user network call on every fetcher. Callers only use `.id`.
@@ -217,22 +218,24 @@ export async function searchSchools(
 }
 
 /**
- * Global readiness signals shared across all applications in v1: whether the
- * user has any essay draft, and any uploaded document. Combined per-card with
- * the application's own deadline + status to render the readiness bar.
- * (Per-school essay/doc tagging in roadmap item 2 will make these per-app.)
+ * What the preparation checklist needs for every application card: the essay
+ * prompts (with scope), and the caller's own drafts and documents with their
+ * school tags. Each card then applies `preparationFor` (lib/preparation-
+ * checklist) to its own school, the same rule the hub uses.
  */
-export async function fetchGlobalReadinessSignals(): Promise<{
-  essayDrafted: boolean;
-  keyDocsUploaded: boolean;
-}> {
+export async function fetchPreparationInputs(): Promise<PreparationInputs> {
   const user = await getUser();
-  const [draftsRes, docsRes] = await Promise.all([
-    supabase.from("essay_drafts").select("id").eq("user_id", user.id).limit(1),
-    supabase.from("documents").select("id").eq("user_id", user.id).limit(1),
+  const [promptsRes, draftsRes, docsRes] = await Promise.all([
+    supabase.from("essay_prompts").select("id, scope"),
+    supabase.from("essay_drafts").select("prompt_id, school_id").eq("user_id", user.id),
+    supabase.from("documents").select("category, school_id").eq("user_id", user.id),
   ]);
+  for (const res of [promptsRes, draftsRes, docsRes]) {
+    if (res.error) throw new Error(sanitizeError(res.error));
+  }
   return {
-    essayDrafted: (draftsRes.data ?? []).length > 0,
-    keyDocsUploaded: (docsRes.data ?? []).length > 0,
+    prompts: (promptsRes.data ?? []) as PreparationInputs["prompts"],
+    drafts: (draftsRes.data ?? []) as PreparationInputs["drafts"],
+    documents: (docsRes.data ?? []) as PreparationInputs["documents"],
   };
 }

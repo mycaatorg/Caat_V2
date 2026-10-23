@@ -28,6 +28,13 @@ ON CONFLICT (id) DO UPDATE SET slug = EXCLUDED.slug, title = EXCLUDED.title, pro
   is_active = EXCLUDED.is_active, is_featured = EXCLUDED.is_featured, tags = EXCLUDED.tags,
   school_name = EXCLUDED.school_name, country = EXCLUDED.country;
 
+-- Link the synthetic scholarship to the synthetic university through the
+-- junction, so the application hub's scholarship_schools!inner read (PROD-147)
+-- is exercised end to end, not only its school-name fallback.
+INSERT INTO public.scholarship_schools (scholarship_id, school_id)
+VALUES ('e2000000-0000-4000-8000-000000000002', 900001)
+ON CONFLICT DO NOTHING;
+
 INSERT INTO public.essay_prompts (id, slug, title, description, tips, sort_order, scope)
 VALUES ('e2000000-0000-4000-8000-000000000003', 'e2e-community-reflection',
   'E2E Test Essay Prompt', 'Synthetic prompt fixture for local journeys.',

@@ -14,7 +14,7 @@ const io = vi.hoisted(() => ({
   searchSchools: vi.fn(),
   fetchUnimportedBookmarkCount: vi.fn(),
   importBookmarkedSchools: vi.fn(),
-  fetchGlobalReadinessSignals: vi.fn(),
+  fetchPreparationInputs: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
@@ -26,7 +26,7 @@ vi.mock("@/app/(main)/applications/api", () => ({
   searchSchools: io.searchSchools,
   fetchUnimportedBookmarkCount: io.fetchUnimportedBookmarkCount,
   importBookmarkedSchools: io.importBookmarkedSchools,
-  fetchGlobalReadinessSignals: io.fetchGlobalReadinessSignals,
+  fetchPreparationInputs: io.fetchPreparationInputs,
 }));
 vi.mock("sonner", () => ({ toast: io.toast }));
 vi.mock("next/link", () => ({
@@ -91,7 +91,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
   io.fetchUnimportedBookmarkCount.mockResolvedValue(0);
-  io.fetchGlobalReadinessSignals.mockResolvedValue({ essayDrafted: false, keyDocsUploaded: false });
+  io.fetchPreparationInputs.mockResolvedValue({ prompts: [], drafts: [], documents: [] });
   io.updateApplication.mockResolvedValue(undefined);
   io.deleteApplication.mockResolvedValue(undefined);
   io.searchSchools.mockResolvedValue([]);
@@ -123,6 +123,66 @@ describe("loading", () => {
     await flush();
     expect(schoolNames()).toEqual(["Alpha University"]);
     expect(hasText("Couldn't load your applications.")).toBe(false);
+  });
+});
+
+describe("preparation checklist score", () => {
+  const prepScoreOf = (name: string) => card(name).querySelector("[data-prep-score]")?.textContent?.replace(/\s+/g, " ").trim() ?? null;
+
+  // alpha is school 1, beta is school 2 (with a deadline); school 99 is not tracked.
+  const mixedInputs = {
+    prompts: [
+      { id: "p-why", scope: "per_school" },
+      { id: "p-personal", scope: "shared" },
+    ],
+    drafts: [
+      { prompt_id: "p-why", school_id: 1 }, // attached to alpha
+      { prompt_id: "p-why", school_id: 99 }, // another school
+      { prompt_id: "p-why", school_id: null }, // untagged per-school draft: counts nowhere
+    ],
+    documents: [
+      { category: "other", school_id: 2 }, // attached to beta
+      { category: "other", school_id: null }, // shared, not a key document
+      { category: "letters", school_id: 99 }, // another school
+    ],
+  };
+
+  it("scores each card with the hub's rule from mixed attached, shared and other-school items", async () => {
+    io.fetchPreparationInputs.mockResolvedValue(mixedInputs);
+    await mount();
+    expect(prepScoreOf("Alpha University")).toBe("Preparation checklist: 1 of 3 steps");
+    expect(prepScoreOf("Beta College")).toBe("Preparation checklist: 2 of 3 steps");
+  });
+
+  it("counts a shared essay and a shared key document for every card", async () => {
+    io.fetchPreparationInputs.mockResolvedValue({
+      ...mixedInputs,
+      drafts: [{ prompt_id: "p-personal", school_id: null }],
+      documents: [{ category: "transcripts", school_id: null }],
+    });
+    await mount();
+    expect(prepScoreOf("Alpha University")).toBe("Preparation checklist: 2 of 3 steps");
+    expect(prepScoreOf("Beta College")).toBe("Preparation checklist: 3 of 3 steps");
+  });
+
+  it("does not count the status, and never shows an x/4 or submission wording", async () => {
+    await mount([alpha(), row("app-2", "Beta College", { status: "submitted" })]);
+    expect(prepScoreOf("Beta College")).toBe("Preparation checklist: 0 of 3 steps");
+    expect(document.body.textContent).not.toMatch(/readiness|\/4|of 4/i);
+  });
+
+  it("follows a deadline edit on the card", async () => {
+    await mount();
+    await change(deadlineOf("Alpha University"), "2026-12-01");
+    await flush();
+    expect(prepScoreOf("Alpha University")).toBe("Preparation checklist: 1 of 3 steps");
+  });
+
+  it("shows no score rather than a wrong one when the inputs fail to load", async () => {
+    io.fetchPreparationInputs.mockRejectedValue(new Error("offline"));
+    await mount();
+    expect(prepScoreOf("Alpha University")).toBeNull();
+    expect(link(/open/i, card("Alpha University")).getAttribute("href")).toBe("/applications/app-1");
   });
 });
 

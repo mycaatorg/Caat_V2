@@ -31,10 +31,17 @@ import {
   searchSchools,
   fetchUnimportedBookmarkCount,
   importBookmarkedSchools,
-  fetchGlobalReadinessSignals,
+  fetchPreparationInputs,
 } from "./api";
 import type { ApplicationRow, ApplicationStatus } from "@/types/applications";
-import { STATUS_CONFIG, APPLICATION_STATUSES, isSubmittedStatus } from "@/types/applications";
+import { STATUS_CONFIG, APPLICATION_STATUSES } from "@/types/applications";
+import {
+  PREP_CHECKLIST_TITLE,
+  PREP_STEP_COUNT,
+  prepScoreLabel,
+  preparationFor,
+  type PreparationInputs,
+} from "@/lib/preparation-checklist";
 
 // ---------------------------------------------------------------------------
 // Filter tabs
@@ -116,12 +123,11 @@ export default function ApplicationsClient() {
   const [importing, setImporting] = useState(false);
   const [freshIds, setFreshIds] = useState<Set<string>>(new Set());
 
-  // Global readiness signals (any essay draft, any document) shared by every
-  // card's readiness bar in v1; combined per-card with deadline + status.
-  const [globalReady, setGlobalReady] = useState<{ essayDrafted: boolean; keyDocsUploaded: boolean }>({
-    essayDrafted: false,
-    keyDocsUploaded: false,
-  });
+  // The student's prompts, drafts and documents, loaded once; each card
+  // applies the shared preparation-checklist rule to its own school. Null
+  // until loaded (or if the load fails): the card then shows no score rather
+  // than a wrong one.
+  const [prepInputs, setPrepInputs] = useState<PreparationInputs | null>(null);
 
   // Writes for one application run in the order the student made them, so the
   // database never ends on an older value than the screen shows.
@@ -161,9 +167,9 @@ export default function ApplicationsClient() {
     fetchUnimportedBookmarkCount()
       .then(setUnimportedCount)
       .catch(() => setUnimportedCount(0));
-    fetchGlobalReadinessSignals()
-      .then(setGlobalReady)
-      .catch(() => {});
+    fetchPreparationInputs()
+      .then(setPrepInputs)
+      .catch(() => setPrepInputs(null));
   }, [loadApplications]);
 
   async function handleImportBookmarks() {
@@ -489,7 +495,7 @@ export default function ApplicationsClient() {
               confirmDeleteId={confirmDeleteId}
               setConfirmDeleteId={setConfirmDeleteId}
               isFresh={freshIds.has(app.id)}
-              globalReady={globalReady}
+              prepInputs={prepInputs}
             />
           ))}
         </div>
@@ -511,7 +517,7 @@ function ApplicationCard({
   confirmDeleteId,
   setConfirmDeleteId,
   isFresh = false,
-  globalReady,
+  prepInputs,
 }: {
   app: ApplicationRow;
   onStatusChange: (id: string, status: ApplicationStatus) => void;
@@ -521,7 +527,7 @@ function ApplicationCard({
   confirmDeleteId: string | null;
   setConfirmDeleteId: (id: string | null) => void;
   isFresh?: boolean;
-  globalReady: { essayDrafted: boolean; keyDocsUploaded: boolean };
+  prepInputs: PreparationInputs | null;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [localNotes, setLocalNotes] = useState(app.notes ?? "");
@@ -551,13 +557,8 @@ function ApplicationCard({
   const schoolCountry = app.schools?.country;
   const dl = app.deadline_at ? deadlineLabel(app.deadline_at) : null;
 
-  // Readiness rollup (same 4 signals as the hub): deadline set, an essay
-  // drafted, a document uploaded, status advanced to submitted-or-later.
-  const readyScore =
-    (app.deadline_at ? 1 : 0) +
-    (globalReady.essayDrafted ? 1 : 0) +
-    (globalReady.keyDocsUploaded ? 1 : 0) +
-    (isSubmittedStatus(app.status) ? 1 : 0);
+  // The hub's preparation checklist for this application (shared rule).
+  const prep = prepInputs ? preparationFor(app, prepInputs) : null;
 
   return (
     <div className={`rounded-lg border p-4 space-y-3 ${isFresh ? "bg-[#FFF8E1] dark:bg-amber-950/40 border-l-[3px] border-l-[#9a1a27] dark:border-l-[#e06b78]" : "bg-card"}`}>
@@ -720,16 +721,27 @@ function ApplicationCard({
         </div>
       )}
 
-      {/* Readiness bar + open-hub link */}
+      {/* Preparation checklist bar + open-hub link */}
       <div className="flex items-center gap-3 pt-1">
         <div className="flex-1">
-          <div className="h-1.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700">
-            <div className="h-full bg-[#9a1a27]" style={{ width: `${(readyScore / 4) * 100}%` }} />
-          </div>
+          {prep ? (
+            <div
+              className="h-1.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700"
+              title={PREP_CHECKLIST_TITLE}
+            >
+              <div className="h-full bg-[#9a1a27]" style={{ width: `${(prep.score / PREP_STEP_COUNT) * 100}%` }} />
+            </div>
+          ) : null}
         </div>
-        <span className="font-code text-[10px] uppercase tracking-[0.06em] text-muted-foreground whitespace-nowrap">
-          readiness {readyScore}/4
-        </span>
+        {prep ? (
+          <span
+            data-prep-score
+            className="font-code text-[10px] uppercase tracking-[0.06em] text-muted-foreground whitespace-nowrap"
+          >
+            <span className="sr-only">{PREP_CHECKLIST_TITLE}: </span>
+            {prepScoreLabel(prep.score)}
+          </span>
+        ) : null}
         <Link
           href={`/applications/${app.id}`}
           className="font-code text-[11px] text-[#9a1a27] dark:text-[#e06b78] hover:underline whitespace-nowrap inline-flex items-center gap-1"
