@@ -35,3 +35,12 @@ VALUES ('e2000000-0000-4000-8000-000000000003', 'e2e-community-reflection',
 ON CONFLICT (id) DO UPDATE SET slug = EXCLUDED.slug, title = EXCLUDED.title,
   description = EXCLUDED.description, tips = EXCLUDED.tips, sort_order = EXCLUDED.sort_order,
   scope = EXCLUDED.scope;
+
+-- Additional disposable majors exercise the real three-column comparison.
+INSERT INTO public.majors (id, name, category, description, career_paths, typical_coursework)
+VALUES
+ ('e3000000-0000-4000-8000-000000000001', 'E2E Test Computing', 'Engineering', 'Synthetic comparison fixture.', '["Test developer"]'::jsonb, '["Algorithms 101"]'::jsonb),
+ ('e3000000-0000-4000-8000-000000000002', 'E2E Test Economics', 'Business', 'Synthetic comparison fixture.', '[]'::jsonb, '[]'::jsonb)
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, category = EXCLUDED.category,
+ description = EXCLUDED.description, career_paths = EXCLUDED.career_paths,
+ typical_coursework = EXCLUDED.typical_coursework;

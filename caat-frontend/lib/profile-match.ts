@@ -48,22 +48,22 @@ export function reasonFor(d: MatchDimensions): string | null {
     if (d.matchedCountry) parts.push("country");
     if (d.citizenshipEligible) parts.push("citizenship");
     if (d.levelMatches) parts.push("level");
-    return `Strong match: your ${joinWithAnd(parts)}`;
+    return `Suggested by your ${joinWithAnd(parts)}`;
   }
 
   if (d.matchedMajor && d.matchedCountry) {
     return `Matches your ${d.matchedMajor} in your preferred country`;
   }
   if (d.matchedMajor && d.citizenshipEligible) {
-    return `Matches ${d.matchedMajor}, open to internationals`;
+    return `Suggested by your ${d.matchedMajor} and nationality`;
   }
   if (d.matchedCountry && d.citizenshipEligible) {
-    return `In your preferred country, open to your nationality`;
+    return `Suggested by your preferred country and nationality`;
   }
 
   if (d.matchedMajor) return `Matches your ${d.matchedMajor}`;
   if (d.matchedCountry) return `In your preferred country (${d.matchedCountry})`;
-  if (d.citizenshipEligible) return `Open to your nationality`;
+  if (d.citizenshipEligible) return `Suggested by your nationality; check eligibility`;
 
   return null;
 }
