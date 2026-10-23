@@ -21,10 +21,25 @@ const page = (main: string, chrome = '') => `<!doctype html><html><head><title>t
   <nav>${chrome}Home | Apply</nav><script>window.x=${chrome.length}</script>
   <main>${main}</main><footer>${chrome} Copyright</footer></body></html>`;
 
+// Shape of a sydney.edu.au (AEM) scholarship page: no <main>; content sits in div.content-container.
+const usyd = (content: string, chrome = '') => `<html><body>
+  <div class="m-global-desktop-nav"><nav class="m-utility-nav">${chrome}Study</nav><header class="m-grid">${chrome} Search</header></div>
+  <div class="col-xs-12 fullWidthColumn" id="skip-to-content">
+    <div class="breadcrumbsModule">Home / Scholarships ${chrome}</div>
+    <div class="content-container b-single-column"><div class="contentContainerMediaObjectModule"><div>${content}</div></div></div>
+  </div>
+  <div class="b-js-global-footer-csi">${chrome} Footer links</div></body></html>`;
+const USYD = 'https://www.sydney.edu.au/scholarships/a/example.html';
+
+const DAY = 24 * 60 * 60 * 1000;
+const NOW = Date.parse('2026-10-24T12:00:00.000Z');
+const ago = (ms: number) => new Date(NOW - ms).toISOString();
+
 describe('url normalisation', () => {
   it('drops the fragment, trims, and keeps only http(s)', () => {
     expect(normaliseUrl('  https://uni.example/award#apply ')).toBe('https://uni.example/award');
     expect(normaliseUrl('https://uni.example/award?id=2#x')).toBe('https://uni.example/award?id=2');
+    expect(normaliseUrl('HTTPS://Uni.Example/award')).toBe('https://uni.example/award');
     expect(normaliseUrl('mailto:office@uni.example')).toBeNull();
     expect(normaliseUrl('not a url')).toBeNull();
     expect(normaliseUrl('')).toBeNull();
@@ -63,32 +78,67 @@ describe('content hash', () => {
     expect(contentHash(page('<p>Closes 1 March</p>'), 'text/html')).not.toBe(contentHash(page('<p>Closes 2 March</p>'), 'text/html'));
   });
 
+  it('never leaks attribute values, even ones containing ">"', () => {
+    expect(extractVisibleText('<main><div data-tracking="id > 42 leaked" title=\'x > y\'>Text</div></main>')).toBe('Text');
+    expect(contentHash('<main><p data-session="a > 1">Award</p></main>', 'text/html')).toBe(contentHash('<main><p data-session="b > 2">Award</p></main>', 'text/html'));
+  });
+
+  it('reads the AEM content container on sydney.edu.au pages', () => {
+    expect(extractVisibleText(usyd('<h1>Award</h1><p>Value $5,000</p>'), USYD)).toBe('Award Value $5,000');
+    expect(contentHash(usyd('<p>Value $5,000</p>', 'v1'), 'text/html', USYD)).toBe(contentHash(usyd('<p>Value $5,000</p>', 'redesigned'), 'text/html', USYD));
+    expect(contentHash(usyd('<p>Value $5,000</p>'), 'text/html', USYD)).not.toBe(contentHash(usyd('<p>Value $6,000</p>'), 'text/html', USYD));
+  });
+
+  it('falls back to <main>/<body> when the host selector is absent', () => {
+    expect(extractVisibleText(page('<p>Award</p>'), USYD)).toBe('Award');
+  });
+
   it('hashes non-HTML bodies as raw bytes', () => {
     expect(contentHash('%PDF-1 a', 'application/pdf')).not.toBe(contentHash('%PDF-1  a', 'application/pdf'));
   });
 });
 
 describe('classification', () => {
-  const ok = { status: 200, hash: 'h1' };
+  const url = 'https://u.example/a';
+  const base = { url, now: NOW, rows: [row('r', url)] };
+  const ok = { ...base, status: 200, hash: 'h1', finalUrl: url };
+  const reference = { content_hash: 'h1', checked_at: ago(7 * DAY) };
+
   it('baseline when no reference hash exists', () => {
     expect(classifyCheck({ ...ok, reference: null, previous: null }).outcome).toBe('baseline');
   });
   it('unchanged and changed against the reference hash', () => {
-    expect(classifyCheck({ ...ok, reference: { content_hash: 'h1' }, previous: null }).outcome).toBe('unchanged');
-    expect(classifyCheck({ ...ok, reference: { content_hash: 'h0' }, previous: null }).outcome).toBe('changed');
+    expect(classifyCheck({ ...ok, reference, previous: null }).outcome).toBe('unchanged');
+    expect(classifyCheck({ ...ok, reference: { ...reference, content_hash: 'h0' }, previous: null }).outcome).toBe('changed');
+  });
+  it('re-baselines when a row was re-imported after the reference check', () => {
+    const rows = [row('r', url, { source_last_synced_at: ago(DAY) })];
+    expect(classifyCheck({ ...ok, rows, reference: { ...reference, content_hash: 'h0' }, previous: null })).toMatchObject({ outcome: 'baseline', detail: expect.stringMatching(/re-import/) });
+    const older = [row('r', url, { source_last_synced_at: ago(30 * DAY) })];
+    expect(classifyCheck({ ...ok, rows: older, reference, previous: null }).outcome).toBe('unchanged');
+  });
+  it('a redirect to another url is unreachable and never a baseline', () => {
+    const moved = classifyCheck({ ...ok, finalUrl: 'https://u.example/new-home', reference: null, previous: null });
+    expect(moved).toEqual({ outcome: 'unreachable', detail: 'redirected to https://u.example/new-home' });
+    expect(classifyCheck({ ...ok, finalUrl: `${url}#top`, reference, previous: null }).outcome).toBe('unchanged');
   });
   it('unreachable on network errors, timeouts, 5xx, 429 and other non-2xx', () => {
-    expect(classifyCheck({ error: 'timeout after 15000 ms', reference: null, previous: null }).outcome).toBe('unreachable');
+    expect(classifyCheck({ ...base, error: 'timeout after 15000 ms', reference: null, previous: null }).outcome).toBe('unreachable');
     for (const status of [500, 502, 503, 429, 403, 401]) {
-      expect(classifyCheck({ status, reference: { content_hash: 'h1' }, previous: null }).outcome).toBe('unreachable');
+      expect(classifyCheck({ ...base, status, finalUrl: url, reference, previous: null }).outcome).toBe('unreachable');
     }
   });
-  it('gone needs a 404/410 on this run and the previous stored check', () => {
-    expect(classifyCheck({ status: 404, reference: null, previous: null })).toMatchObject({ outcome: 'unreachable', detail: expect.stringMatching(/first/) });
-    expect(classifyCheck({ status: 410, reference: null, previous: { http_status: 200 } }).outcome).toBe('unreachable');
-    expect(classifyCheck({ status: 404, reference: null, previous: { http_status: 503 } }).outcome).toBe('unreachable');
-    expect(classifyCheck({ status: 404, reference: null, previous: { http_status: 410 } }).outcome).toBe('gone');
-    expect(classifyCheck({ status: 410, reference: null, previous: { http_status: 404 } }).outcome).toBe('gone');
+  it('gone needs a 404/410 now and on a previous check at least 24 h earlier', () => {
+    const nf = { ...base, finalUrl: url, reference: null };
+    expect(classifyCheck({ ...nf, status: 404, previous: null })).toMatchObject({ outcome: 'unreachable', detail: expect.stringMatching(/first/) });
+    expect(classifyCheck({ ...nf, status: 410, previous: { http_status: 200, checked_at: ago(2 * DAY) } }).outcome).toBe('unreachable');
+    expect(classifyCheck({ ...nf, status: 404, previous: { http_status: 503, checked_at: ago(2 * DAY) } }).outcome).toBe('unreachable');
+    expect(classifyCheck({ ...nf, status: 404, previous: { http_status: 404, checked_at: ago(DAY - 60_000) } })).toMatchObject({ outcome: 'unreachable', detail: expect.stringMatching(/24 h/) });
+    expect(classifyCheck({ ...nf, status: 404, previous: { http_status: 410, checked_at: ago(DAY) } }).outcome).toBe('gone');
+    expect(classifyCheck({ ...nf, status: 410, previous: { http_status: 404, checked_at: ago(3 * DAY) } }).outcome).toBe('gone');
+  });
+  it('a previous 404 reached through a redirect is not a strike', () => {
+    expect(classifyCheck({ ...base, status: 404, finalUrl: url, reference: null, previous: { http_status: 404, checked_at: ago(2 * DAY), final_url: 'https://u.example/elsewhere' } }).outcome).toBe('unreachable');
   });
 });
 
@@ -100,51 +150,45 @@ describe('scholarship updates', () => {
     row('null', 'https://u.example/a', { last_verified_at: null }),
   ];
   it('only unchanged advances last_verified_at, and only rows whose value would change', () => {
-    const plan = planScholarshipUpdates(rows, { outcome: 'unchanged', checked_at: checkedAt });
-    expect(plan).toEqual([
-      { id: 'old', patch: { last_verified_at: checkedAt } },
-      { id: 'null', patch: { last_verified_at: checkedAt } },
+    expect(planScholarshipUpdates(rows, { outcome: 'unchanged', checked_at: checkedAt })).toEqual([
+      { id: 'old', action: 'verify', at: checkedAt },
+      { id: 'null', action: 'verify', at: checkedAt },
     ]);
   });
   it('never moves last_verified_at backwards', () => {
-    const plan = planScholarshipUpdates([row('newer', 'https://u.example/a', { last_verified_at: '2026-10-25T00:00:00.000Z' })], { outcome: 'unchanged', checked_at: checkedAt });
-    expect(plan).toEqual([]);
+    expect(planScholarshipUpdates([row('newer', 'https://u.example/a', { last_verified_at: '2026-10-25T00:00:00.000Z' })], { outcome: 'unchanged', checked_at: checkedAt })).toEqual([]);
   });
-  it('changed sets source_last_synced_at only', () => {
-    const plan = planScholarshipUpdates(rows, { outcome: 'changed', checked_at: checkedAt });
-    expect(plan).toHaveLength(3);
-    for (const { patch } of plan) expect(patch).toEqual({ source_last_synced_at: checkedAt });
+  it('changed, unreachable and baseline write nothing to scholarships', () => {
+    for (const outcome of ['changed', 'unreachable', 'baseline']) expect(planScholarshipUpdates(rows, { outcome, checked_at: checkedAt })).toEqual([]);
   });
-  it('gone deactivates and merges the reason into raw_payload without dropping fields', () => {
-    const plan = planScholarshipUpdates([rows[0]], { outcome: 'gone', checked_at: checkedAt, http_status: 404, url: 'https://u.example/a', run_id: 'run-1' });
-    expect(plan).toEqual([{ id: 'old', patch: {
-      is_active: false,
-      raw_payload: { title: 'Kept', source_check: { outcome: 'gone', http_status: 404, url: 'https://u.example/a', checked_at: checkedAt, run_id: 'run-1', reason: expect.stringMatching(/404/) } },
+  it('gone deactivates active rows and carries the reason', () => {
+    const plan = planScholarshipUpdates([rows[0], row('off', 'https://u.example/a', { is_active: false })], { outcome: 'gone', checked_at: checkedAt, http_status: 404, url: 'https://u.example/a', run_id: 'run-1' });
+    expect(plan).toEqual([{ id: 'old', action: 'deactivate', sourceCheck: {
+      outcome: 'gone', http_status: 404, url: 'https://u.example/a', checked_at: checkedAt, run_id: 'run-1', reason: expect.stringMatching(/404/),
     } }]);
-  });
-  it('unreachable and baseline write nothing', () => {
-    expect(planScholarshipUpdates(rows, { outcome: 'unreachable', checked_at: checkedAt })).toEqual([]);
-    expect(planScholarshipUpdates(rows, { outcome: 'baseline', checked_at: checkedAt })).toEqual([]);
   });
 });
 
 function fakeStore(rows: Row[], history: Record<string, { previous?: object | null; reference?: object | null }> = {}) {
   let n = 0;
   return {
+    assertReady: vi.fn(async () => undefined),
     loadActiveScholarships: vi.fn(async () => rows),
-    latestChecks: vi.fn(async (url: string) => ({ previous: history[url]?.previous ?? null, reference: history[url]?.reference ?? null })),
+    latestChecks: vi.fn(async (url: string) => ({ previous: history[url]?.previous ?? null, reference: history[url]?.reference ?? null, missing: false })),
     startRun: vi.fn(async () => ({ id: 'run-1' })),
     recordCheck: vi.fn(async () => ({ checked_at: `2026-10-24T00:00:0${n++}.000Z` })),
-    updateScholarship: vi.fn(async () => undefined),
-    finishRun: vi.fn(async () => undefined),
+    verifyScholarship: vi.fn<(id: string, at: string) => Promise<boolean>>(async () => true),
+    deactivateScholarship: vi.fn<(id: string, check: object) => Promise<boolean>>(async () => true),
+    finishRun: vi.fn<(id: string, patch: object) => Promise<void>>(async () => undefined),
   };
 }
 
-function stubFetch(pages: Record<string, { status: number; body?: string } | Error>) {
+function stubFetch(pages: Record<string, { status: number; body?: string; delay?: number } | Error>) {
   return vi.fn(async (url: string) => {
     const hit = pages[url];
     if (!hit) throw new Error(`unexpected fetch ${url}`);
     if (hit instanceof Error) throw hit;
+    if (hit.delay) await new Promise((r) => setTimeout(r, hit.delay));
     return new Response(hit.body ?? '', { status: hit.status, headers: { 'content-type': 'text/html' } });
   });
 }
@@ -160,9 +204,9 @@ describe('runRefresh', () => {
     row('b1', 'https://u.example/new'),
   ];
   const history = {
-    'https://u.example/same': { reference: { content_hash: hash }, previous: { http_status: 200 } },
-    'https://u.example/changed': { reference: { content_hash: 'old' }, previous: { http_status: 200 } },
-    'https://u.example/gone': { previous: { http_status: 404 } },
+    'https://u.example/same': { reference: { content_hash: hash, checked_at: ago(7 * DAY) }, previous: { http_status: 200, checked_at: ago(7 * DAY) } },
+    'https://u.example/changed': { reference: { content_hash: 'old', checked_at: ago(7 * DAY) }, previous: { http_status: 200, checked_at: ago(7 * DAY) } },
+    'https://u.example/gone': { previous: { http_status: 404, checked_at: ago(2 * DAY) } },
   };
   const pages = {
     'https://u.example/same': { status: 200, body },
@@ -171,83 +215,162 @@ describe('runRefresh', () => {
     'https://u.example/down': new Error('ECONNRESET'),
     'https://u.example/new': { status: 200, body },
   };
+  const quiet = { log: () => {}, now: () => NOW };
 
   it('dry-run fetches each distinct url once and makes no writes', async () => {
     const store = fakeStore(rows, history);
     const fetchImpl = stubFetch(pages);
-    const summary = await runRefresh({ store, fetchImpl, apply: false, log: () => {} });
+    const summary = await runRefresh({ store, fetchImpl, apply: false, ...quiet });
     expect(fetchImpl).toHaveBeenCalledTimes(5);
     expect(summary.counts).toEqual({ baseline: 1, unchanged: 1, changed: 1, unreachable: 1, gone: 1 });
     expect(summary.mode).toBe('dry-run');
-    expect(summary.plannedUpdates).toBe(4);
-    for (const write of [store.startRun, store.recordCheck, store.updateScholarship, store.finishRun]) expect(write).not.toHaveBeenCalled();
+    expect(summary.plannedUpdates).toBe(3);
+    for (const write of [store.assertReady, store.startRun, store.recordCheck, store.verifyScholarship, store.deactivateScholarship, store.finishRun]) expect(write).not.toHaveBeenCalled();
   });
 
-  it('apply writes one check per url and scholarship updates stamped with that check\'s checked_at', async () => {
+  it('apply writes one check per url and verifies with that check\'s checked_at', async () => {
     const store = fakeStore(rows, history);
-    const summary = await runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, log: () => {} });
+    const summary = await runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, ...quiet });
+    expect(store.assertReady).toHaveBeenCalledBefore(store.startRun);
     expect(store.recordCheck).toHaveBeenCalledTimes(5);
     for (const [check] of store.recordCheck.mock.calls as unknown as [Record<string, unknown>][]) {
       expect(check.run_id).toBe('run-1');
       expect(check).not.toHaveProperty('checked_at');
     }
-    const updates = Object.fromEntries((store.updateScholarship.mock.calls as unknown as [string, Record<string, unknown>][]).map(([id, patch]) => [id, patch]));
-    expect(Object.keys(updates).sort()).toEqual(['c1', 'g1', 'u1', 'u2']);
-    expect(updates.u1).toEqual({ last_verified_at: '2026-10-24T00:00:00.000Z' });
-    expect(updates.c1).toEqual({ source_last_synced_at: '2026-10-24T00:00:01.000Z' });
-    expect(updates.g1).toMatchObject({ is_active: false });
+    expect(store.verifyScholarship.mock.calls).toEqual([['u1', '2026-10-24T00:00:00.000Z'], ['u2', '2026-10-24T00:00:00.000Z']]);
+    expect(store.deactivateScholarship.mock.calls.map(([id]) => id)).toEqual(['g1']);
     expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({
-      status: 'succeeded', records_seen: 5, records_inserted: 0, records_updated: 4,
+      status: 'succeeded', records_seen: 5, records_inserted: 0, records_updated: 3,
       check_counts: { baseline: 1, unchanged: 1, changed: 1, unreachable: 1, gone: 1 },
     }));
-    expect(summary.scholarshipsUpdated).toBe(4);
+    expect(summary.scholarshipsUpdated).toBe(3);
+  });
+
+  it('counts only rows the guarded update actually changed', async () => {
+    const store = fakeStore(rows, history);
+    store.verifyScholarship.mockResolvedValueOnce(false);
+    const summary = await runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, ...quiet });
+    expect(summary.scholarshipsUpdated).toBe(2);
+    expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ records_updated: 2 }));
   });
 
   it('respects --limit on distinct urls', async () => {
     const fetchImpl = stubFetch(pages);
-    await runRefresh({ store: fakeStore(rows, history), fetchImpl, apply: false, limit: 2, log: () => {} });
+    await runRefresh({ store: fakeStore(rows, history), fetchImpl, apply: false, limit: 2, ...quiet });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
-  it('scopes a run to --url-prefix', async () => {
+  it('scopes a run to a normalised --url-prefix', async () => {
     const fetchImpl = stubFetch(pages);
-    const summary = await runRefresh({ store: fakeStore(rows, history), fetchImpl, apply: false, urlPrefix: 'https://u.example/ch', log: () => {} });
+    const summary = await runRefresh({ store: fakeStore(rows, history), fetchImpl, apply: false, urlPrefix: 'HTTPS://U.Example/ch#x', ...quiet });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(summary.counts.changed).toBe(1);
   });
 
-  it('marks the run failed and rethrows when a write fails', async () => {
+  it('stops starting urls after a failure, waits for in-flight work, and reports accurate counts', async () => {
+    const many = Array.from({ length: 6 }, (_, i) => row(`r${i}`, `https://u.example/p${i}`));
+    const hist = Object.fromEntries(many.map((r) => [r.external_url!, { reference: { content_hash: hash, checked_at: ago(7 * DAY) } }]));
+    const pg = Object.fromEntries(many.map((r, i) => [r.external_url!, { status: 200, body, delay: i === 1 ? 30 : 0 }]));
+    const store = fakeStore(many, hist);
+    store.verifyScholarship.mockImplementation(async (id: string) => {
+      if (id === 'r0') throw new Error('boom');
+      return true;
+    });
+    const fetchImpl = stubFetch(pg);
+    await expect(runRefresh({ store, fetchImpl, apply: true, concurrency: 2, ...quiet })).rejects.toThrow('boom');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(store.verifyScholarship).toHaveBeenCalledTimes(2);
+    expect(store.finishRun).toHaveBeenCalledTimes(1);
+    expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ status: 'failed', error_message: 'boom', records_updated: 1 }));
+    expect(store.finishRun.mock.invocationCallOrder[0]).toBeGreaterThan(store.verifyScholarship.mock.invocationCallOrder[1]);
+  });
+
+  it('never leaves a run at started when the final write fails', async () => {
     const store = fakeStore(rows, history);
-    store.updateScholarship.mockRejectedValueOnce(new Error('boom'));
-    await expect(runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, log: () => {} })).rejects.toThrow('boom');
-    expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ status: 'failed', error_message: 'boom' }));
+    store.finishRun.mockRejectedValueOnce(new Error('column check_counts does not exist'));
+    await expect(runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, ...quiet })).rejects.toThrow('check_counts');
+    expect(store.finishRun).toHaveBeenCalledTimes(2);
+    expect(store.finishRun.mock.calls[1][1]).toMatchObject({ status: 'failed', error_message: expect.stringMatching(/check_counts/) });
+    expect(store.finishRun.mock.calls[1][1]).not.toHaveProperty('check_counts');
+  });
+
+  it('apply refuses to start when the store is not ready', async () => {
+    const store = fakeStore(rows, history);
+    store.assertReady.mockRejectedValueOnce(new Error('scholarship_source_checks is missing'));
+    await expect(runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, ...quiet })).rejects.toThrow('missing');
+    expect(store.startRun).not.toHaveBeenCalled();
   });
 
   it('times out a hanging fetch as unreachable', async () => {
     const hang = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_, reject) => {
       init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
     }));
-    const summary = await runRefresh({ store: fakeStore([row('h', 'https://u.example/hang')]), fetchImpl: hang, apply: false, timeoutMs: 20, log: () => {} });
+    const summary = await runRefresh({ store: fakeStore([row('h', 'https://u.example/hang')]), fetchImpl: hang, apply: false, timeoutMs: 20, ...quiet });
     expect(summary.counts.unreachable).toBe(1);
     expect(summary.sample[0].detail).toMatch(/timeout/);
     const init = hang.mock.calls[0][1] as RequestInit;
     expect(init.redirect).toBe('follow');
     expect(new Headers(init.headers).get('user-agent')).toMatch(/CAAT/);
   });
+
+  it('records a redirect as unreachable with its target', async () => {
+    const fetchImpl = vi.fn(async () => {
+      const response = new Response(body, { status: 200, headers: { 'content-type': 'text/html' } });
+      Object.defineProperty(response, 'url', { value: 'https://u.example/landing' });
+      return response;
+    });
+    const summary = await runRefresh({ store: fakeStore([row('m', 'https://u.example/moved')]), fetchImpl, apply: false, ...quiet });
+    expect(summary.sample[0]).toMatchObject({ outcome: 'unreachable', detail: 'redirected to https://u.example/landing' });
+  });
 });
 
-describe('supabase store in dry-run', () => {
-  it('only reads through the client', async () => {
-    const supabase = createMockSupabase({
-      resolver: (ctx) => {
-        if (ctx.table === 'scholarships') return { data: [row('a', 'https://u.example/a')], error: null };
-        return { data: [], error: null };
-      },
-    });
-    const store = createSupabaseStore(supabase);
-    await runRefresh({ store, fetchImpl: stubFetch({ 'https://u.example/a': { status: 200, body: page('x') } }), apply: false, log: () => {} });
+describe('supabase store', () => {
+  const scholarships = { data: [row('a', 'https://u.example/a')], error: null };
+
+  it('dry-run only reads through the client', async () => {
+    const supabase = createMockSupabase({ resolver: (ctx) => (ctx.table === 'scholarships' ? scholarships : { data: [], error: null }) });
+    await runRefresh({ store: createSupabaseStore(supabase), fetchImpl: stubFetch({ 'https://u.example/a': { status: 200, body: page('x') } }), apply: false, log: () => {} });
     expect(supabase.queries.length).toBeGreaterThan(0);
-    expect(supabase.queries.every(q => q.op === 'select')).toBe(true);
+    expect(supabase.queries.every((q) => q.op === 'select')).toBe(true);
+  });
+
+  it('dry-run treats a missing checks table as no history', async () => {
+    const supabase = createMockSupabase({
+      resolver: (ctx) => (ctx.table === 'scholarships' ? scholarships : { data: null, error: { message: 'relation not found', code: 'PGRST205' } as { message: string } }),
+    });
+    const logs: string[] = [];
+    const summary = await runRefresh({ store: createSupabaseStore(supabase), fetchImpl: stubFetch({ 'https://u.example/a': { status: 200, body: page('x') } }), apply: false, log: (m: string) => logs.push(m) });
+    expect(summary.counts.baseline).toBe(1);
+    expect(logs.join('\n')).toMatch(/scholarship_source_checks does not exist/);
+  });
+
+  it('apply fails clearly before writing when the checks table is missing', async () => {
+    const supabase = createMockSupabase({
+      resolver: (ctx) => (ctx.table === 'scholarships' ? scholarships : { data: null, error: { message: 'relation does not exist', code: '42P01' } as { message: string } }),
+    });
+    await expect(runRefresh({ store: createSupabaseStore(supabase), fetchImpl: stubFetch({}), apply: true, log: () => {} })).rejects.toThrow(/20261024090000_scholarship_source_checks/);
+    expect(supabase.queries.every((q) => q.op === 'select')).toBe(true);
+  });
+
+  it('guards verification in SQL so it never moves backwards', async () => {
+    const supabase = createMockSupabase({ resolver: () => ({ data: [{ id: 'a' }], error: null }) });
+    expect(await createSupabaseStore(supabase).verifyScholarship('a', '2026-10-24T01:02:03.123456+00:00')).toBe(true);
+    const update = supabase.queries[0];
+    expect(update.op).toBe('update');
+    expect(update.calls).toContainEqual({ method: 'update', args: [{ last_verified_at: '2026-10-24T01:02:03.123456+00:00' }] });
+    expect(update.calls).toContainEqual({ method: 'or', args: ['last_verified_at.is.null,last_verified_at.lt."2026-10-24T01:02:03.123456+00:00"'] });
+  });
+
+  it('deactivates from a fresh read and only while still active', async () => {
+    const supabase = createMockSupabase({
+      resolver: (ctx) => (ctx.op === 'select' ? { data: { raw_payload: { title: 'Fresh', other: 1 } }, error: null } : { data: [{ id: 'a' }], error: null }),
+    });
+    const sourceCheck = { outcome: 'gone', http_status: 410 };
+    expect(await createSupabaseStore(supabase).deactivateScholarship('a', sourceCheck)).toBe(true);
+    const [read, write] = supabase.queries;
+    expect(read.op).toBe('select');
+    expect(write.calls).toContainEqual({ method: 'update', args: [{ is_active: false, raw_payload: { title: 'Fresh', other: 1, source_check: sourceCheck } }] });
+    expect(write.calls).toContainEqual({ method: 'eq', args: ['is_active', true] });
   });
 });
 
@@ -257,7 +380,9 @@ describe('arguments', () => {
     expect(parseArgs(['--apply', '--limit', '10', '--concurrency=2', '--timeout-ms', '500'])).toEqual({ apply: true, limit: 10, concurrency: 2, timeoutMs: 500 });
     expect(() => parseArgs(['--limit', 'x'])).toThrow();
     expect(() => parseArgs(['--bogus'])).toThrow();
-    expect(parseArgs(['--url-prefix', 'https://u.example/a']).urlPrefix).toBe('https://u.example/a');
+  });
+  it('normalises --url-prefix like source urls', () => {
+    expect(parseArgs(['--url-prefix', 'HTTPS://U.Example/a#frag']).urlPrefix).toBe('https://u.example/a');
     expect(() => parseArgs(['--url-prefix', 'nope'])).toThrow();
   });
 });

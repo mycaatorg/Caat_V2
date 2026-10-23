@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // PROD-143: check each active scholarship's source page and record what was found.
 //
-//   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/refresh-scholarship-sources.mjs \
+//   node --env-file=<file outside the repo> scripts/refresh-scholarship-sources.mjs \
 //     [--apply] [--limit N] [--concurrency 4] [--timeout-ms 15000] [--url-prefix https://host/path]
 //
 // Dry run is the default: it reads and fetches, prints counts and a sample, and writes nothing.
 // See docs/operations/scholarship-source-refresh.md. Rules this file keeps:
 // - one scholarship_source_checks row per distinct URL (fragment removed) per run;
 // - only an `unchanged` check advances scholarships.last_verified_at, to that check's checked_at;
-// - `changed` sets source_last_synced_at only; `gone` (404/410 twice in a row) sets is_active=false
-//   and records why in raw_payload; `unreachable` and `baseline` never touch scholarships;
+// - `gone` (404/410 now and on a check at least 24 h earlier) sets is_active=false and records why
+//   in raw_payload; `changed`, `unreachable` and `baseline` never touch scholarships;
 // - nothing is deleted, no date is invented, no extracted field is changed.
 import { createHash, randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -17,8 +17,17 @@ import { fileURLToPath } from 'node:url';
 
 export const OUTCOMES = /** @type {const} */ (['baseline', 'unchanged', 'changed', 'unreachable', 'gone']);
 export const USER_AGENT = 'CAAT-SourceCheck/1.0 (scholarship listing freshness check; one request per page per run)';
+export const GONE_GAP_MS = 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 1000;
 const SAMPLE_PER_OUTCOME = 3;
+const MIGRATION = 'supabase/migrations/20261024090000_scholarship_source_checks.sql';
+const MISSING_TABLE_CODES = new Set(['PGRST205', '42P01']);
+
+// Hosts whose pages have no <main>: the element that holds the page's own content.
+// UNSW pages use <main>, so they take the default path.
+export const HOST_CONTENT = {
+  'www.sydney.edu.au': { tag: 'div', className: 'content-container' }, // AEM template
+};
 
 /** Absolute http(s) URL without its #fragment, or null. */
 export function normaliseUrl(raw) {
@@ -57,49 +66,104 @@ function decodeEntities(text) {
   });
 }
 
-function section(html, tag) {
-  const match = html.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*)</${tag}>`, 'i'));
-  return match ? match[1] : null;
+// A whole tag, with quoted attribute values (which may contain ">") kept inside it.
+const TAG = /<\/?[a-zA-Z][^\s/>]*(?:"[^"]*"|'[^']*'|[^'">])*>/g;
+
+/**
+ * Offsets of the first `tag` element whose opening tag passes `test`, depth-balanced:
+ * { start, innerStart, innerEnd, end }. An unclosed element runs to the end. Null if absent.
+ */
+function elementRange(html, tag, test = () => true) {
+  const re = new RegExp(TAG.source, 'g');
+  const name = tag.toLowerCase();
+  let depth = 0;
+  let start = -1;
+  let innerStart = -1;
+  for (let m = re.exec(html); m; m = re.exec(html)) {
+    const raw = m[0];
+    const closing = raw.startsWith('</');
+    if (raw.slice(closing ? 2 : 1).match(/^[^\s/>]+/)[0].toLowerCase() !== name) continue;
+    if (start < 0) {
+      if (!closing && test(raw)) { start = m.index; innerStart = re.lastIndex; depth = 1; }
+    } else if (closing) {
+      depth -= 1;
+      if (depth === 0) return { start, innerStart, innerEnd: m.index, end: re.lastIndex };
+    } else if (!raw.endsWith('/>')) {
+      depth += 1;
+    }
+  }
+  return start >= 0 ? { start, innerStart, innerEnd: html.length, end: html.length } : null;
 }
 
-/** Visible text of <main> (fallback <body>, then the whole document) without page chrome. */
-export function extractVisibleText(html) {
+function element(html, tag, test) {
+  const r = elementRange(html, tag, test);
+  return r ? html.slice(r.innerStart, r.innerEnd) : null;
+}
+
+function removeElements(html, tag) {
+  let out = html;
+  for (let r = elementRange(out, tag); r; r = elementRange(out, tag)) out = `${out.slice(0, r.start)} ${out.slice(r.end)}`;
+  return out;
+}
+
+const hasClass = (className) => (openTag) => {
+  const m = openTag.match(/\sclass\s*=\s*("([^"]*)"|'([^']*)')/i);
+  return Boolean(m && (m[2] ?? m[3]).split(/\s+/).includes(className));
+};
+
+/** Visible text of the page's content (host selector, else <main>, else <body>) without chrome. */
+export function extractVisibleText(html, url) {
   let text = String(html).replace(/<!--[\s\S]*?-->/g, ' ');
-  text = text.replace(/<(script|style|noscript|template|svg|head)\b[\s\S]*?<\/\1>/gi, ' ');
-  text = section(text, 'main') ?? section(text, 'body') ?? text;
-  text = text.replace(/<(nav|footer)\b[\s\S]*?<\/\1>/gi, ' ');
-  text = text.replace(/<[^>]+>/g, ' ');
+  text = text.replace(/<(script|style|noscript|template|svg|head)\b(?:"[^"]*"|'[^']*'|[^'">])*>[\s\S]*?<\/\1\s*>/gi, ' ');
+  let host = null;
+  try { host = url ? new URL(url).hostname : null; } catch { host = null; }
+  const rule = host ? HOST_CONTENT[host] : undefined;
+  text = (rule && element(text, rule.tag, hasClass(rule.className))) ?? element(text, 'main') ?? element(text, 'body') ?? text;
+  for (const chrome of ['nav', 'footer']) text = removeElements(text, chrome);
+  text = text.replace(TAG, ' ');
   return decodeEntities(text).replace(/\s+/g, ' ').trim();
 }
 
 /** sha256 over the normalised visible text for HTML, over the raw bytes otherwise. */
-export function contentHash(body, contentType) {
+export function contentHash(body, contentType, url) {
   const isHtml = !contentType || /html|xml/i.test(contentType);
-  const input = isHtml ? extractVisibleText(typeof body === 'string' ? body : Buffer.from(body).toString('utf8')) : body;
+  const input = isHtml ? extractVisibleText(typeof body === 'string' ? body : Buffer.from(body).toString('utf8'), url) : body;
   return createHash('sha256').update(typeof input === 'string' ? input : Buffer.from(input)).digest('hex');
 }
+
+const sameUrl = (a, b) => !a || normaliseUrl(a) === b;
 
 /**
  * previous: the most recent stored check for this URL (any outcome).
  * reference: the most recent stored check whose hash was accepted (baseline or unchanged).
  * A `changed` hash never becomes the reference, so a changed page stays `changed`
- * until it is re-extracted and re-baselined; it cannot drift back to `unchanged`.
+ * until a re-import (a row's source_last_synced_at later than the reference) re-baselines it.
  * @param {{
- *   status?: number | null, error?: string | null, hash?: string | null,
- *   previous?: { http_status?: number | null } | null,
- *   reference?: { content_hash?: string | null } | null,
+ *   url: string, status?: number | null, error?: string | null, hash?: string | null, finalUrl?: string | null,
+ *   previous?: { http_status?: number | null, checked_at?: string | null, final_url?: string | null } | null,
+ *   reference?: { content_hash?: string | null, checked_at?: string | null } | null,
+ *   rows?: Array<{ source_last_synced_at?: string | null }>, now?: number,
  * }} input
  */
-export function classifyCheck({ status, error, hash, previous, reference }) {
+export function classifyCheck({ url, status, error, hash, finalUrl, previous, reference, rows = [], now = Date.now() }) {
   if (error) return { outcome: 'unreachable', detail: String(error) };
+  if (!sameUrl(finalUrl, url)) return { outcome: 'unreachable', detail: `redirected to ${finalUrl}` };
   if (status === 404 || status === 410) {
     const before = previous?.http_status;
-    if (before === 404 || before === 410) return { outcome: 'gone', detail: `HTTP ${status}; previous check HTTP ${before}` };
-    return { outcome: 'unreachable', detail: `HTTP ${status}; first not-found strike, needs a second before gone` };
+    if ((before === 404 || before === 410) && sameUrl(previous?.final_url, url)) {
+      const gap = now - Date.parse(previous?.checked_at ?? '');
+      if (gap >= GONE_GAP_MS) return { outcome: 'gone', detail: `HTTP ${status}; previous check HTTP ${before} at ${previous?.checked_at}` };
+      return { outcome: 'unreachable', detail: `HTTP ${status}; previous not-found strike is less than 24 h old` };
+    }
+    return { outcome: 'unreachable', detail: `HTTP ${status}; first not-found strike, needs a second at least 24 h later` };
   }
-  if (status === 429 || status >= 500) return { outcome: 'unreachable', detail: `HTTP ${status}` };
-  if (!(status >= 200 && status < 300)) return { outcome: 'unreachable', detail: `HTTP ${status}; not a usable page` };
+  if (status === 429 || (status ?? 0) >= 500) return { outcome: 'unreachable', detail: `HTTP ${status}` };
+  if (!(status && status >= 200 && status < 300)) return { outcome: 'unreachable', detail: `HTTP ${status}; not a usable page` };
   if (!reference?.content_hash) return { outcome: 'baseline', detail: 'first stored content hash for this url' };
+  const referenceAt = Date.parse(reference.checked_at ?? '');
+  if (rows.some((r) => r.source_last_synced_at && Date.parse(r.source_last_synced_at) > referenceAt)) {
+    return { outcome: 'baseline', detail: 're-imported since the reference check; new baseline' };
+  }
   return reference.content_hash === hash
     ? { outcome: 'unchanged', detail: null }
     : { outcome: 'changed', detail: 'content differs from the last accepted hash' };
@@ -107,28 +171,20 @@ export function classifyCheck({ status, error, hash, previous, reference }) {
 
 const later = (candidate, current) => !current || Date.parse(candidate) > Date.parse(current);
 
-/** Scholarship patches for one check. Only rows whose value would change get a patch. */
+/** Planned scholarship writes for one check. Only rows whose value would change are listed. */
 export function planScholarshipUpdates(rows, check) {
   const at = check.checked_at;
   if (!at) throw new Error('A check without checked_at cannot update scholarships.');
   if (check.outcome === 'unchanged') {
-    return rows.filter(r => later(at, r.last_verified_at)).map(r => ({ id: r.id, patch: { last_verified_at: at } }));
-  }
-  if (check.outcome === 'changed') {
-    return rows.filter(r => later(at, r.source_last_synced_at)).map(r => ({ id: r.id, patch: { source_last_synced_at: at } }));
+    return rows.filter((r) => later(at, r.last_verified_at)).map((r) => ({ id: r.id, action: 'verify', at }));
   }
   if (check.outcome === 'gone') {
-    return rows.filter(r => r.is_active !== false).map(r => ({
+    return rows.filter((r) => r.is_active !== false).map((r) => ({
       id: r.id,
-      patch: {
-        is_active: false,
-        raw_payload: {
-          ...(r.raw_payload && typeof r.raw_payload === 'object' && !Array.isArray(r.raw_payload) ? r.raw_payload : {}),
-          source_check: {
-            outcome: 'gone', http_status: check.http_status ?? null, url: check.url ?? null, checked_at: at,
-            run_id: check.run_id ?? null, reason: `Source page returned HTTP ${check.http_status} on two consecutive checks`,
-          },
-        },
+      action: 'deactivate',
+      sourceCheck: {
+        outcome: 'gone', http_status: check.http_status ?? null, url: check.url ?? null, checked_at: at,
+        run_id: check.run_id ?? null, reason: `Source page returned HTTP ${check.http_status} on two checks at least 24 h apart`,
       },
     }));
   }
@@ -154,7 +210,7 @@ export async function checkUrl(url, { fetchImpl, timeoutMs }) {
     }
     const type = response.headers.get('content-type') ?? '';
     const body = /html|xml/i.test(type) || !type ? await response.text() : new Uint8Array(await response.arrayBuffer());
-    return { status, finalUrl, hash: contentHash(body, type), error: null };
+    return { status, finalUrl, hash: contentHash(body, type, url), error: null };
   } catch (err) {
     const cause = err?.cause?.code ?? err?.cause?.message;
     const error = timedOut ? `timeout after ${timeoutMs} ms` : `network error: ${err?.message ?? err}${cause ? ` (${cause})` : ''}`;
@@ -164,44 +220,63 @@ export async function checkUrl(url, { fetchImpl, timeoutMs }) {
   }
 }
 
+/** Run `worker` over items; after the first failure no new item starts, in-flight ones finish, then it rethrows. */
 async function pool(items, concurrency, worker) {
   let next = 0;
+  let aborted = false;
+  let failure = null;
   const runners = Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, async () => {
-    while (next < items.length) {
+    while (!aborted && next < items.length) {
       const index = next++;
-      await worker(items[index], index);
+      try {
+        await worker(items[index], index);
+      } catch (err) {
+        if (!aborted) { aborted = true; failure = err; }
+      }
     }
   });
   await Promise.all(runners);
+  if (aborted) throw failure;
 }
 
+const missingTable = (error) => Boolean(error && (MISSING_TABLE_CODES.has(error.code) || /does not exist|could not find the table/i.test(error.message ?? '')));
 const must = (result, what) => {
   if (result.error) throw new Error(`${what}: ${result.error.message}`);
   return result.data;
 };
 
-/** Data access through a service-role Supabase client. Reads and writes are separate methods. */
+/** Data access through a service-role Supabase client. */
 export function createSupabaseStore(client) {
   return {
+    /** Apply only: the checks table and the run counts column must exist before anything is written. */
+    async assertReady() {
+      for (const [table, columns] of [['scholarship_source_checks', 'id,final_url'], ['scholarship_import_runs', 'id,check_counts']]) {
+        const { error } = await client.from(table).select(columns).limit(1);
+        if (error) throw new Error(`${table} is not ready (${error.code ?? ''} ${error.message}). Apply ${MIGRATION} first.`);
+      }
+    },
     async loadActiveScholarships() {
       const rows = [];
       for (let from = 0; ; from += PAGE_SIZE) {
         const page = must(await client.from('scholarships')
-          .select('id,external_url,last_verified_at,source_last_synced_at,is_active,raw_payload')
+          .select('id,external_url,last_verified_at,source_last_synced_at,is_active')
           .eq('is_active', true).not('external_url', 'is', null)
           .order('id').range(from, from + PAGE_SIZE - 1), 'load scholarships') ?? [];
         rows.push(...page);
         if (page.length < PAGE_SIZE) return rows;
       }
     },
+    /** Latest check and latest accepted check. A missing table reads as no history (`missing: true`). */
     async latestChecks(url) {
-      const previous = must(await client.from('scholarship_source_checks')
-        .select('checked_at,http_status,content_hash,outcome').eq('url', url)
-        .order('checked_at', { ascending: false }).limit(1), 'load previous check') ?? [];
-      const reference = must(await client.from('scholarship_source_checks')
-        .select('checked_at,content_hash,outcome').eq('url', url).in('outcome', ['baseline', 'unchanged'])
-        .not('content_hash', 'is', null).order('checked_at', { ascending: false }).limit(1), 'load reference check') ?? [];
-      return { previous: previous[0] ?? null, reference: reference[0] ?? null };
+      const previous = await client.from('scholarship_source_checks')
+        .select('checked_at,http_status,final_url,content_hash,outcome').eq('url', url)
+        .order('checked_at', { ascending: false }).limit(1);
+      if (missingTable(previous.error)) return { previous: null, reference: null, missing: true };
+      const reference = await client.from('scholarship_source_checks')
+        .select('checked_at,content_hash,final_url,outcome').eq('url', url).in('outcome', ['baseline', 'unchanged'])
+        .not('content_hash', 'is', null).order('checked_at', { ascending: false }).limit(1);
+      if (missingTable(reference.error)) return { previous: null, reference: null, missing: true };
+      return { previous: must(previous, 'load previous check')?.[0] ?? null, reference: must(reference, 'load reference check')?.[0] ?? null, missing: false };
     },
     async startRun() {
       return must(await client.from('scholarship_import_runs').insert({ status: 'started' }).select('id,started_at').single(), 'start run');
@@ -209,8 +284,19 @@ export function createSupabaseStore(client) {
     async recordCheck(check) {
       return must(await client.from('scholarship_source_checks').insert(check).select('id,checked_at').single(), 'record check');
     },
-    async updateScholarship(id, patch) {
-      must(await client.from('scholarships').update(patch).eq('id', id), `update scholarship ${id}`);
+    /** Sets last_verified_at only where it is null or earlier. Returns whether a row changed. */
+    async verifyScholarship(id, at) {
+      const data = must(await client.from('scholarships').update({ last_verified_at: at }).eq('id', id)
+        .or(`last_verified_at.is.null,last_verified_at.lt."${at}"`).select('id'), `verify scholarship ${id}`);
+      return Array.isArray(data) && data.length > 0;
+    },
+    /** Deactivates a still-active row, merging the reason into a freshly read raw_payload. */
+    async deactivateScholarship(id, sourceCheck) {
+      const current = must(await client.from('scholarships').select('raw_payload').eq('id', id).single(), `read scholarship ${id}`);
+      const payload = current?.raw_payload && typeof current.raw_payload === 'object' && !Array.isArray(current.raw_payload) ? current.raw_payload : {};
+      const data = must(await client.from('scholarships').update({ is_active: false, raw_payload: { ...payload, source_check: sourceCheck } })
+        .eq('id', id).eq('is_active', true).select('id'), `deactivate scholarship ${id}`);
+      return Array.isArray(data) && data.length > 0;
     },
     async finishRun(id, patch) {
       must(await client.from('scholarship_import_runs').update(patch).eq('id', id), 'finish run');
@@ -219,74 +305,94 @@ export function createSupabaseStore(client) {
 }
 
 /**
- * Run one refresh. In dry-run, store write methods are never called and planned
+ * Run one refresh. In dry-run, no store write method is called and planned
  * updates use the local fetch time only for counting; nothing is persisted.
  * @param {{
  *   store: {
+ *     assertReady: () => Promise<unknown>,
  *     loadActiveScholarships: () => Promise<any[]>,
- *     latestChecks: (url: string) => Promise<{ previous: any, reference: any }>,
+ *     latestChecks: (url: string) => Promise<{ previous: any, reference: any, missing?: boolean }>,
  *     startRun: () => Promise<{ id: string }>,
  *     recordCheck: (check: Record<string, unknown>) => Promise<{ checked_at: string }>,
- *     updateScholarship: (id: string, patch: Record<string, unknown>) => Promise<unknown>,
+ *     verifyScholarship: (id: string, at: string) => Promise<boolean>,
+ *     deactivateScholarship: (id: string, sourceCheck: Record<string, unknown>) => Promise<boolean>,
  *     finishRun: (id: string, patch: Record<string, unknown>) => Promise<unknown>,
  *   },
  *   fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>,
  *   apply?: boolean, limit?: number, concurrency?: number, timeoutMs?: number, urlPrefix?: string,
- *   log?: (message: string) => void,
+ *   now?: () => number, log?: (message: string) => void,
  * }} options
  */
-export async function runRefresh({ store, fetchImpl = globalThis.fetch, apply = false, limit, concurrency = 4, timeoutMs = 15000, urlPrefix, log = console.log }) {
+export async function runRefresh({ store, fetchImpl = globalThis.fetch, apply = false, limit, concurrency = 4, timeoutMs = 15000, urlPrefix, now = () => Date.now(), log = console.log }) {
+  if (apply) await store.assertReady();
   const groups = groupRowsByUrl(await store.loadActiveScholarships());
-  if (urlPrefix) for (const url of [...groups.keys()]) if (!url.startsWith(urlPrefix)) groups.delete(url);
+  const prefix = urlPrefix ? normaliseUrl(urlPrefix) : null;
+  if (urlPrefix && !prefix) throw new Error(`--url-prefix needs an http(s) url, got ${urlPrefix}`);
+  if (prefix) for (const url of [...groups.keys()]) if (!url.startsWith(prefix)) groups.delete(url);
   const urls = [...groups.keys()].slice(0, limit ?? undefined);
-  const counts = Object.fromEntries(OUTCOMES.map(o => [o, 0]));
+  const counts = Object.fromEntries(OUTCOMES.map((o) => [o, 0]));
   const sample = [];
   let plannedUpdates = 0;
   let scholarshipsUpdated = 0;
+  let warnedMissing = false;
   const run = apply ? await store.startRun() : { id: randomUUID() };
   log(`${apply ? 'APPLY' : 'DRY RUN'}: ${urls.length} distinct source urls from ${[...groups.values()].reduce((n, g) => n + g.length, 0)} active scholarships (run ${run.id}${apply ? '' : ', not stored'}).`);
 
+  const totals = () => ({ records_seen: urls.length, records_inserted: 0, records_updated: scholarshipsUpdated, check_counts: counts });
   try {
     await pool(urls, concurrency, async (url) => {
-      const [{ previous, reference }, fetched] = await Promise.all([store.latestChecks(url), checkUrl(url, { fetchImpl, timeoutMs })]);
-      const { outcome, detail } = classifyCheck({ ...fetched, previous, reference });
+      const rows = groups.get(url);
+      const [history, fetched] = await Promise.all([store.latestChecks(url), checkUrl(url, { fetchImpl, timeoutMs })]);
+      if (history.missing && !warnedMissing) {
+        warnedMissing = true;
+        log('Note: scholarship_source_checks does not exist here yet; dry run treats every url as having no history.');
+      }
+      const { outcome, detail } = classifyCheck({ url, ...fetched, previous: history.previous, reference: history.reference, rows, now: now() });
       counts[outcome] += 1;
-      const check = {
-        run_id: run.id, url, http_status: fetched.status, final_url: fetched.finalUrl,
-        content_hash: fetched.hash, outcome, detail,
-      };
+      const check = { run_id: run.id, url, http_status: fetched.status, final_url: fetched.finalUrl, content_hash: fetched.hash, outcome, detail };
       // checked_at comes from the stored check row (database clock at record time).
-      // Dry-run never stores, so it uses the local fetch time purely for the plan.
-      const checkedAt = apply ? (await store.recordCheck(check)).checked_at : new Date().toISOString();
-      const plan = planScholarshipUpdates(groups.get(url), { ...check, checked_at: checkedAt });
+      // Dry-run never stores, so it uses the local clock purely to count planned updates.
+      const checkedAt = apply ? (await store.recordCheck(check)).checked_at : new Date(now()).toISOString();
+      const plan = planScholarshipUpdates(rows, { ...check, checked_at: checkedAt });
       plannedUpdates += plan.length;
       if (apply) {
-        for (const { id, patch } of plan) {
-          await store.updateScholarship(id, patch);
-          scholarshipsUpdated += 1;
+        for (const op of plan) {
+          const changed = op.action === 'verify' ? await store.verifyScholarship(op.id, op.at) : await store.deactivateScholarship(op.id, op.sourceCheck);
+          if (changed) scholarshipsUpdated += 1;
         }
       }
-      if (sample.filter(s => s.outcome === outcome).length < SAMPLE_PER_OUTCOME) {
-        sample.push({ outcome, url, http_status: fetched.status, detail, rows: groups.get(url).length, updates: plan.length });
+      if (sample.filter((s) => s.outcome === outcome).length < SAMPLE_PER_OUTCOME) {
+        sample.push({ outcome, url, http_status: fetched.status, detail, rows: rows.length, updates: plan.length });
       }
     });
   } catch (err) {
-    if (apply) {
-      await store.finishRun(run.id, {
-        status: 'failed', finished_at: new Date().toISOString(), error_message: String(err?.message ?? err).slice(0, 1000),
-        records_seen: urls.length, records_inserted: 0, records_updated: scholarshipsUpdated, check_counts: counts,
-      });
-    }
+    if (apply) await finishSafely(store, run.id, { status: 'failed', error_message: String(err?.message ?? err).slice(0, 1000), ...totals() });
     throw err;
   }
 
   if (apply) {
-    await store.finishRun(run.id, {
-      status: 'succeeded', finished_at: new Date().toISOString(), error_message: null,
-      records_seen: urls.length, records_inserted: 0, records_updated: scholarshipsUpdated, check_counts: counts,
-    });
+    try {
+      await store.finishRun(run.id, { status: 'succeeded', finished_at: new Date().toISOString(), error_message: null, ...totals() });
+    } catch (err) {
+      // The full summary just failed to write; store the minimal failure so the run never stays `started`.
+      await store.finishRun(run.id, { status: 'failed', finished_at: new Date().toISOString(), error_message: `full run summary not stored: ${String(err?.message ?? err)}`.slice(0, 1000) });
+      throw err;
+    }
   }
   return { mode: apply ? 'apply' : 'dry-run', runId: run.id, urls: urls.length, counts, plannedUpdates, scholarshipsUpdated, sample };
+}
+
+/** Mark a run finished; if the full write fails, retry with the minimal columns so it never stays `started`. */
+async function finishSafely(store, runId, patch) {
+  const finished = { ...patch, finished_at: new Date().toISOString() };
+  try {
+    await store.finishRun(runId, finished);
+  } catch (err) {
+    await store.finishRun(runId, {
+      status: 'failed', finished_at: finished.finished_at,
+      error_message: `${patch.error_message ?? ''}; full run summary not stored: ${err?.message ?? err}`.slice(0, 1000),
+    });
+  }
 }
 
 export function parseArgs(argv) {
@@ -306,11 +412,11 @@ export function parseArgs(argv) {
     else if (flag === '--concurrency') options.concurrency = positiveInt(flag, value());
     else if (flag === '--timeout-ms') options.timeoutMs = positiveInt(flag, value());
     else if (flag === '--url-prefix') {
-      const prefix = value();
-      if (!prefix || !normaliseUrl(prefix)) throw new Error(`--url-prefix needs an http(s) url, got ${prefix}`);
+      const raw = value();
+      const prefix = normaliseUrl(raw);
+      if (!prefix) throw new Error(`--url-prefix needs an http(s) url, got ${raw}`);
       options.urlPrefix = prefix;
-    }
-    else throw new Error(`Unknown argument ${argv[i]}`);
+    } else throw new Error(`Unknown argument ${argv[i]}`);
   }
   return options;
 }
@@ -330,7 +436,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.');
+  if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required (load them with node --env-file from a file outside the repo).');
   const { createClient } = await import('@supabase/supabase-js');
   const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   const summary = await runRefresh({ store: createSupabaseStore(client), ...options });
