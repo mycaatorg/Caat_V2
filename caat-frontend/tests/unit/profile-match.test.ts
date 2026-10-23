@@ -79,7 +79,7 @@ describe("reasonFor()", () => {
 
   it("returns citizenship-only template", () => {
     expect(reasonFor(dims({ citizenshipEligible: true }))).toBe(
-      "Open to your nationality"
+      "Suggested by your nationality; check eligibility"
     );
   });
 
@@ -92,13 +92,13 @@ describe("reasonFor()", () => {
   it("returns major+citizenship template", () => {
     expect(
       reasonFor(dims({ matchedMajor: "Engineering", citizenshipEligible: true }))
-    ).toBe("Matches Engineering, open to internationals");
+    ).toBe("Suggested by your Engineering and nationality");
   });
 
   it("returns country+citizenship template", () => {
     expect(
       reasonFor(dims({ matchedCountry: "Australia", citizenshipEligible: true }))
-    ).toBe("In your preferred country, open to your nationality");
+    ).toBe("Suggested by your preferred country and nationality");
   });
 
   it("returns 'Strong match' template when 3+ dimensions match", () => {
@@ -110,7 +110,7 @@ describe("reasonFor()", () => {
           levelMatches: true,
         })
       )
-    ).toBe("Strong match: your major, country and level");
+    ).toBe("Suggested by your major, country and level");
   });
 
   it("returns 'Strong match' template when all 4 dimensions match", () => {
@@ -123,7 +123,7 @@ describe("reasonFor()", () => {
           levelMatches: true,
         })
       )
-    ).toBe("Strong match: your major, country, citizenship and level");
+    ).toBe("Suggested by your major, country, citizenship and level");
   });
 
   it("strong-match label names only the dimensions that matched (no false country)", () => {
@@ -140,7 +140,7 @@ describe("reasonFor()", () => {
           levelMatches: true,
         })
       )
-    ).toBe("Strong match: your major, citizenship and level");
+    ).toBe("Suggested by your major, citizenship and level");
   });
 
   it("strong-match label uses country+citizenship+level when major is absent", () => {
@@ -153,7 +153,7 @@ describe("reasonFor()", () => {
           levelMatches: true,
         })
       )
-    ).toBe("Strong match: your country, citizenship and level");
+    ).toBe("Suggested by your country, citizenship and level");
   });
 });
 
@@ -226,7 +226,7 @@ describe("matchScholarship()", () => {
     const sch = makeScholarship({ citizenships: ["INTERNATIONAL"] });
     const result = matchScholarship(profile, sch);
     expect(result.score).toBe(1);
-    expect(result.reason).toBe("Open to your nationality");
+    expect(result.reason).toBe("Suggested by your nationality; check eligibility");
   });
 
   it("treats empty citizenships array as 'no restriction' (not a match signal)", () => {
@@ -257,7 +257,7 @@ describe("matchScholarship()", () => {
     });
     const result = matchScholarship(profile, sch);
     expect(result.score).toBe(3);
-    expect(result.reason).toBe("Strong match: your major, country and level");
+    expect(result.reason).toBe("Suggested by your major, country and level");
   });
 
   it("level alone never triggers a match", () => {

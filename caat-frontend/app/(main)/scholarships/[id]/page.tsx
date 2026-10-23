@@ -27,6 +27,8 @@ import {
 import ScholarshipTracking from "./ScholarshipTracking";
 import { ScholarshipRow, deriveDisplayTags, formatAmountDisplay } from "@/types/scholarships";
 import { safeHref } from "@/lib/safe-href";
+import EligibilityPanel from "@/components/scholarships/eligibility-panel";
+import { explainEligibility } from "@/lib/scholarship-eligibility";
 import { TAG_COLORS } from "@/constants/scholarships";
 
 // ---------------------------------------------------------------------------
@@ -112,6 +114,11 @@ export default async function ScholarshipDetailPage({
   if (error || !data) notFound();
 
   const scholarship = data as ScholarshipRow;
+  const { data: { user } } = await sb.auth.getUser();
+  const { data: eligibilityProfile } = user
+    ? await sb.from("profiles").select("nationality, student_status").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const eligibility = explainEligibility(eligibilityProfile, scholarship, new Date());
   const displayTags = deriveDisplayTags(scholarship);
   const amountDisplay = formatAmountDisplay(scholarship);
 
@@ -146,7 +153,7 @@ export default async function ScholarshipDetailPage({
         </Breadcrumb>
       </header>
 
-      <div className="p-8 max-w-3xl mx-auto">
+      <div className="w-full min-w-0 p-4 sm:p-8 max-w-3xl mx-auto">
         {/* Back button */}
         <Button variant="ghost" size="sm" asChild className="-ml-2 mb-6">
           <Link href="/scholarships">
@@ -158,7 +165,7 @@ export default async function ScholarshipDetailPage({
         {/* ---------------------------------------------------------------- */}
         {/* Hero                                                              */}
         {/* ---------------------------------------------------------------- */}
-        <div className="flex items-start justify-between gap-4 mb-2">
+        <div className="flex flex-wrap items-start justify-between gap-4 mb-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-[#9a1a27] dark:text-[#e06b78]">
             {scholarship.provider_name}
           </span>
@@ -228,6 +235,8 @@ export default async function ScholarshipDetailPage({
             )}
           </CardContent>
         </Card>
+
+        <EligibilityPanel report={eligibility} />
 
         {/* ---------------------------------------------------------------- */}
         {/* Key Details                                                       */}
@@ -407,11 +416,11 @@ export default async function ScholarshipDetailPage({
         {/* ---------------------------------------------------------------- */}
         {/* Bottom CTA — visit official site                                  */}
         {/* ---------------------------------------------------------------- */}
-        {scholarship.external_url && (
+        {safeHref(scholarship.external_url) && (
           <div className="flex justify-center">
             <Button asChild size="lg" className="gap-2 bg-[#9a1a27] hover:bg-[#7d1520] text-white">
               <a
-                href={scholarship.external_url}
+                href={safeHref(scholarship.external_url)!}
                 target="_blank"
                 rel="noopener noreferrer"
               >

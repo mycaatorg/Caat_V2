@@ -15,10 +15,10 @@ export const getMajorsList = unstable_cache(
     );
     const { data } = await sb
       .from("majors")
-      .select("id, name, category, description")
+      .select("id, name, category, description, career_paths, typical_coursework, qs_ranking_url, created_at")
       .order("name", { ascending: true });
-    return (data ?? []) as unknown as Major[];
+    return (data ?? []) as Major[];
   },
-  ["majors-list"],
+  ["majors-list-with-comparison-v2"],
   { revalidate: 3600, tags: ["majors-catalog"] },
 );

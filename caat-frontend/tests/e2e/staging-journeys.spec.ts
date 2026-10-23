@@ -453,6 +453,11 @@ test("scholarship status persists on detail and tracked-list views after reload"
   await signInToIsolatedStudent(page);
   await assertIsolatedDetailRoute(page, "/scholarships/[id]", `/scholarships/${SCHOLARSHIP_ID}`);
   await expect(page.getByRole("heading", { name: "E2E Test Scholarship" })).toBeVisible();
+  const eligibility = page.locator('[aria-labelledby="eligibility-check-title"]');
+  await expect(eligibility.getByRole('heading', { name: 'Check your eligibility', level: 2 })).toBeVisible();
+  await expect(eligibility.getByText('No valid verification date is available. Eligibility remains unconfirmed.')).toBeVisible();
+  await expect(eligibility.getByText('Needs checking', { exact: true }).first()).toBeVisible();
+  await expect(eligibility.getByText('Matches your profile', { exact: true })).toHaveCount(0);
 
   try {
     const statusButton = page.getByRole("button", { name: /^(Save|Interested|Applied|Awarded|Not selected)$/ });
@@ -809,4 +814,24 @@ test("Today turns a missing application deadline into a task that clears once fi
   } finally {
     if (!page.isClosed()) await removeSeededApplication(page).catch(() => {});
   }
+});
+
+test('three-major comparison shows seeded careers, coursework and honest missing values', { tag: '@phone' }, async ({ page }) => {
+  await signInToIsolatedStudent(page);
+  await page.goto('/majors');
+  for (const name of ['E2E Test Engineering', 'E2E Test Computing', 'E2E Test Economics']) {
+    const card = page.locator('[data-slot="card"]').filter({ has: page.getByRole('link', { name, exact: true }) });
+    await card.getByRole('button', { name: 'Compare', exact: true }).click();
+  }
+  await expect(page.getByText('3 majors selected')).toBeVisible();
+  await page.getByRole('button', { name: 'Compare', exact: true }).click();
+  const comparison = page.getByRole('dialog', { name: 'Compare Majors' });
+  await expect(comparison.getByText('Test engineer', { exact: true })).toBeVisible();
+  await expect(comparison.getByText('Testing 101', { exact: true })).toBeVisible();
+  await expect(comparison.getByText('Test developer', { exact: true })).toBeAttached();
+  await expect(comparison.getByText('Algorithms 101', { exact: true })).toBeAttached();
+  await expect(comparison.getByText('Career information not available')).toBeAttached();
+  await expect(comparison.getByText('Coursework information not available')).toBeAttached();
+  await page.keyboard.press('Escape');
+  await expect(comparison).toHaveCount(0);
 });
