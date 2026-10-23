@@ -181,6 +181,16 @@ describe("attach and detach", () => {
 describe("preparation ticks", () => {
   const attached = () => [saved("a", { schoolId: 7, attachedSchoolName: "Alpha University" })];
 
+  it("a rule's tick is the student's own check with the provider, never meeting the rule", async () => {
+    await mountComponent(<Harness initial={attached()} />);
+    const rule = document.querySelector('[data-checklist-item^="rule:"] input[type="checkbox"]') as HTMLInputElement;
+    expect(rule.getAttribute("aria-label")).toBe("I've checked this with the provider: Recorded rule: Rule one");
+    expect(document.querySelector(`input[aria-label^="I've prepared this: Recorded rule"]`)).toBeNull();
+    expect(checkbox("An essay is required (recorded)")).not.toBeNull();
+    const labels = [...document.querySelectorAll('input[type="checkbox"]')].map((el) => el.getAttribute("aria-label") ?? "");
+    for (const label of labels) expect(label).not.toMatch(/\b(meet|met|eligib|qualif)/i);
+  });
+
   it("shows persisted ticks, ignores keys that no longer match an item", async () => {
     await mountComponent(<Harness initial={attached()} prepChecks={{ a: ["essay", "rule:ffffffffffffffff"] }} />);
     expect(checkbox("An essay is required (recorded)").checked).toBe(true);
