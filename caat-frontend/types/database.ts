@@ -1081,7 +1081,7 @@ export type Database = {
           final_url: string | null
           http_status: number | null
           id: number
-          outcome: "unchanged" | "changed" | "unreachable" | "gone" | "baseline"
+          outcome: "unchanged" | "changed" | "unreachable" | "gone" | "baseline" | "unanchored"
           run_id: string
           url: string
         }
@@ -1092,7 +1092,7 @@ export type Database = {
           final_url?: string | null
           http_status?: number | null
           id?: number
-          outcome: "unchanged" | "changed" | "unreachable" | "gone" | "baseline"
+          outcome: "unchanged" | "changed" | "unreachable" | "gone" | "baseline" | "unanchored"
           run_id: string
           url: string
         }
@@ -1103,7 +1103,7 @@ export type Database = {
           final_url?: string | null
           http_status?: number | null
           id?: number
-          outcome?: "unchanged" | "changed" | "unreachable" | "gone" | "baseline"
+          outcome?: "unchanged" | "changed" | "unreachable" | "gone" | "baseline" | "unanchored"
           run_id?: string
           url?: string
         }
@@ -1837,6 +1837,7 @@ export type Database = {
         Args: { p_group_id: string; p_requester_user_id: string }
         Returns: boolean
       }
+      scholarship_mark_gone: { Args: { p_id: string; p_check: Json }; Returns: string | null }
       scholarship_universities: { Args: never; Returns: string[] }
       search_scholarships: {
         Args: {

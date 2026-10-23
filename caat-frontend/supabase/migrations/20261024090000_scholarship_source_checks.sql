@@ -6,20 +6,21 @@
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 
--- A verification date can never be in the future. If any existing row already
--- has one, stop: a person fixes those rows first, then the migration is re-run.
+-- A verification date can never be in the future. Five minutes of tolerance keep
+-- an importer whose clock runs slightly ahead of the database from failing a load.
+-- If any existing row is beyond that, stop: a person fixes those rows first.
 DO $$
 DECLARE
  future_rows bigint;
 BEGIN
- SELECT count(*) INTO future_rows FROM public.scholarships WHERE last_verified_at > now();
+ SELECT count(*) INTO future_rows FROM public.scholarships WHERE last_verified_at > now() + interval '5 minutes';
  IF future_rows > 0 THEN
   RAISE EXCEPTION '% scholarships rows have last_verified_at in the future; fix them before applying this migration', future_rows;
  END IF;
 END
 $$;
 ALTER TABLE public.scholarships ADD CONSTRAINT scholarships_last_verified_not_future
- CHECK (last_verified_at IS NULL OR last_verified_at <= now());
+ CHECK (last_verified_at IS NULL OR last_verified_at <= now() + interval '5 minutes');
 
 -- Per-outcome counts for a refresh run. The existing count columns cannot hold them.
 ALTER TABLE public.scholarship_import_runs ADD COLUMN IF NOT EXISTS check_counts jsonb;
@@ -33,7 +34,7 @@ CREATE TABLE public.scholarship_source_checks (
  http_status integer,
  final_url text,
  content_hash text,
- outcome text NOT NULL CHECK (outcome IN ('unchanged', 'changed', 'unreachable', 'gone', 'baseline')),
+ outcome text NOT NULL CHECK (outcome IN ('unchanged', 'changed', 'unreachable', 'gone', 'baseline', 'unanchored')),
  detail text
 );
 CREATE INDEX scholarship_source_checks_url_checked ON public.scholarship_source_checks (url, checked_at DESC);
@@ -67,5 +68,25 @@ $function$;
 DROP TRIGGER IF EXISTS trg_scholarships_updated_at ON public.scholarships;
 CREATE TRIGGER trg_scholarships_updated_at BEFORE UPDATE ON public.scholarships
  FOR EACH ROW EXECUTE FUNCTION public.scholarships_set_updated_at();
+
+-- Deactivate a row whose source page is gone, merging the reason into raw_payload
+-- in one statement so a concurrent raw_payload write cannot be lost. Returns the id,
+-- or NULL when the row was already inactive. Service role only.
+CREATE FUNCTION public.scholarship_mark_gone(p_id uuid, p_check jsonb)
+ RETURNS uuid
+ LANGUAGE sql
+ SECURITY INVOKER
+ SET search_path = ''
+AS $function$
+ UPDATE public.scholarships
+    SET is_active = false,
+        raw_payload = coalesce(raw_payload, '{}'::jsonb) || jsonb_build_object('source_check', p_check)
+  WHERE id = p_id AND is_active
+  RETURNING id;
+$function$;
+REVOKE ALL ON FUNCTION public.scholarship_mark_gone(uuid, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.scholarship_mark_gone(uuid, jsonb) TO service_role;
+
+NOTIFY pgrst, 'reload schema';
 
 COMMIT;
