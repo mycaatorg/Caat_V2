@@ -33,8 +33,10 @@ import {
   updateApplicationStatus,
   updateApplicationDeadline,
   fetchMajorOptions,
+  fetchSavedCoursesForSchool,
   type ApplicationHub,
 } from "./api";
+import { SavedCoursesCard } from "@/components/applications/saved-courses-card";
 import { updateApplicationMajors } from "@/app/(main)/applications/api";
 import { SCHOLARSHIP_STATUS_LABELS } from "@/lib/scholarship-tracking";
 import {
@@ -81,6 +83,8 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
   const [error, setError] = useState<string | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
   const [majorOptions, setMajorOptions] = useState<string[]>([]);
+  const [checkedAt] = useState(() => new Date().toISOString());
+  const [retryingCourses, setRetryingCourses] = useState(false);
 
   useEffect(() => {
     fetchMajorOptions().then(setMajorOptions).catch(() => {});
@@ -102,6 +106,20 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
      
     void load();
   }, [load]);
+
+  /** The saved-courses card retries its own read; the rest of the hub stays. */
+  const retrySavedCourses = async () => {
+    if (!hub || retryingCourses) return;
+    setRetryingCourses(true);
+    try {
+      const savedCourses = await fetchSavedCoursesForSchool(hub.schoolId);
+      setHub((cur) => (cur ? { ...cur, savedCourses, savedCoursesUnavailable: false } : cur));
+    } catch {
+      setHub((cur) => (cur ? { ...cur, savedCoursesUnavailable: true } : cur));
+    } finally {
+      setRetryingCourses(false);
+    }
+  };
 
   // Status and deadline writes go out in the order they were made, so the
   // saved row always matches the last thing the student chose.
@@ -202,6 +220,8 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
     sharedDocuments,
     scholarships,
     scholarshipsUnavailable,
+    savedCourses,
+    savedCoursesUnavailable,
   } = hub;
   const dl = deadlineParts(application.deadline_at);
   // The preparation checklist follows the deadline as edited here; essay and
@@ -263,6 +283,16 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
                 </p>
               </CardContent>
             </Card>
+
+            {/* PROD-148: saved courses here; not a preparation step */}
+            <SavedCoursesCard
+              schoolName={schoolName}
+              courses={savedCourses}
+              unavailable={savedCoursesUnavailable}
+              retrying={retryingCourses}
+              onRetry={() => void retrySavedCourses()}
+              checkedAt={checkedAt}
+            />
 
             {/* essays */}
             <Card className="shadow-sm">

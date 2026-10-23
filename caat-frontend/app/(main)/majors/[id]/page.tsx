@@ -13,6 +13,9 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { ChevronLeft, ExternalLink, Clock } from "lucide-react";
 import BookmarkButton from "./bookmark-button";
+import { getCourseOfferings } from "@/lib/course-catalog";
+import { hasCourseLinks } from "@/lib/course-major-map";
+import { MajorCourses } from "@/components/majors/major-courses";
 
 type CountryDegreeInfo = {
   degree: string;
@@ -45,6 +48,10 @@ export default async function MajorDetailPage({
   const major = majorRow as unknown as Major & {
     degree_lengths: DegreeLengths | null;
   };
+  // Cached public catalogue, read only when the major has reviewed courses.
+  const catalogue = hasCourseLinks(major.name)
+    ? await getCourseOfferings().catch(() => null)
+    : [];
 
   return (
     <>
@@ -139,6 +146,9 @@ export default async function MajorDetailPage({
             </div>
           </section>
         )}
+
+        {/* PROD-148: reviewed catalogue courses for this major */}
+        <MajorCourses majorName={major.name} courses={catalogue} />
 
         {/* Degree Length by Country */}
         {major.degree_lengths && (
