@@ -1,12 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { chooseNextStep, comingUp, daysBetween, deriveTasks, type TodayInput } from "@/lib/today";
 
+const PROMPTS = [
+  { id: "p-why", scope: "per_school" },
+  { id: "p-personal", scope: "shared" },
+];
+// A shared essay and a shared key document: preparation done for every school.
+const SHARED_READY = {
+  prompts: PROMPTS,
+  drafts: [{ prompt_id: "p-personal", school_id: null }],
+  documents: [{ category: "transcripts", school_id: null }],
+};
+
 const base = (patch: Partial<TodayInput> = {}): TodayInput => ({
   todayISO: "2026-10-07",
   onboarding: { completed: true, dismissed: false, hasBasics: true },
   applications: [],
-  essayDraftSchoolIds: [],
-  documentSchoolIds: [],
+  preparation: { prompts: PROMPTS, drafts: [], documents: [] },
   saved: { scholarships: 0, schools: 0, majors: 0, courses: 0 },
   deadlines: [],
   ...patch,
@@ -45,8 +55,7 @@ describe("deriveTasks", () => {
           app("a2", { deadlineAt: "2026-10-05" }),
           app("a3", { deadlineAt: null, status: "researching" }),
         ],
-        essayDraftSchoolIds: [null],
-        documentSchoolIds: [null],
+        preparation: SHARED_READY,
       }),
     );
     expect(tasks.map((t) => t.id)).toEqual(["soon-a2", "soon-a1", "deadline-a3"]);
@@ -56,16 +65,50 @@ describe("deriveTasks", () => {
   });
 
   it("does not flag deadlines further than 14 days away", () => {
-    const tasks = deriveTasks(base({ applications: [app("a1", { deadlineAt: "2026-10-22" })], essayDraftSchoolIds: [null], documentSchoolIds: [null] }));
+    const tasks = deriveTasks(base({ applications: [app("a1", { deadlineAt: "2026-10-22" })], preparation: SHARED_READY }));
     expect(tasks).toEqual([]);
   });
 
-  it("uses the hub rule for essays and documents: shared or tagged to this school", () => {
+  it("uses the hub rule for essays and documents: tagged to this school", () => {
     const applications = [app("a1", { schoolId: 7 }), app("a2", { schoolId: 8 })];
-    const tasks = deriveTasks(base({ applications, essayDraftSchoolIds: [7], documentSchoolIds: [8] }));
+    const tasks = deriveTasks(
+      base({
+        applications,
+        preparation: {
+          prompts: PROMPTS,
+          drafts: [{ prompt_id: "p-why", school_id: 7 }],
+          documents: [{ category: "other", school_id: 8 }],
+        },
+      }),
+    );
     expect(tasks.map((t) => t.id).sort()).toEqual(["docs-a1", "essay-a2"]);
     expect(tasks.find((t) => t.id === "essay-a2")!.href).toBe("/essays?school=8");
     expect(tasks.find((t) => t.id === "docs-a1")!.href).toBe("/documents?school=7");
+  });
+
+  it("does not let mixed untagged, other-school or non-key items clear a task (hub parity)", () => {
+    const tasks = deriveTasks(
+      base({
+        applications: [app("a1", { schoolId: 7 })],
+        preparation: {
+          prompts: PROMPTS,
+          drafts: [
+            { prompt_id: "p-why", school_id: null }, // untagged per-school draft: counts for no school
+            { prompt_id: "p-why", school_id: 99 }, // another school
+          ],
+          documents: [
+            { category: "other", school_id: null }, // shared but not a key document
+            { category: "letters", school_id: 99 }, // another school
+          ],
+        },
+      }),
+    );
+    expect(tasks.map((t) => t.id).sort()).toEqual(["docs-a1", "essay-a1"]);
+  });
+
+  it("clears both tasks for every school with a shared essay and a shared key document", () => {
+    const applications = [app("a1", { schoolId: 7 }), app("a2", { schoolId: 8 })];
+    expect(deriveTasks(base({ applications, preparation: SHARED_READY }))).toEqual([]);
   });
 
   it("only asks for essays and documents once the student is applying", () => {
@@ -99,14 +142,67 @@ describe("scholarship deadlines", () => {
     const tasks = deriveTasks(
       base({
         applications: [app("a1", { deadlineAt: "2026-10-12" })],
-        essayDraftSchoolIds: [null],
-        documentSchoolIds: [null],
+        preparation: SHARED_READY,
         deadlines: [sch("s1", "2026-10-08")],
         scholarshipStatuses: { s1: "interested" },
       }),
     );
     expect(tasks.map((t) => t.id)).toEqual(["soon-sch-s1", "soon-a1"]);
     expect(tasks[0].title).toBe("Award s1 closes tomorrow");
+  });
+});
+
+describe("custom scholarship deadlines (PROD-146)", () => {
+  const sch = (id: string, dateISO: string) => ({ id: `sch-${id}`, source: "scholarship" as const, title: `Award ${id}`, dateISO, href: `/scholarships/${id}` });
+  const cus = (id: string, dateISO: string) => ({ id: `cus-${id}`, source: "custom" as const, title: `Own award ${id}`, dateISO, href: "/scholarships?view=mine" });
+
+  it("turns the student's own scholarship closing within 14 days into a task alongside catalogue ones", () => {
+    const tasks = deriveTasks(
+      base({
+        applications: [app("a1", { deadlineAt: "2026-10-12" })],
+        preparation: SHARED_READY,
+        deadlines: [
+          cus("c3", "2026-10-05"),
+          sch("s3", "2026-10-10"),
+          sch("s1", "2026-10-16"),
+          cus("c1", "2026-10-16"),
+          cus("c4", "2026-10-21"),
+          cus("c2", "2026-10-22"),
+        ],
+        scholarshipStatuses: { s1: "interested", s3: "applied" },
+      }),
+    );
+    expect(tasks.map((t) => t.id)).toEqual(["soon-a1", "soon-sch-s1", "soon-cus-c1", "soon-cus-c4"]);
+    expect(tasks[2]).toEqual({
+      id: "soon-cus-c1",
+      kind: "deadline-soon",
+      title: "Own award c1 closes in 9 days",
+      detail: "Decide whether to apply, then check what it asks for.",
+      href: "/scholarships?view=mine",
+      dueISO: "2026-10-16",
+    });
+    expect(tasks[3].title).toBe("Own award c4 closes in 14 days");
+  });
+
+  it("leaves catalogue scholarship tasks unchanged when custom ones are present", () => {
+    const catalogueOnly = deriveTasks(base({ deadlines: [sch("s1", "2026-10-08")], scholarshipStatuses: { s1: "interested" } }));
+    const mixed = deriveTasks(base({ deadlines: [sch("s1", "2026-10-08"), cus("c1", "2026-10-09")], scholarshipStatuses: { s1: "interested" } }));
+    expect(mixed[0]).toEqual(catalogueOnly[0]);
+    expect(mixed.map((t) => t.id)).toEqual(["soon-sch-s1", "soon-cus-c1"]);
+    expect(mixed[1].title).toBe("Own award c1 closes in 2 days");
+  });
+
+  it("drops the task once the student's own scholarship is no longer 'interested', like catalogue ones", () => {
+    const input = base({
+      deadlines: [
+        { ...cus("c1", "2026-10-09"), status: "applied" },
+        { ...cus("c2", "2026-10-10"), status: "interested" },
+        cus("c3", "2026-10-11"),
+      ],
+    });
+    expect(deriveTasks(input).map((t) => t.id)).toEqual(["soon-cus-c2", "soon-cus-c3"]);
+    // The applied one still counts as an upcoming date, as catalogue rows do.
+    expect(comingUp(input).map((d) => d.id)).toEqual(["cus-c1", "cus-c2", "cus-c3"]);
   });
 });
 

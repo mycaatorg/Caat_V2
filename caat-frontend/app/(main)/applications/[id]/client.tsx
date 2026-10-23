@@ -38,6 +38,13 @@ import {
 import { updateApplicationMajors } from "@/app/(main)/applications/api";
 import { SCHOLARSHIP_STATUS_LABELS } from "@/lib/scholarship-tracking";
 import {
+  PREP_CHECKLIST_TITLE,
+  PREP_STEP_COUNT,
+  PREP_STEP_LABELS,
+  prepScore,
+  prepScoreLabel,
+} from "@/lib/preparation-checklist";
+import {
   APPLICATION_STATUSES,
   STATUS_CONFIG,
   isSubmittedStatus,
@@ -194,14 +201,14 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
     schoolDocuments,
     sharedDocuments,
     scholarships,
+    scholarshipsUnavailable,
   } = hub;
   const dl = deadlineParts(application.deadline_at);
-  // The checklist follows the application as edited here; essay and document
-  // signals come from the load.
+  // The preparation checklist follows the deadline as edited here; essay and
+  // document signals come from the load. The status is not a preparation step.
   const deadlineSet = !!application.deadline_at;
   const submitted = isSubmittedStatus(application.status);
-  const readyScore =
-    (deadlineSet ? 1 : 0) + (readiness.essayDrafted ? 1 : 0) + (readiness.keyDocsUploaded ? 1 : 0) + (submitted ? 1 : 0);
+  const score = prepScore({ ...readiness, deadlineSet });
 
   return (
     <div className="p-6">
@@ -228,27 +235,32 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           {/* LEFT */}
           <div className="flex-1 min-w-0 w-full space-y-6">
-            {/* readiness */}
-            <Card className="shadow-sm">
+            {/* preparation checklist */}
+            <Card className="shadow-sm" data-prep-checklist>
               <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base">Readiness</CardTitle>
-                <span className="text-sm text-muted-foreground">{readyScore} of 4 ready</span>
+                <CardTitle className="text-base">{PREP_CHECKLIST_TITLE}</CardTitle>
+                <span className="text-sm text-muted-foreground">{prepScoreLabel(score)}</span>
               </CardHeader>
               <CardContent>
                 <div className="h-1.5 w-full rounded-full bg-muted mb-5">
                   <div
                     className="h-full rounded-full bg-[#9a1a27] transition-all"
-                    style={{ width: `${(readyScore / 4) * 100}%` }}
+                    style={{ width: `${(score / PREP_STEP_COUNT) * 100}%` }}
                   />
                 </div>
                 <ul className="space-y-3">
-                  <ReadyItem done={deadlineSet}>Deadline is set</ReadyItem>
-                  <ReadyItem done={readiness.essayDrafted}>At least one essay drafted</ReadyItem>
-                  <ReadyItem done={readiness.keyDocsUploaded}>Key documents uploaded</ReadyItem>
-                  <ReadyItem done={submitted}>
-                    Status reached <span className="font-medium text-foreground">Submitted</span>
+                  <ReadyItem done={deadlineSet}>{PREP_STEP_LABELS.deadline}</ReadyItem>
+                  <ReadyItem
+                    done={readiness.essayDrafted}
+                    hint="A draft for a per-university prompt counts once it is tagged to this university in Essays."
+                  >
+                    {PREP_STEP_LABELS.essay}
                   </ReadyItem>
+                  <ReadyItem done={readiness.keyDocsUploaded}>{PREP_STEP_LABELS.documents}</ReadyItem>
                 </ul>
+                <p className="text-xs text-muted-foreground mt-4">
+                  Tracks what you have prepared in CAAT. It does not send anything to the university.
+                </p>
               </CardContent>
             </Card>
 
@@ -384,37 +396,48 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
                     ) : null}
                   </div>
                 ) : null}
-                {scholarships.length === 0 && trackedScholarships.length === 0 ? (
+                {scholarshipsUnavailable && scholarships.length === 0 ? (
+                  <p
+                    role="status"
+                    className="rounded-lg border border-dashed bg-muted/20 px-6 py-6 text-center text-sm text-muted-foreground"
+                  >
+                    Couldn&apos;t load scholarships for this university right now.
+                  </p>
+                ) : scholarships.length === 0 && trackedScholarships.length === 0 ? (
                   <div className="rounded-lg border border-dashed bg-muted/20 px-6 py-8 text-center">
-                    <p className="font-medium mb-1">No scholarships found for this school yet</p>
+                    <p className="font-medium mb-1">No scholarships recorded for this university yet</p>
                     <p className="text-sm text-muted-foreground">
-                      We don&apos;t have scholarships for {schoolCountry ?? "this country"} in our
-                      database yet. As we add them, the best matches for your profile will appear
-                      here automatically.
+                      We haven&apos;t recorded an open scholarship for {schoolName}. Browse all
+                      scholarships to find others.
                     </p>
                   </div>
                 ) : scholarships.length === 0 ? null : (
                   <>
                     <ul className="space-y-3">
                       {scholarships.map((s) => (
-                        <li
-                          key={s.id}
-                          className="rounded-lg border bg-muted/20 px-4 py-3 flex items-start justify-between gap-3"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="font-medium text-sm truncate">{s.title}</div>
-                            <div className="text-xs text-muted-foreground truncate">{s.provider}</div>
-                          </div>
-                          {s.amount ? (
-                            <span className="shrink-0 max-w-[40%] text-right text-sm font-semibold line-clamp-2">
-                              {s.amount}
-                            </span>
-                          ) : null}
+                        <li key={s.id} data-hub-scholarship={s.id}>
+                          <Link
+                            href={`/scholarships/${encodeURIComponent(s.id)}`}
+                            className="rounded-lg border bg-muted/20 px-4 py-3 flex items-start justify-between gap-3 hover:bg-muted/40 transition-colors"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium text-sm truncate">{s.title}</div>
+                              <div className="text-xs text-muted-foreground truncate">{s.provider}</div>
+                              <div data-scholarship-deadline className="text-xs text-muted-foreground mt-0.5">
+                                {s.deadline ? `Closes ${fmtDate(s.deadline)}` : "No closing date listed"}
+                              </div>
+                            </div>
+                            {s.amount ? (
+                              <span className="shrink-0 max-w-[40%] text-right text-sm font-semibold line-clamp-2">
+                                {s.amount}
+                              </span>
+                            ) : null}
+                          </Link>
                         </li>
                       ))}
                     </ul>
                     <p className="text-xs text-muted-foreground mt-3">
-                      Listed for {schoolName}, best fit first.
+                      Open scholarships recorded for {schoolName}, soonest deadline first.
                     </p>
                   </>
                 )}
@@ -667,15 +690,21 @@ function EssayRow({ e }: { e: { promptId: string; title: string; status: "drafte
   );
 }
 
-function ReadyItem({ done, children }: { done: boolean; children: React.ReactNode }) {
+function ReadyItem({ done, children, hint }: { done: boolean; children: React.ReactNode; hint?: React.ReactNode }) {
   return (
-    <li data-state={done ? "done" : "todo"} className="flex items-center gap-2.5 text-sm">
+    <li data-state={done ? "done" : "todo"} className="flex items-start gap-2.5 text-sm">
       {done ? (
-        <CheckCircle2 className="h-[18px] w-[18px] text-[#9a1a27] dark:text-[#e06b78] shrink-0" />
+        <CheckCircle2 aria-hidden="true" className="h-[18px] w-[18px] text-[#9a1a27] dark:text-[#e06b78] shrink-0" />
       ) : (
-        <Circle className="h-[18px] w-[18px] text-muted-foreground/40 shrink-0" />
+        <Circle aria-hidden="true" className="h-[18px] w-[18px] text-muted-foreground/40 shrink-0" />
       )}
-      <span className={done ? "text-foreground" : "text-muted-foreground"}>{children}</span>
+      <span className="min-w-0">
+        <span className="sr-only">{done ? "Done: " : "Not done: "}</span>
+        <span data-step-label className={done ? "text-foreground" : "text-muted-foreground"}>
+          {children}
+        </span>
+        {hint && !done ? <span className="block text-xs text-muted-foreground mt-0.5">{hint}</span> : null}
+      </span>
     </li>
   );
 }

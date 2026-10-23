@@ -2,12 +2,13 @@
  * Today view (PROD-74): pure derivation of what a student should do next.
  *
  * Every task comes from data the student already sees elsewhere (application
- * status, deadlines, the hub's readiness rules, their own to-dos). Nothing
+ * status, deadlines, the hub's preparation-checklist rule, their own to-dos). Nothing
  * here invents urgency or a completion percentage.
  */
 
 import type { ApplicationStatus } from "@/types/applications";
 import type { UnifiedDeadline } from "@/lib/unified-deadlines";
+import { documentsReadyFor, essayDraftedFor, type PreparationInputs } from "@/lib/preparation-checklist";
 
 export const SOON_DAYS = 14;
 export const COMING_UP_DAYS = 60;
@@ -25,10 +26,8 @@ export interface TodayInput {
   todayISO: string;
   onboarding: { completed: boolean; dismissed: boolean; hasBasics: boolean };
   applications: TodayApplication[];
-  /** school_id of each essay draft; null means shared across applications. */
-  essayDraftSchoolIds: (number | null)[];
-  /** school_id of each uploaded document; null means shared. */
-  documentSchoolIds: (number | null)[];
+  /** Prompts, drafts and documents for the shared preparation-checklist rule. */
+  preparation: PreparationInputs;
   saved: { scholarships: number; schools: number; majors: number; courses: number };
   deadlines: UnifiedDeadline[];
   /** Saved scholarship id → tracking status ("interested", "applied", …). */
@@ -77,8 +76,6 @@ function dueLabel(days: number): string {
 }
 
 export function deriveTasks(input: TodayInput): TodayTask[] {
-  const sharedEssay = input.essayDraftSchoolIds.some((id) => id == null);
-  const sharedDocs = input.documentSchoolIds.some((id) => id == null);
   const soon: TodayTask[] = [];
   const rest: TodayTask[] = [];
 
@@ -112,9 +109,9 @@ export function deriveTasks(input: TodayInput): TodayTask[] {
     }
 
     // Preparation tasks only once the student says they are applying, using
-    // the same "shared or tagged to this school" rule as the hub checklist.
+    // the hub's preparation-checklist rule (lib/preparation-checklist).
     if (app.status !== "applying") continue;
-    const hasEssay = sharedEssay || input.essayDraftSchoolIds.includes(app.schoolId);
+    const hasEssay = essayDraftedFor(app.schoolId, input.preparation);
     if (!hasEssay) {
       rest.push({
         id: `essay-${app.id}`,
@@ -124,7 +121,7 @@ export function deriveTasks(input: TodayInput): TodayTask[] {
         href: `/essays?school=${app.schoolId}`,
       });
     }
-    const hasDocs = sharedDocs || input.documentSchoolIds.includes(app.schoolId);
+    const hasDocs = documentsReadyFor(app.schoolId, input.preparation.documents);
     if (!hasDocs) {
       rest.push({
         id: `docs-${app.id}`,
@@ -150,6 +147,25 @@ export function deriveTasks(input: TodayInput): TodayTask[] {
       title: `${d.title} ${days === 0 ? "closes today" : days === 1 ? "closes tomorrow" : `closes in ${days} days`}`,
       detail: "Decide whether to apply, then check what it asks for.",
       href: `/scholarships/${id}`,
+      dueISO: d.dateISO.slice(0, 10),
+    });
+  }
+
+  // Scholarships the student added themselves (PROD-146): same 14-day window,
+  // wording and "interested only" rule, managed from their own list rather
+  // than a catalogue page. Acted-on rows stay in the feed and calendar.
+  for (const d of input.deadlines) {
+    if (d.source !== "custom") continue;
+    if ((d.status ?? "interested") !== "interested") continue;
+    const id = d.id.replace(/^cus-/, "");
+    const days = daysBetween(input.todayISO, d.dateISO);
+    if (days < 0 || days > SOON_DAYS) continue;
+    soon.push({
+      id: `soon-cus-${id}`,
+      kind: "deadline-soon",
+      title: `${d.title} ${days === 0 ? "closes today" : days === 1 ? "closes tomorrow" : `closes in ${days} days`}`,
+      detail: "Decide whether to apply, then check what it asks for.",
+      href: d.href,
       dueISO: d.dateISO.slice(0, 10),
     });
   }
