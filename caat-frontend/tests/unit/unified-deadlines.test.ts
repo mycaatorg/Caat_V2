@@ -199,7 +199,7 @@ describe("fetchUnifiedDeadlines() custom scholarships", () => {
     expect(result.map((r) => [r.id, r.source, r.dateISO, r.href])).toEqual([
       ["sch-s1", "scholarship", "2099-06-01", "/scholarships/s1"],
       ["evt-e1", "event", "2099-06-01", "/dashboard"],
-      ["app-a1", "app", "2099-06-03", "/applications"],
+      ["app-a1", "app", "2099-06-03", "/applications/a1"],
     ]);
   });
 });
