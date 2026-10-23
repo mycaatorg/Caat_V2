@@ -962,6 +962,7 @@ export type Database = {
       }
       scholarship_import_runs: {
         Row: {
+          check_counts: Json | null
           error_message: string | null
           finished_at: string | null
           id: string
@@ -973,6 +974,7 @@ export type Database = {
           status: string
         }
         Insert: {
+          check_counts?: Json | null
           error_message?: string | null
           finished_at?: string | null
           id?: string
@@ -984,6 +986,7 @@ export type Database = {
           status: string
         }
         Update: {
+          check_counts?: Json | null
           error_message?: string | null
           finished_at?: string | null
           id?: string
@@ -1066,6 +1069,50 @@ export type Database = {
             columns: ["school_id"]
             isOneToOne: false
             referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scholarship_source_checks: {
+        Row: {
+          checked_at: string
+          content_hash: string | null
+          detail: string | null
+          final_url: string | null
+          http_status: number | null
+          id: number
+          outcome: "unchanged" | "changed" | "unreachable" | "gone" | "baseline"
+          run_id: string
+          url: string
+        }
+        Insert: {
+          checked_at?: string
+          content_hash?: string | null
+          detail?: string | null
+          final_url?: string | null
+          http_status?: number | null
+          id?: number
+          outcome: "unchanged" | "changed" | "unreachable" | "gone" | "baseline"
+          run_id: string
+          url: string
+        }
+        Update: {
+          checked_at?: string
+          content_hash?: string | null
+          detail?: string | null
+          final_url?: string | null
+          http_status?: number | null
+          id?: number
+          outcome?: "unchanged" | "changed" | "unreachable" | "gone" | "baseline"
+          run_id?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scholarship_source_checks_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "scholarship_import_runs"
             referencedColumns: ["id"]
           },
         ]
