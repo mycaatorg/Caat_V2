@@ -156,7 +156,8 @@ export async function checkUrl(url, { fetchImpl, timeoutMs }) {
     const body = /html|xml/i.test(type) || !type ? await response.text() : new Uint8Array(await response.arrayBuffer());
     return { status, finalUrl, hash: contentHash(body, type), error: null };
   } catch (err) {
-    const error = timedOut ? `timeout after ${timeoutMs} ms` : `network error: ${err?.message ?? err}`;
+    const cause = err?.cause?.code ?? err?.cause?.message;
+    const error = timedOut ? `timeout after ${timeoutMs} ms` : `network error: ${err?.message ?? err}${cause ? ` (${cause})` : ''}`;
     return { status: null, finalUrl: null, hash: null, error };
   } finally {
     clearTimeout(timer);
@@ -243,7 +244,7 @@ export async function runRefresh({ store, fetchImpl = globalThis.fetch, apply = 
   let plannedUpdates = 0;
   let scholarshipsUpdated = 0;
   const run = apply ? await store.startRun() : { id: randomUUID() };
-  log(`${apply ? 'APPLY' : 'DRY RUN'}: ${urls.length} distinct source urls from ${[...groups.values()].reduce((n, g) => n + g.length, 0)} active scholarships (run ${run.id}).`);
+  log(`${apply ? 'APPLY' : 'DRY RUN'}: ${urls.length} distinct source urls from ${[...groups.values()].reduce((n, g) => n + g.length, 0)} active scholarships (run ${run.id}${apply ? '' : ', not stored'}).`);
 
   try {
     await pool(urls, concurrency, async (url) => {
@@ -315,7 +316,7 @@ export function parseArgs(argv) {
 }
 
 export function formatSummary(summary) {
-  const lines = [`${summary.mode}: ${summary.urls} urls checked (run ${summary.runId})`];
+  const lines = [`${summary.mode}: ${summary.urls} urls checked (run ${summary.runId}${summary.mode === 'apply' ? '' : ', not stored'})`];
   for (const outcome of OUTCOMES) lines.push(`  ${outcome.padEnd(11)} ${summary.counts[outcome]}`);
   lines.push(summary.mode === 'apply'
     ? `  scholarship rows updated: ${summary.scholarshipsUpdated}`
