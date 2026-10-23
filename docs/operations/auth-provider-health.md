@@ -1,6 +1,6 @@
 # Auth-provider readiness
 
-PROD-135 addresses the deleted Redis database that broke signup while public page checks stayed green. The production health workflow probes the deployed Redis configuration hourly and can be dispatched manually. It makes up to three attempts before failing and publishing an actionable GitHub Actions error/run summary. A later healthy run reports recovery. GitHub email/web notifications follow each maintainer's existing Actions notification settings; delivery outside GitHub is not guaranteed by this workflow.
+PROD-135 addresses the deleted Redis database that broke signup while public page checks stayed green. The production health workflow probes the deployed Redis configuration hourly and can be dispatched manually. It makes up to three attempts before failing and publishing an actionable GitHub Actions error/run summary. A later healthy run reports recovery. GitHub email/web notifications depend on the triggering account's Actions notification settings; delivery outside GitHub is not guaranteed. Scheduled notifications go to the workflow creator, then to whoever last changes its cron schedule or re-enables it. During an on-call handover, verify that account and its notification settings; a failed Actions run alone does not page every maintainer. See [GitHub’s notification rules](https://docs.github.com/en/actions/concepts/workflows-and-actions/notifications-for-workflow-runs).
 
 ## Scope and access
 
