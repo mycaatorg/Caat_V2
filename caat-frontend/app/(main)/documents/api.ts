@@ -168,6 +168,11 @@ export async function deleteDocument(doc: DocumentRow): Promise<void> {
     .eq("id", doc.id)
     .eq("user_id", user.id)
     .select("storage_path");
+  // PROD-78: a document still linked to an application is protected by the
+  // database (ON DELETE RESTRICT). Say what to do instead of a generic error.
+  if (error && (error as { code?: string }).code === "23503") {
+    throw new Error("This document is linked to an application. Unlink it from the application first, then delete it.");
+  }
   if (error) throw new Error(sanitizeError(error));
 
   let storagePath = (deleted as { storage_path: string }[] | null)?.[0]?.storage_path ?? null;
