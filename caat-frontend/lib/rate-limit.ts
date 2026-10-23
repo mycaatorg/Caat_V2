@@ -1,5 +1,6 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import { providerFailureCode } from "@/lib/rate-limit-diagnostics";
 
 // G1 — application-level rate limiting. Centralised so every server action
 // reuses the same limiters and key conventions.
@@ -68,8 +69,8 @@ export async function gate(
   let result: Awaited<ReturnType<Ratelimit["limit"]>>;
   try {
     result = await limiter.limit(key);
-  } catch {
-    return providerUnavailable("request_failed");
+  } catch (error) {
+    return providerUnavailable("request_failed", providerFailureCode(error));
   }
   // The SDK deliberately returns success=true on timeout. A missing decision
   // must not bypass the protection on auth or any other gated server action.
@@ -83,9 +84,9 @@ export async function gate(
   };
 }
 
-function providerUnavailable(reason: "request_failed" | "timeout") {
+function providerUnavailable(reason: "request_failed" | "timeout", code?: string) {
   // Do not log the provider error or key: they can contain credentials or IPs.
-  console.error("[rate-limit] Provider unavailable", { reason });
+  console.error("[rate-limit] Provider unavailable", { reason, ...(code ? { code } : {}) });
   return {
     ok: false as const,
     error: "We couldn't check the request right now. Please try again shortly.",
