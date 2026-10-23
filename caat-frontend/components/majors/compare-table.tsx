@@ -96,6 +96,7 @@ export default function CompareTable({ majors }: Props) {
             </th>
             {majors.map((major) => (
               <td key={major.id} className={`${cellPad} border-r last:border-r-0`}>
+                {!major.career_paths?.length && <p className="text-muted-foreground">Career information not available</p>}
                 <div className="flex flex-wrap gap-1.5">
                   {(major.career_paths ?? []).map((path) => (
                     <span
@@ -120,6 +121,7 @@ export default function CompareTable({ majors }: Props) {
             </th>
             {majors.map((major) => (
               <td key={major.id} className="p-4 align-top border-r last:border-r-0">
+                {!major.typical_coursework?.length && <p className="text-muted-foreground">Coursework information not available</p>}
                 <ul className="space-y-1.5">
                   {(major.typical_coursework ?? []).map((course) => (
                     <li key={course} className="flex items-center gap-2">
