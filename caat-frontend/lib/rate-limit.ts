@@ -47,8 +47,8 @@ export const ratelimits = {
 };
 
 /**
- * Throws a user-facing error with a retry hint when the limit is exceeded.
- * No-ops when Redis is not configured.
+ * Returns a user-facing retry message when the limit is exceeded or unavailable.
+ * Missing Redis configuration is allowed only outside production.
  */
 export async function gate(
   limiter: Ratelimit | null,
@@ -65,11 +65,29 @@ export async function gate(
     }
     return { ok: true };
   }
-  const { success, reset } = await limiter.limit(key);
+  let result: Awaited<ReturnType<Ratelimit["limit"]>>;
+  try {
+    result = await limiter.limit(key);
+  } catch {
+    return providerUnavailable("request_failed");
+  }
+  // The SDK deliberately returns success=true on timeout. A missing decision
+  // must not bypass the protection on auth or any other gated server action.
+  if (result.reason === "timeout") return providerUnavailable("timeout");
+  const { success, reset } = result;
   if (success) return { ok: true };
   const retryIn = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
   return {
     ok: false,
     error: `Too many requests. Try again in ${retryIn}s.`,
+  };
+}
+
+function providerUnavailable(reason: "request_failed" | "timeout") {
+  // Do not log the provider error or key: they can contain credentials or IPs.
+  console.error("[rate-limit] Provider unavailable", { reason });
+  return {
+    ok: false as const,
+    error: "We couldn't check the request right now. Please try again shortly.",
   };
 }
