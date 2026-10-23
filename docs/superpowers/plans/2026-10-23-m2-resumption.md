@@ -24,7 +24,7 @@ verification and no production migrations were applied.
 
 ## Verification
 
-- 717 unit tests pass, 58 files. Whole-runtime line coverage 48.05%; existing
+- 719 unit tests pass, 58 files. Whole-runtime line coverage 48.17%; existing
   floors unchanged. Typecheck and lint pass with no new warnings.
 - 12 isolation/bootstrap/discovery/route-contract checks pass.
 - 101 browser checks pass against a production build on isolated loopback
@@ -39,8 +39,15 @@ verification and no production migrations were applied.
   were removed in cleanup.
 - Independent Codex reviews found PROD-105 and PROD-106; both reproduced with
   failing tests before fixes and passed re-review. PROD-103 also passed review.
-- Additional Claude review and phone browser checks are being completed; see
-  the PR and Linear evidence for their final results.
+- 14 additional phone Chromium/WebKit checks pass against the same build.
+- Claude reviewed the incremental M2 source/diff read-only and found no blockers;
+  it did not independently execute tests. Its stale Undo-after-delete finding
+  is fixed as PROD-130, with two red/green cases and Codex re-review.
+  Nonblocking ordering, pagination recovery, URL flash and search-limit guidance
+  suggestions are tracked in PROD-131 (Backlog). Compact task detail is intentional.
+- PROD-129 pins PR and nightly browser jobs to Ubuntu 24.04: the first GitHub
+  run failed before tests on Ubuntu 26.04, unsupported by locked Playwright.
+  The replacement run is pending; local browser results above remain valid.
 
 ## Search measurement
 
@@ -61,7 +68,7 @@ measurements, not production page latency. The synthetic catalogue was removed.
 
 ## Review and release boundary
 
-Create the M2 PR against `develop`, preserving the existing branch's disabled
+Draft PR #177 is open against `develop`, preserving the existing branch's disabled
 Vercel preview setting. This is unreleased work; tickets remain In Review until
 integration/release evidence warrants advancing them.
 
@@ -72,7 +79,10 @@ scholarship-search migration to deliver improved matching:
 1. `caat-frontend/supabase/migrations/20261007100000_student_onboarding_profile_fields.sql`
 2. `caat-frontend/supabase/migrations/20261010130000_scholarship_search_matching.sql`
 
-Both are transactional. Obtain approval for this concrete production migration
+Both are transactional. The search RPC parameter names/types match the prior
+migration. Before applying, confirm pg_trgm is installed in public: the earlier
+migration uses the default extension schema and does not prove the live schema.
+Obtain approval for this concrete production migration
 and M2 release, then verify the production schema, merge through the existing
 PR-to-develop/release process and verify the deployed revision. Other held
 community/document migrations and PRs are separate work, not bundled here.

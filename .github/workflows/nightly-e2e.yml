@@ -15,7 +15,8 @@ on:
 jobs:
   full-e2e:
     name: Full E2E (isolated local Supabase)
-    runs-on: ubuntu-latest
+    # Keep browser dependencies on an OS supported by locked Playwright.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
       run:

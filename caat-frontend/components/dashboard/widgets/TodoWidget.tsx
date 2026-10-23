@@ -153,12 +153,21 @@ export function TodoWidget() {
   }
 
   async function handleDelete(id: string) {
+    if (pendingTodoIdsRef.current.has(id)) return;
+    pendingTodoIdsRef.current.add(id);
+    setPendingTodoIds(new Set(pendingTodoIdsRef.current));
     setTodos((prev) => prev.filter((t) => t.id !== id));
     try {
       await deleteTodo(id);
+      // An existing completion toast must not restore a deleted task.
+      todoVersionsRef.current.set(id, (todoVersionsRef.current.get(id) ?? 0) + 1);
+      setRecentlyCompleted(id, false);
     } catch {
       toast.error("Failed to delete to-do");
-      load();
+      await load();
+    } finally {
+      pendingTodoIdsRef.current.delete(id);
+      setPendingTodoIds(new Set(pendingTodoIdsRef.current));
     }
   }
 

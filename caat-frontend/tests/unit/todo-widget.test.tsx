@@ -49,10 +49,34 @@ beforeEach(() => {
   vi.clearAllMocks();
   io.fetchTodos.mockResolvedValue(todos);
   io.toggleTodo.mockResolvedValue(undefined);
+  io.deleteTodo.mockResolvedValue(undefined);
 });
 afterEach(() => unmountAll());
 
 describe("TodoWidget", () => {
+  it.each([false, true])("guards stale Undo while deleting and after successful deletion (failure=%s)", async (fails) => {
+    const deletion = deferred();
+    io.deleteTodo.mockReturnValueOnce(deletion.promise);
+    await mountComponent(<TodoWidget />);
+    await click(document.querySelector<HTMLInputElement>('input[id="todo-t1"]')!);
+    const undo = io.toast.success.mock.calls[0][1].action;
+    io.fetchTodos.mockResolvedValue(todos.map((todo) => todo.id === "t1" ? { ...todo, done: true } : todo));
+    await click(document.querySelector<HTMLButtonElement>('button[aria-label="Delete to-do: Book a campus open day"]')!);
+    const { act } = await import("react");
+    await act(async () => undo.onClick());
+    expect(io.toggleTodo).toHaveBeenCalledTimes(1);
+    await actResolve(deletion, fails ? new Error("offline") : undefined);
+    await act(async () => undo.onClick());
+    await flush();
+    expect(io.toggleTodo).toHaveBeenCalledTimes(fails ? 2 : 1);
+    if (fails) {
+      expect(document.querySelector<HTMLInputElement>('input[id="todo-t1"]')?.checked).toBe(false);
+    } else {
+      expect(document.querySelector('input[id="todo-t1"]')).toBeNull();
+      expect(io.toast.error).not.toHaveBeenCalled();
+    }
+  });
+
   it("keeps completed tasks in a collapsed section and lets Undo restore an item", async () => {
     await mountComponent(<TodoWidget />);
     await flush();
