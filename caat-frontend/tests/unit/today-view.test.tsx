@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import React, { act } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { click, deferred, flush, hasText, link, mountComponent, queryAll, queryButton, queryLink, unmountAll } from "./dom-helpers";
 
@@ -49,6 +50,14 @@ afterEach(() => unmountAll());
 beforeEach(() => window.history.replaceState(null, "", "/today"));
 
 describe("Today", () => {
+  it("renders a URL-selected full list on the server without the overview", () => {
+    const html = renderToStaticMarkup(<TodayView {...props()} initialQuery="view=todos&page=1" />);
+    expect(html).toContain("Your to-dos");
+    expect(html).toContain("Book open day");
+    expect(html).not.toContain("Your next step");
+    expect(html).not.toContain("Good afternoon");
+  });
+
   it("greets the student and leads with one next step that links to its destination", async () => {
     await mountComponent(<TodayView {...props()} />);
     expect(document.querySelector("h1")?.textContent).toBe("Good afternoon, Mia");

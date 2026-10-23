@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import React from "react";
+import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { click, deferred, flush, mountComponent, unmountAll } from "./dom-helpers";
+import { change, click, deferred, flush, mountComponent, unmountAll } from "./dom-helpers";
 
 const io = vi.hoisted(() => ({
   fetchTodos: vi.fn(),
@@ -30,7 +30,7 @@ vi.mock("@/components/ui/checkbox", () => ({
 vi.mock("@/components/ui/input", () => ({ Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} /> }));
 vi.mock("@/components/ui/skeleton", () => ({ Skeleton: () => <div /> }));
 vi.mock("@/components/ui/select", () => ({
-  Select: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+  Select: ({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) => <select aria-label="Priority" value={value} onChange={e => onValueChange(e.target.value)}><option value="1">High</option><option value="2">Medium</option><option value="3">Low</option></select>,
   SelectContent: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
   SelectItem: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
   SelectTrigger: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => <button {...props}>{children}</button>,
@@ -54,6 +54,26 @@ beforeEach(() => {
 afterEach(() => unmountAll());
 
 describe("TodoWidget", () => {
+  it("keeps a completed task in place when another task changes priority", async () => {
+    io.updateTodo.mockResolvedValue(undefined);
+    await mountComponent(<TodoWidget />);
+    await click(document.querySelector<HTMLInputElement>('#todo-t1')!);
+    await change(document.querySelector<HTMLSelectElement>('select[aria-label="Priority"]')!, "1");
+    expect(io.updateTodo).toHaveBeenCalledWith("t3", { priority: 1 });
+    expect([...document.querySelectorAll('li input[type="checkbox"]')].map(el => el.id)).toEqual(["todo-t1", "todo-t3"]);
+  });
+
+  it("keeps a newly completed task in place when adding an urgent task", async () => {
+    io.addTodo.mockResolvedValue({ ...todos[0], id: "new", text: "New urgent task", priority: 1 });
+    await mountComponent(<TodoWidget />);
+    await click(document.querySelector<HTMLInputElement>('#todo-t1')!);
+    await change(document.querySelector<HTMLInputElement>('input[placeholder]')!, "New urgent task");
+    await act(async () => document.querySelector<HTMLInputElement>('input[placeholder]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    const visibleIds = [...document.querySelectorAll('li input[type="checkbox"]')].map(el => el.id);
+    expect(visibleIds).toEqual(["todo-t1", "todo-new", "todo-t3"]);
+    expect(document.querySelector<HTMLInputElement>('#todo-t1')?.checked).toBe(true);
+  });
+
   it.each([false, true])("guards stale Undo while deleting and after successful deletion (failure=%s)", async (fails) => {
     const deletion = deferred();
     io.deleteTodo.mockReturnValueOnce(deletion.promise);
