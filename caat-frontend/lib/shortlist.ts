@@ -36,6 +36,10 @@ export interface ShortlistCourse {
   campus: string | null;
   active: boolean;
   sourceUrl: string | null;
+  /** The catalogue's linked university (PROD-148); null means not linked in CAAT. */
+  schoolId: number | null;
+  /** The owner's application at that university, if one exists. */
+  application: { id: string; status: ApplicationStatus } | null;
 }
 
 export interface Shortlist {
@@ -65,7 +69,7 @@ export async function loadShortlist(supabase: SupabaseClient, userId: string): P
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
     supabase.from("user_school_applications").select("id, school_id, status").eq("user_id", userId),
-    supabase.from("user_course_bookmarks").select("course_id, created_at, course_offerings(id, name, institution_name, campus, active, source_url)").eq("user_id", userId).order("created_at", { ascending: false }),
+    supabase.from("user_course_bookmarks").select("course_id, created_at, course_offerings(id, name, institution_name, campus, active, source_url, school_id)").eq("user_id", userId).order("created_at", { ascending: false }),
   ]);
   for (const res of [schRes, schoolRes, majorRes, appRes, courseRes]) {
     if (res.error) throw new Error("Could not load your shortlist");
@@ -79,7 +83,9 @@ export async function loadShortlist(supabase: SupabaseClient, userId: string): P
   return {
     courses: ((courseRes.data ?? []) as Row[]).flatMap(r => {
       const c = r.course_offerings as Row | null;
-      return c ? [{ id: c.id as string, name: c.name as string, institutionName: c.institution_name as string, campus: (c.campus as string | null) ?? null, active: c.active === true, sourceUrl: (c.source_url as string | null) ?? null }] : [];
+      if (!c) return [];
+      const schoolId = typeof c.school_id === 'number' && Number.isSafeInteger(c.school_id) && c.school_id > 0 ? c.school_id : null;
+      return [{ id: c.id as string, name: c.name as string, institutionName: c.institution_name as string, campus: (c.campus as string | null) ?? null, active: c.active === true, sourceUrl: (c.source_url as string | null) ?? null, schoolId, application: schoolId === null ? null : appsBySchool.get(schoolId) ?? null }];
     }),
     scholarships: ((schRes.data ?? []) as Row[]).flatMap((r) => {
       const s = r.scholarships as Row | null;

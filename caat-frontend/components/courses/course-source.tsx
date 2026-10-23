@@ -7,7 +7,7 @@ export function ProviderLink({ href, children }: { href: string | null; children
   return url ? <a href={url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 break-words">{children}<span className="sr-only"> (opens in a new tab)</span></a> : null;
 }
 
-export function CourseSource({ course, checkedAt }: { course: CourseOffering; checkedAt: string }) {
+export function CourseSource({ course, checkedAt }: { course: Pick<CourseOffering, 'verified_at'> & { source_url: string | null }; checkedAt: string }) {
   const freshness = courseFreshness(course.verified_at, new Date(checkedAt));
   return <div className="space-y-2 text-sm text-muted-foreground">
     {freshness === 'unverified' ? <p>Verification not confirmed. Check the provider.</p> : <p>

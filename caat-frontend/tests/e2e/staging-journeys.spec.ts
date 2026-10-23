@@ -958,7 +958,7 @@ const COURSES = {
   anu: { id: "anu-aacom", name: "Bachelor of Advanced Computing (Honours)", institution: "Australian National University" },
   sydney: { id: "sydney-bpadvcmp1000-camperdown", name: "Bachelor of Advanced Computing", institution: "University of Sydney" },
 } as const;
-type SeededCourse = (typeof COURSES)[keyof typeof COURSES];
+type SeededCourse = { id: string; name: string; institution: string };
 const COURSE_SAVES = "/rest/v1/user_course_bookmarks";
 
 async function openCourses(page: Page, path = "/courses") {
@@ -1208,4 +1208,90 @@ test("majors and university courses link to each other through the paired naviga
   await page.waitForURL((url) => url.pathname === "/majors");
   await expect(pairedNav().getByRole("link", { name: "Explore majors", exact: true })).toHaveAttribute("aria-current", "page", { timeout: 15_000 });
   await expect(page.getByRole("main").getByRole("link", { name: "E2E Test Engineering", exact: true })).toBeVisible();
+});
+
+// PROD-148: a saved course leads to the application at its university.
+// tests/staging/seed-courses.sql links this synthetic offering to school 900001.
+const E2E_COURSE: SeededCourse = { id: "e2e-test-course-900001", name: "E2E Test Bachelor of Computing", institution: "E2E Test University" };
+const TRACK_E2E = "Track an application at E2E Test University";
+const OPEN_E2E = "Open your E2E Test University application";
+
+/** E2E Test University application cards on /applications, after the list has loaded. */
+async function e2eApplicationCount(page: Page) {
+  await page.goto("/applications");
+  await expect(page.getByRole("heading", { name: "My Applications" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Couldn't load your applications.")).toHaveCount(0);
+  return seededApplicationCard(page).card.count();
+}
+
+test("a saved course tracks its university application on a click, and the hub lists it with route and source after reload (PROD-148)", { tag: "@phone" }, async ({ page }) => {
+  await signInToIsolatedStudent(page);
+  try {
+    await removeSeededApplication(page);
+    await unsaveCourse(page, E2E_COURSE);
+    expect(await e2eApplicationCount(page)).toBe(0);
+
+    // Saving a course never creates an application.
+    await openCourses(page, `/courses?course=${E2E_COURSE.id}`);
+    const card = courseCard(page, E2E_COURSE);
+    await expect(card.getByRole("button", { name: TRACK_E2E })).toHaveCount(0);
+    const save = card.getByRole("button", { name: `Save ${E2E_COURSE.name}`, exact: true });
+    await expect(save).toBeEnabled({ timeout: 15_000 });
+    const saved = courseSaveWrite(page, "POST");
+    await save.click();
+    await saved;
+    await expect(card.getByRole("button", { name: TRACK_E2E, exact: true })).toBeVisible();
+    await expect(card.getByText("It does not apply to the university.", { exact: false })).toBeVisible();
+    await page.reload();
+    await expect(courseCard(page, E2E_COURSE).getByRole("button", { name: TRACK_E2E, exact: true })).toBeEnabled({ timeout: 15_000 });
+    expect(await e2eApplicationCount(page)).toBe(0);
+
+    // The labelled click on the Shortlist course row creates exactly one application.
+    await page.goto("/shortlist?tab=course");
+    const courseSection = page.getByRole("main").getByRole("region", { name: "University courses", exact: true });
+    const track = courseSection.getByRole("button", { name: TRACK_E2E, exact: true });
+    await expect(track).toBeEnabled({ timeout: 15_000 });
+    const created = page.waitForResponse((r) => r.request().method() === "POST"
+      && new URL(r.url()).pathname.endsWith("/rest/v1/user_school_applications") && r.ok(), { timeout: 15_000 });
+    await track.click();
+    await created;
+    await expect(courseSection.getByRole("link", { name: OPEN_E2E })).toBeVisible();
+    await expect(courseSection.getByRole("button", { name: TRACK_E2E })).toHaveCount(0);
+
+    // After a reload /courses opens the same application; there is still only one.
+    await openCourses(page, `/courses?course=${E2E_COURSE.id}`);
+    const reloadedCard = courseCard(page, E2E_COURSE);
+    const open = reloadedCard.getByRole("link", { name: OPEN_E2E });
+    await expect(open).toBeVisible({ timeout: 15_000 });
+    await expect(reloadedCard.getByRole("button", { name: TRACK_E2E })).toHaveCount(0);
+    const href = await open.getAttribute("href");
+    expect(href).toMatch(/^\/applications\/[0-9a-f-]+$/i);
+    expect(await e2eApplicationCount(page)).toBe(1);
+
+    // The hub lists the saved course with its recorded route, official link, source and date.
+    await page.goto(href!);
+    const hubCard = page.getByRole("main").getByRole("region", { name: "Courses you saved at E2E Test University", exact: true });
+    const checkHub = async () => {
+      await expect(hubCard.getByRole("link", { name: E2E_COURSE.name, exact: true })).toHaveAttribute("href", `/courses?course=${E2E_COURSE.id}`, { timeout: 15_000 });
+      await expect(hubCard.getByText("E2E route: apply through the synthetic admissions centre.", { exact: false })).toBeVisible();
+      await expect(hubCard.getByRole("link", { name: /^Official application page/ })).toHaveAttribute("href", "https://university.example.test/apply");
+      await expect(hubCard.getByRole("link", { name: /^View official course details/ })).toHaveAttribute("href", "https://university.example.test/courses/computing");
+      await expect(hubCard.locator("time")).toHaveCount(1);
+      await expect(hubCard.getByText(/^Source checked .+\. Confirm current requirements before applying\.$/)).toBeVisible();
+      // Not a preparation step: the checklist keeps its three steps.
+      await expect(page.locator("li[data-state]")).toHaveCount(3);
+    };
+    await checkHub();
+    await page.reload();
+    await checkHub();
+  } finally {
+    if (!page.isClosed()) {
+      await unsaveCourse(page, E2E_COURSE).catch(() => {});
+      await removeSeededApplication(page).catch(() => {});
+    }
+  }
+  // Cleanup persisted: no application and no save after a reload.
+  expect(await e2eApplicationCount(page)).toBe(0);
+  await openCourses(page, `/courses?course=${E2E_COURSE.id}`);
+  await expect(courseCard(page, E2E_COURSE).getByRole("button", { name: `Save ${E2E_COURSE.name}`, exact: true })).toBeEnabled({ timeout: 15_000 });
 });

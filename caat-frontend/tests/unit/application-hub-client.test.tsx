@@ -9,6 +9,7 @@ const io = vi.hoisted(() => ({
   updateApplicationStatus: vi.fn(),
   updateApplicationDeadline: vi.fn(),
   fetchMajorOptions: vi.fn(),
+  fetchSavedCoursesForSchool: vi.fn(),
   updateApplicationMajors: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn() },
 }));
@@ -18,6 +19,7 @@ vi.mock("@/app/(main)/applications/[id]/api", () => ({
   updateApplicationStatus: io.updateApplicationStatus,
   updateApplicationDeadline: io.updateApplicationDeadline,
   fetchMajorOptions: io.fetchMajorOptions,
+  fetchSavedCoursesForSchool: io.fetchSavedCoursesForSchool,
 }));
 vi.mock("@/app/(main)/applications/api", () => ({ updateApplicationMajors: io.updateApplicationMajors }));
 vi.mock("@/lib/scholarship-tracking", () => ({
@@ -74,6 +76,8 @@ function hub(
     sharedDocuments: [],
     scholarships: [],
     scholarshipsUnavailable: false,
+    savedCourses: [],
+    savedCoursesUnavailable: false,
     ...extra,
   };
 }
@@ -388,5 +392,45 @@ describe("scholarships panel", () => {
     expect(items[0].querySelector("[data-scholarship-deadline]")?.textContent).toBe("Closes 1 Nov 2026");
     expect(items[1].querySelector("[data-scholarship-deadline]")?.textContent).toBe("No closing date listed");
     expect(document.body.textContent).toContain("soonest deadline first");
+  });
+});
+
+describe("courses you saved at this university (PROD-148)", () => {
+  const savedCourse = {
+    id: "alpha-cs", name: "Bachelor of Computing", campus: "City", application_route: "Apply through UAC.",
+    application_url: "https://www.uac.edu.au", source_url: "https://alpha.edu.au/computing", verified_at: "2026-10-20T00:00:00.000Z", active: true,
+  };
+  const savedCard = () => document.querySelector('[aria-label="Courses you saved at Alpha University"]') as HTMLElement | null;
+
+  it("sits directly under the preparation checklist and does not change the 3-step score", async () => {
+    await mount(hub({}, {}, { savedCourses: [savedCourse] }));
+    const prep = document.querySelector("[data-prep-checklist]")!;
+    expect(prep.nextElementSibling).toBe(savedCard());
+    expect(savedCard()!.textContent).toContain("Bachelor of Computing");
+    expect(savedCard()!.textContent).toContain("Apply through UAC.");
+    expect(score()).toBe("1");
+    expect(document.querySelectorAll("li[data-state]")).toHaveLength(3);
+  });
+
+  it("retries only the saved-courses read when it failed, leaving the rest of the hub alone", async () => {
+    io.fetchSavedCoursesForSchool.mockResolvedValueOnce([savedCourse]);
+    await mount(hub({}, {}, { savedCoursesUnavailable: true }));
+    expect(savedCard()!.textContent).toContain("Couldn't load your saved courses.");
+    expect(savedCard()!.textContent).not.toContain("You haven't saved a course");
+    await click(button("Retry loading saved courses"));
+    await flush();
+    expect(io.fetchSavedCoursesForSchool).toHaveBeenCalledWith(7);
+    expect(io.fetchApplicationHub).toHaveBeenCalledTimes(1);
+    expect(savedCard()!.textContent).toContain("Bachelor of Computing");
+    expect(score()).toBe("1");
+  });
+
+  it("stays unavailable when the retry also fails", async () => {
+    io.fetchSavedCoursesForSchool.mockRejectedValueOnce(new Error("offline"));
+    await mount(hub({}, {}, { savedCoursesUnavailable: true }));
+    await click(button("Retry loading saved courses"));
+    await flush();
+    expect(savedCard()!.textContent).toContain("Couldn't load your saved courses.");
+    expect(button("Retry loading saved courses").disabled).toBe(false);
   });
 });
