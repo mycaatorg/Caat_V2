@@ -58,7 +58,8 @@ export function mergeDeadlines(
       source: "app",
       title: a.school_name,
       dateISO: a.deadline_at,
-      href: "/applications",
+      // The application's own hub, where its deadline and checklist live.
+      href: `/applications/${encodeURIComponent(a.id)}`,
     });
   }
 

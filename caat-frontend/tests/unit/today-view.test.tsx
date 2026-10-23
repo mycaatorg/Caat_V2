@@ -29,7 +29,7 @@ const props = (patch: Partial<TodayViewProps> = {}): TodayViewProps => ({
   todayISO: "2026-10-07",
   nextStep: { kind: "task", title: "Add the deadline for Harbourside University", body: "Deadlines drive reminders.", cta: "Do this now", href: "/applications/a1" },
   tasks: [{ id: "deadline-a1", kind: "set-deadline", title: "Add the deadline for Harbourside University", detail: "Deadlines drive reminders.", href: "/applications/a1" }],
-  comingUp: [{ id: "app-a2", source: "app", title: "Banksia College", dateISO: "2026-10-10", href: "/applications" }],
+  comingUp: [{ id: "app-a2", source: "app", title: "Banksia College", dateISO: "2026-10-10", href: "/applications/a2" }],
   recent: [{ kind: "essay", title: "Why engineering", detail: "Draft 1", href: "/essays?prompt=p1", updatedAt: "2026-10-06T10:00:00Z" }],
   todos: [
     { id: "t1", text: "Ask Ms Lee for a reference", dueDate: "2026-10-05", priority: 1 },
@@ -72,6 +72,7 @@ describe("Today", () => {
     await mountComponent(<TodayView {...props()} />);
     expect(link(/Add the deadline for Harbourside University/).getAttribute("href")).toBe("/applications/a1");
     expect(link(/Banksia College/).textContent).toContain("3 days");
+    expect(link(/Banksia College/).getAttribute("href")).toBe("/applications/a2");
     expect(link(/Why engineering/).getAttribute("href")).toBe("/essays?prompt=p1");
     expect(hasText("Edited yesterday", document.body) || document.body.textContent?.includes("Edited yesterday")).toBe(true);
     expect(link(/Regional Engineering Scholarship/).getAttribute("href")).toBe("/scholarships/s1");

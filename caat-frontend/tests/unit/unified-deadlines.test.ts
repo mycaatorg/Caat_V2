@@ -62,6 +62,24 @@ describe("mergeDeadlines()", () => {
     expect(result[2].source).toBe("event");
   });
 
+  it("links an application deadline to that application's hub, not the list", () => {
+    const result = mergeDeadlines(
+      [
+        { id: "0b7f3c1e-app", school_name: "Uni A", deadline_at: "2026-06-01", status: "applying" },
+        { id: "9a2d-app", school_name: "Uni B", deadline_at: "2026-06-02", status: "submitted" },
+      ],
+      [{ id: "s1", title: "Schol", deadline_at: "2026-06-03" }],
+      [{ id: "e1", title: "Event", event_date: "2026-06-04" }],
+      "2026-05-21"
+    );
+    expect(result.map((r) => r.href)).toEqual([
+      "/applications/0b7f3c1e-app",
+      "/applications/9a2d-app",
+      "/scholarships/s1",
+      "/dashboard",
+    ]);
+  });
+
   it("namespaces ids by source to avoid collisions", () => {
     const result = mergeDeadlines(
       [{ id: "1", school_name: "U", deadline_at: "2026-06-01", status: "applying" }],
