@@ -28,6 +28,49 @@ export type Database = {
         Update: { user_id?: string; course_id?: string; created_at?: string }
         Relationships: [{ foreignKeyName: "user_course_bookmarks_course_id_fkey"; columns: ["course_id"]; isOneToOne: false; referencedRelation: "course_offerings"; referencedColumns: ["id"] }]
       }
+      application_evidence_links: {
+        Row: {
+          application_id: string
+          created_at: string
+          document_id: string | null
+          evidence_item_id: string | null
+          id: string
+          kind: string
+          tailored_at: string | null
+          tailored_body: string | null
+          tailored_title: string | null
+          user_id: string
+        }
+        // Clients may insert only these columns (column-level grants).
+        Insert: {
+          application_id: string
+          document_id: string
+          kind?: "document"
+          user_id: string
+        }
+        // Clients may update only the tailored_* columns (column-level grants).
+        Update: {
+          tailored_at?: string | null
+          tailored_body?: string | null
+          tailored_title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_evidence_links_application_fkey"
+            columns: ["application_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "user_school_applications"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "application_evidence_links_document_fkey"
+            columns: ["document_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
       calendar_events: {
         Row: {
           created_at: string
