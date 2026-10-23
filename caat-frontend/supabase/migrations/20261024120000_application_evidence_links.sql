@@ -19,6 +19,9 @@
 -- 'document' until that slice relaxes the CHECK.
 -- No change to existing policies. Additive and safe to re-run.
 BEGIN;
+-- Fail fast instead of queueing behind a long transaction while the two
+-- UNIQUE constraints below take their ACCESS EXCLUSIVE locks.
+SET LOCAL lock_timeout = '5s';
 
 -- 1. Composite keys for same-owner foreign keys ---------------------------
 DO $$
