@@ -124,21 +124,36 @@ try {
   ok(await owner.client.from(BOOKMARKS).delete().eq('user_id', owner.id).eq('scholarship_id', SCHOLARSHIP));
   assert.deepEqual(await ticksFor(owner.id), [], 'removing the saved scholarship removes its ticks');
 
-  // Account deletion still cascades through applications, bookmarks and ticks.
-  const email = `e2e.prod77.${randomUUID().slice(0, 8)}@caat.local.test`;
-  const created = ok(await admin.auth.admin.createUser({ email, password, email_confirm: true }));
-  disposableId = created.user.id;
-  const disposable = await login(email);
-  ok(await disposable.client.from(APPS).insert({ user_id: disposable.id, school_id: SCHOOL, status: 'researching' }));
-  ok(await disposable.client.from(BOOKMARKS).insert({ user_id: disposable.id, scholarship_id: SCHOLARSHIP, status: 'interested' }));
-  ok(await disposable.client.from(BOOKMARKS).update({ school_id: SCHOOL }).eq('user_id', disposable.id).eq('scholarship_id', SCHOLARSHIP).select('school_id'));
-  ok(await disposable.client.from(TICKS).insert({ user_id: disposable.id, scholarship_id: SCHOLARSHIP, item_key: 'essay' }));
-  ok(await admin.auth.admin.deleteUser(disposableId));
-  disposableId = null;
-  for (const table of [APPS, BOOKMARKS, TICKS]) {
-    assert.deepEqual(ok(await admin.from(table).select('user_id').eq('user_id', disposable.id)), [], `account deletion removes ${table}`);
+  // Account deletion still removes applications, bookmarks and ticks, both by
+  // an admin and through the student's own delete_own_account() RPC.
+  async function disposableWithAttachment() {
+    const email = `e2e.prod77.${randomUUID().slice(0, 8)}@caat.local.test`;
+    const created = ok(await admin.auth.admin.createUser({ email, password, email_confirm: true }));
+    disposableId = created.user.id;
+    const disposable = await login(email);
+    ok(await disposable.client.from(APPS).insert({ user_id: disposable.id, school_id: SCHOOL, status: 'researching' }));
+    ok(await disposable.client.from(BOOKMARKS).insert({ user_id: disposable.id, scholarship_id: SCHOLARSHIP, status: 'interested' }));
+    ok(await disposable.client.from(BOOKMARKS).update({ school_id: SCHOOL }).eq('user_id', disposable.id).eq('scholarship_id', SCHOLARSHIP).select('school_id'));
+    ok(await disposable.client.from(TICKS).insert({ user_id: disposable.id, scholarship_id: SCHOLARSHIP, item_key: 'essay' }));
+    return disposable;
   }
-  console.log('Scholarship attachment RLS passed: attach only to own applications, peer and anonymous access denied, owner-only ticks, detach on application delete or move, cascades on unsave and account deletion.');
+  async function assertGone(userId, how) {
+    for (const table of [APPS, BOOKMARKS, TICKS]) {
+      assert.deepEqual(ok(await admin.from(table).select('user_id').eq('user_id', userId)), [], `${how} removes ${table}`);
+    }
+  }
+  const byAdmin = await disposableWithAttachment();
+  ok(await admin.auth.admin.deleteUser(byAdmin.id));
+  disposableId = null;
+  await assertGone(byAdmin.id, 'admin account deletion');
+
+  const bySelf = await disposableWithAttachment();
+  ok(await bySelf.client.rpc('delete_own_account'));
+  await assertGone(bySelf.id, 'delete_own_account()');
+  const remaining = await admin.auth.admin.getUserById(bySelf.id);
+  assert.ok(remaining.error || !remaining.data?.user, 'delete_own_account() removes the auth user');
+  disposableId = null;
+  console.log('Scholarship attachment RLS passed: attach only to own applications, peer and anonymous access denied, owner-only ticks, detach on application delete or move, cascades on unsave, admin account deletion and delete_own_account().');
 } finally {
   if (disposableId) await admin.auth.admin.deleteUser(disposableId);
   await cleanup();
