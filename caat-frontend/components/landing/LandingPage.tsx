@@ -204,38 +204,35 @@ function Hero() {
                   </div>
                 </div>
 
-                {/* Application Readiness - matches ApplicationReadiness component */}
+                {/* Preparation checklist - mirrors one application's hub checklist */}
                 <div className="border border-black p-3.5">
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-[11px] tracking-[0.12em] uppercase font-code font-bold">
-                      Application Readiness
+                      Preparation checklist
                     </div>
                     <div
                       className="text-[10px] font-code font-bold px-2 py-0.5 text-white"
                       style={{ backgroundColor: "#9a1a27" }}
                     >
-                      40%
+                      2 of 3 steps
                     </div>
                   </div>
                   <div className="text-[10px] text-[#525252] font-serif mb-2.5">
-                    4 of 10 steps completed
+                    Harbourside University (example)
                   </div>
                   <div className="h-[3px] bg-[#E5E5E5] mb-3">
                     <div
                       className="h-full"
-                      style={{ width: "40%", backgroundColor: "#9a1a27" }}
+                      style={{ width: "66.7%", backgroundColor: "#9a1a27" }}
                     />
                   </div>
 
-                  {/* Step pills (mirrors real 3-col grid, condensed to 2-col for the mockup) */}
-                  <div className="grid grid-cols-2 gap-1.5">
+                  {/* The hub's three preparation steps */}
+                  <div className="grid grid-cols-1 gap-1.5">
                     {[
-                      { label: "Profile", done: true },
-                      { label: "Universities", done: true },
-                      { label: "Courses", done: true },
-                      { label: "Applications", done: true },
-                      { label: "Resume", done: false },
-                      { label: "Essays", done: false },
+                      { label: "Deadline is set", done: true },
+                      { label: "Essay drafted for this school or shared", done: true },
+                      { label: "Document attached or shared key document", done: false },
                     ].map((s) => (
                       <div
                         key={s.label}
@@ -385,7 +382,7 @@ function FeaturesGrid() {
       icon: <CheckCircle2 size={20} strokeWidth={1.5} />,
       title: "Application Tracker",
       description:
-        "Track each university application with its status, deadline and notes, plus a readiness check for your essays and documents. Outcomes stay on the same list.",
+        "Track each university application with its status, deadline and notes, plus a preparation checklist for your essays and documents. Outcomes stay on the same list.",
       previewImage: "/feature-previews/application-tracker.png",
     },
     {
@@ -523,30 +520,29 @@ function ProductShowcase() {
               </div>
               <div className="space-y-1.5">
                 <div className="flex justify-between text-xs text-[#525252]">
-                  <span className="font-serif">Readiness</span>
+                  <span className="font-serif">Preparation checklist</span>
                   <span
                     className="font-code font-bold"
                     style={{ color: "#9a1a27" }}
                   >
-                    75%
+                    3 of 3 steps
                   </span>
                 </div>
                 <div className="h-1.5 bg-[#E5E5E5]">
                   <div
                     className="h-full"
-                    style={{ width: "75%", backgroundColor: "#9a1a27" }}
+                    style={{ width: "100%", backgroundColor: "#9a1a27" }}
                   />
                 </div>
               </div>
             </div>
 
-            {/* Checklist */}
+            {/* Checklist: the hub's three preparation steps (never submission) */}
             <div className="space-y-3">
               {[
-                { label: "Deadline set", done: true },
-                { label: "Essay drafted", done: true },
-                { label: "School report uploaded", done: true },
-                { label: "Submitted through UAC", done: false },
+                { label: "Deadline is set", done: true },
+                { label: "Essay drafted for this school", done: true },
+                { label: "School report attached", done: true },
               ].map((item) => (
                 <div key={item.label} className="flex items-center gap-3">
                   <div
@@ -1017,7 +1013,7 @@ function ThreeSteps() {
       number: "04",
       title: "Apply Through Official Channels",
       description:
-        "When your readiness check is complete, submit through the admissions centre or university, and through each scholarship provider. Then mark it submitted in CAAT and track the outcome.",
+        "Submit through the admissions centre or university, and through each scholarship provider. CAAT does not send applications. Mark each one submitted in CAAT and track the outcome.",
       tag: "Apply",
     },
   ];

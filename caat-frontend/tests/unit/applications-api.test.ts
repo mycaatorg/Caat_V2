@@ -61,7 +61,7 @@ import {
   searchSchools,
   fetchUnimportedBookmarkCount,
   importBookmarkedSchools,
-  fetchGlobalReadinessSignals,
+  fetchPreparationInputs,
 } from "@/app/(main)/applications/api";
 
 beforeEach(() => {
@@ -287,13 +287,34 @@ describe("importBookmarkedSchools failures", () => {
   });
 });
 
-describe("fetchGlobalReadinessSignals", () => {
-  it("derives booleans from the presence of any draft / document", async () => {
+describe("fetchPreparationInputs", () => {
+  it("loads prompts, and only the caller's drafts and documents with their school tags", async () => {
     state.resolver = (ctx) => {
-      if (ctx.table === "essay_drafts") return { data: [{ id: "d1" }], error: null };
-      if (ctx.table === "documents") return { data: [], error: null };
+      if (ctx.table === "essay_prompts") return { data: [{ id: "p1", scope: "shared" }], error: null };
+      if (ctx.table === "essay_drafts") return { data: [{ prompt_id: "p1", school_id: null }], error: null };
+      if (ctx.table === "documents") return { data: [{ category: "identity", school_id: 7 }], error: null };
       return { data: [], error: null };
     };
-    expect(await fetchGlobalReadinessSignals()).toEqual({ essayDrafted: true, keyDocsUploaded: false });
+    expect(await fetchPreparationInputs()).toEqual({
+      prompts: [{ id: "p1", scope: "shared" }],
+      drafts: [{ prompt_id: "p1", school_id: null }],
+      documents: [{ category: "identity", school_id: 7 }],
+    });
+    const selects = state.calls.filter((c) => c.method === "select").map((c) => [c.table, c.args[0]]);
+    expect(selects).toEqual([
+      ["essay_prompts", "id, scope"],
+      ["essay_drafts", "prompt_id, school_id"],
+      ["documents", "category, school_id"],
+    ]);
+    const owned = state.calls.filter((c) => c.method === "eq").map((c) => [c.table, ...c.args]);
+    expect(owned).toEqual([
+      ["essay_drafts", "user_id", "user-1"],
+      ["documents", "user_id", "user-1"],
+    ]);
+  });
+
+  it("rejects a failed read instead of reporting nothing prepared", async () => {
+    state.resolver = (ctx) => (ctx.table === "documents" ? { data: null, error: { message: "docs down" } } : { data: [], error: null });
+    await expect(fetchPreparationInputs()).rejects.toThrow("docs down");
   });
 });

@@ -29,7 +29,7 @@ const props = (patch: Partial<TodayViewProps> = {}): TodayViewProps => ({
   todayISO: "2026-10-07",
   nextStep: { kind: "task", title: "Add the deadline for Harbourside University", body: "Deadlines drive reminders.", cta: "Do this now", href: "/applications/a1" },
   tasks: [{ id: "deadline-a1", kind: "set-deadline", title: "Add the deadline for Harbourside University", detail: "Deadlines drive reminders.", href: "/applications/a1" }],
-  comingUp: [{ id: "app-a2", source: "app", title: "Banksia College", dateISO: "2026-10-10", href: "/applications" }],
+  comingUp: [{ id: "app-a2", source: "app", title: "Banksia College", dateISO: "2026-10-10", href: "/applications/a2" }],
   recent: [{ kind: "essay", title: "Why engineering", detail: "Draft 1", href: "/essays?prompt=p1", updatedAt: "2026-10-06T10:00:00Z" }],
   todos: [
     { id: "t1", text: "Ask Ms Lee for a reference", dueDate: "2026-10-05", priority: 1 },
@@ -72,12 +72,22 @@ describe("Today", () => {
     await mountComponent(<TodayView {...props()} />);
     expect(link(/Add the deadline for Harbourside University/).getAttribute("href")).toBe("/applications/a1");
     expect(link(/Banksia College/).textContent).toContain("3 days");
+    expect(link(/Banksia College/).getAttribute("href")).toBe("/applications/a2");
     expect(link(/Why engineering/).getAttribute("href")).toBe("/essays?prompt=p1");
     expect(hasText("Edited yesterday", document.body) || document.body.textContent?.includes("Edited yesterday")).toBe(true);
     expect(link(/Regional Engineering Scholarship/).getAttribute("href")).toBe("/scholarships/s1");
     expect(document.body.textContent).toContain("2Scholarships");
     expect(document.body.textContent).toContain("1Universities");
     expect(document.body.textContent).toContain("0University courses");
+  });
+
+  it("labels the student's own scholarship deadlines as Custom and links to where they are managed (PROD-146)", async () => {
+    await mountComponent(<TodayView {...props({ comingUp: [{ id: "cus-c1", source: "custom", title: "Rotary Club Bursary", dateISO: "2026-10-10", href: "/scholarships?view=mine" }] })} />);
+    const row = link(/Rotary Club Bursary/);
+    expect(row.getAttribute("href")).toBe("/scholarships?view=mine");
+    // Visible "Custom", announced as what it means.
+    expect(row.querySelector('[aria-hidden="true"]')?.textContent).toBe("Custom");
+    expect(row.querySelector(".sr-only")?.textContent).toBe("Your own scholarship");
   });
 
   it("explains empty sections instead of showing blank boxes", async () => {

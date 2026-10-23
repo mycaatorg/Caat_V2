@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockSupabase, type QueryContext, type QueryResult } from "./mock-supabase";
 
 const io = vi.hoisted(() => ({
@@ -35,6 +35,25 @@ const application = {
   intended_majors: ["Law"],
   schools: SCHOOL,
 };
+
+const scholarship = (id: string, title: string, deadline_at: string | null, school_name = "University of Melbourne") => ({
+  id,
+  title,
+  provider_name: "UoM",
+  amount_display: "$10k",
+  deadline_at,
+  country: "Australia",
+  school_name,
+  tags: [],
+  citizenships: [],
+  study_level: [],
+});
+// What the database returns for this school's active scholarships, already in
+// deadline-then-title order (the order is asserted on the query, not re-sorted).
+const linkedScholarships = [
+  scholarship("s1", "Melbourne Award", "2026-11-01"),
+  scholarship("s2", "Melbourne Bursary", null),
+];
 
 function use(resolver: (ctx: QueryContext) => QueryResult, user: { id: string } | null = { id: "student-1" }) {
   io.client = createMockSupabase({ resolver, user });
@@ -75,13 +94,7 @@ function hubResolver(overrides: Partial<Record<string, QueryResult>> = {}) {
           error: null,
         };
       case "scholarships":
-        return {
-          data: [
-            { id: "s1", title: "Melbourne Award", provider_name: "UoM", amount_display: "$10k", country: "Australia", school_name: "University of Melbourne", tags: [], citizenships: [], study_level: [] },
-            { id: "s2", title: "Other School Award", provider_name: "Other", amount_display: null, country: "Australia", school_name: "Monash University", tags: [], citizenships: [], study_level: [] },
-          ],
-          error: null,
-        };
+        return { data: linkedScholarships, error: null };
       default:
         return { data: [], error: null };
     }
@@ -116,38 +129,35 @@ describe("fetchApplicationHub", () => {
     expect(io.client.queries.map((q) => q.table)).toEqual(["user_school_applications"]);
   });
 
+  it("refuses to build a checklist when the prompt catalogue fails to load", async () => {
+    use(hubResolver({ essay_prompts: { data: null, error: { message: "prompts down" } } }));
+    await expect(fetchApplicationHub("app-1")).rejects.toThrow("prompts down");
+  });
+
   it("surfaces a sanitized read failure", async () => {
     use(hubResolver({ user_school_applications: { data: null, error: { message: "read failed" } } }));
     await expect(fetchApplicationHub("app-1")).rejects.toThrow("read failed");
   });
 
-  it("builds the readiness checklist from the application, drafts and documents", async () => {
+  it("builds the preparation checklist from the application, drafts and documents", async () => {
     const hub = await fetchApplicationHub("app-1");
     expect(hub.readiness).toEqual({
       deadlineSet: false,
       essayDrafted: true,
       keyDocsUploaded: true,
-      submitted: false,
       score: 2,
     });
   });
 
-  it.each(["submitted", "decision_pending", "accepted", "rejected", "waitlisted"])(
-    "counts %s as submitted",
+  it.each(["submitted", "decision_pending", "accepted", "withdrawn", "researching"])(
+    "never counts the %s status as a preparation step",
     async (status) => {
       use(hubResolver({ user_school_applications: { data: { ...application, status, deadline_at: "2026-12-01" }, error: null } }));
       const hub = await fetchApplicationHub("app-1");
-      expect(hub.readiness.submitted).toBe(true);
-      expect(hub.readiness.deadlineSet).toBe(true);
+      expect(hub.readiness).toEqual({ deadlineSet: true, essayDrafted: true, keyDocsUploaded: true, score: 3 });
+      expect(hub.readiness).not.toHaveProperty("submitted");
     },
   );
-
-  it("does not count withdrawn or researching applications as submitted", async () => {
-    for (const status of ["withdrawn", "researching"]) {
-      use(hubResolver({ user_school_applications: { data: { ...application, status }, error: null } }));
-      expect((await fetchApplicationHub("app-1")).readiness.submitted).toBe(false);
-    }
-  });
 
   it("ignores drafts and documents tagged to other schools for readiness", async () => {
     use(
@@ -158,6 +168,59 @@ describe("fetchApplicationHub", () => {
     );
     const hub = await fetchApplicationHub("app-1");
     expect(hub.readiness).toMatchObject({ essayDrafted: false, keyDocsUploaded: false, score: 0 });
+  });
+
+  it("counts only essays and documents attached to this application or shared, with mixed items", async () => {
+    use(
+      hubResolver({
+        essay_drafts: {
+          data: [
+            // per-school prompt drafted for ANOTHER school: not this application's essay
+            { prompt_id: "p-why", school_id: 99, updated_at: "2026-09-01T00:00:00Z" },
+            // per-school prompt left untagged: the hub's essay panel does not show it for this school
+            { prompt_id: "p-why", school_id: null, updated_at: "2026-09-03T00:00:00Z" },
+          ],
+          error: null,
+        },
+        documents: {
+          data: [
+            // shared, but not one of the key documents the checklist lists
+            { id: "d5", file_name: "photo.png", category: "other", status: null, school_id: null },
+            // another school's key document
+            { id: "d4", file_name: "elsewhere.pdf", category: "letters", status: "verified", school_id: 99 },
+          ],
+          error: null,
+        },
+      }),
+    );
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.essaysForSchool[0].status).toBe("to-write");
+    expect(hub.essaysShared[0].status).toBe("to-write");
+    expect(hub.schoolDocuments).toEqual([]);
+    expect(hub.sharedDocuments.every((d) => d.status === "missing")).toBe(true);
+    expect(hub.readiness).toEqual({ deadlineSet: false, essayDrafted: false, keyDocsUploaded: false, score: 0 });
+  });
+
+  it("counts a draft tagged to this school and a document attached to this application", async () => {
+    use(
+      hubResolver({
+        essay_drafts: { data: [{ prompt_id: "p-why", school_id: 7, updated_at: "2026-09-04T00:00:00Z" }], error: null },
+        documents: { data: [{ id: "d3", file_name: "unimelb-form.pdf", category: "other", status: null, school_id: 7 }], error: null },
+      }),
+    );
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.readiness).toMatchObject({ essayDrafted: true, keyDocsUploaded: true, score: 2 });
+  });
+
+  it("counts a shared essay draft and a shared key document", async () => {
+    use(
+      hubResolver({
+        essay_drafts: { data: [{ prompt_id: "p-personal", school_id: null, updated_at: null }], error: null },
+        documents: { data: [{ id: "d2", file_name: "passport.pdf", category: "identity", status: "pending", school_id: null }], error: null },
+      }),
+    );
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.readiness).toMatchObject({ essayDrafted: true, keyDocsUploaded: true, score: 2 });
   });
 
   it("groups essays by scope and documents by school tag", async () => {
@@ -176,13 +239,131 @@ describe("fetchApplicationHub", () => {
     });
   });
 
-  it("lists only scholarships for this school and passes tracked ones through", async () => {
+  it("passes tracked scholarships and intended majors through", async () => {
     io.tracked.mockResolvedValue([{ id: "t1", title: "Tracked", provider: "P", amount: null, status: "applied" }]);
     const hub = await fetchApplicationHub("app-1");
-    expect(hub.scholarships.map((s) => s.id)).toEqual(["s1"]);
     expect(io.tracked).toHaveBeenCalledWith("The University of Melbourne");
     expect(hub.trackedScholarships).toHaveLength(1);
     expect(hub.intendedMajors).toEqual(["Law"]);
+  });
+});
+
+describe("hub scholarships for this university", () => {
+  const scholarshipQueries = () => io.client.queries.filter((q) => q.table === "scholarships");
+  const callsOf = (q: QueryContext, method: string) => q.calls.filter((c) => c.method === method).map((c) => c.args);
+  const STABLE_ORDER = [
+    ["deadline_at", { ascending: true, nullsFirst: false }],
+    ["title", { ascending: true }],
+  ];
+
+  it("queries active scholarships linked to this school, soonest deadline then name, with a limit", async () => {
+    const hub = await fetchApplicationHub("app-1");
+    expect(scholarshipQueries()).toHaveLength(1);
+    const [q] = scholarshipQueries();
+    expect(String(callsOf(q, "select")[0][0])).toContain("scholarship_schools!inner(school_id)");
+    expect(callsOf(q, "eq")).toEqual([
+      ["scholarship_schools.school_id", 7],
+      ["is_active", true],
+    ]);
+    expect(callsOf(q, "order")).toEqual(STABLE_ORDER);
+    expect(callsOf(q, "limit")).toEqual([[5]]);
+    expect(hub.scholarships.map((s) => s.id)).toEqual(["s1", "s2"]);
+    expect(hub.scholarships[0]).toEqual({ id: "s1", title: "Melbourne Award", provider: "UoM", amount: "$10k", deadline: "2026-11-01" });
+    expect(hub.scholarships[0]).not.toHaveProperty("fit");
+    expect(hub.scholarshipsUnavailable).toBe(false);
+  });
+
+  it("falls back to the school page's name match (school or provider, case-insensitive) when no catalogue link exists", async () => {
+    use((ctx) => {
+      if (ctx.table === "scholarships") {
+        const linked = ctx.calls.some((c) => c.method === "eq" && c.args[0] === "scholarship_schools.school_id");
+        return linked ? { data: [], error: null } : { data: [scholarship("s9", "Named Award", "2099-12-01")], error: null };
+      }
+      return hubResolver()(ctx);
+    });
+    const hub = await fetchApplicationHub("app-1");
+    expect(scholarshipQueries()).toHaveLength(2);
+    const fallback = scholarshipQueries()[1];
+    expect(String(callsOf(fallback, "select")[0][0])).not.toContain("scholarship_schools");
+    expect(callsOf(fallback, "in")).toEqual([]);
+    expect(callsOf(fallback, "or")[1]).toEqual([
+      'school_name.ilike."%University of Melbourne%",provider_name.ilike."%University of Melbourne%"',
+    ]);
+    expect(callsOf(fallback, "eq")).toEqual([["is_active", true]]);
+    expect(callsOf(fallback, "order")).toEqual(STABLE_ORDER);
+    expect(callsOf(fallback, "limit")).toEqual([[5]]);
+    expect(hub.scholarships.map((s) => s.id)).toEqual(["s9"]);
+  });
+
+  it("quotes a school name with reserved characters in the fallback and strips embedded quotes", async () => {
+    const odd = { ...application, schools: { id: 7, name: 'The University of California, "Berkeley" (UCB)', country: "United States" } };
+    use((ctx) => {
+      if (ctx.table === "user_school_applications") return { data: odd, error: null };
+      if (ctx.table === "scholarships") return { data: [], error: null };
+      return hubResolver()(ctx);
+    });
+    await fetchApplicationHub("app-1");
+    const fallback = scholarshipQueries()[1];
+    expect(callsOf(fallback, "or")[1]).toEqual([
+      'school_name.ilike."%University of California, Berkeley (UCB)%",provider_name.ilike."%University of California, Berkeley (UCB)%"',
+    ]);
+  });
+
+  describe("passed deadlines", () => {
+    const NOW = new Date("2026-10-23T08:00:00.000Z");
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(NOW);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    // Applies the query's open-deadline filter to the rows, like PostgREST would.
+    const open = (ctx: QueryContext, rows: ReturnType<typeof scholarship>[]) => {
+      const filter = ctx.calls.find((c) => c.method === "or" && String(c.args[0]).startsWith("deadline_at."));
+      if (!filter) return rows;
+      const since = String(filter.args[0]).split("deadline_at.gte.")[1];
+      return rows.filter((r) => r.deadline_at == null || r.deadline_at >= since);
+    };
+
+    it("excludes an expired scholarship from both the linked and the name queries", async () => {
+      const rows = [scholarship("expired", "Closed Award", "2026-10-01"), scholarship("open", "Open Award", "2026-12-01"), scholarship("rolling", "Rolling Award", null)];
+      use((ctx) => {
+        if (ctx.table !== "scholarships") return hubResolver()(ctx);
+        const linked = ctx.calls.some((c) => c.method === "eq" && c.args[0] === "scholarship_schools.school_id");
+        return { data: linked ? open(ctx, [rows[0]]) : open(ctx, rows), error: null };
+      });
+      const hub = await fetchApplicationHub("app-1");
+      for (const q of scholarshipQueries()) {
+        expect(callsOf(q, "or")[0]).toEqual([`deadline_at.is.null,deadline_at.gte.${NOW.toISOString()}`]);
+      }
+      // The only linked row has expired, so the linked query is empty and the name fallback runs.
+      expect(scholarshipQueries()).toHaveLength(2);
+      expect(hub.scholarships.map((s) => s.id)).toEqual(["open", "rolling"]);
+    });
+  });
+
+  it("returns an empty list when none are recorded for this university", async () => {
+    use(hubResolver({ scholarships: { data: [], error: null } }));
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.scholarships).toEqual([]);
+    expect(hub.scholarshipsUnavailable).toBe(false);
+  });
+
+  it("marks scholarships unavailable on a read error instead of claiming there are none", async () => {
+    use(hubResolver({ scholarships: { data: null, error: { message: "boom" } } }));
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.scholarships).toEqual([]);
+    expect(hub.scholarshipsUnavailable).toBe(true);
+    expect(scholarshipQueries()).toHaveLength(1);
+  });
+
+  it("reads the public catalogue without a country sweep or a user filter", async () => {
+    await fetchApplicationHub("app-1");
+    for (const q of scholarshipQueries()) {
+      const cols = callsOf(q, "eq").map(([col]) => col);
+      expect(cols).not.toContain("country");
+      expect(cols).not.toContain("user_id");
+    }
   });
 });
 

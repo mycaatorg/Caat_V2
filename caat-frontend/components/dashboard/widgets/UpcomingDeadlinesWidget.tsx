@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { supabase } from "@/lib/supabase/client";
 import { getClientUserId } from "@/lib/current-user";
 import {
+  CUSTOM_SOURCE_PILL,
   fetchUnifiedDeadlines,
   type UnifiedDeadline,
 } from "@/lib/unified-deadlines";
@@ -46,6 +47,10 @@ const SOURCE_STYLES: Record<UnifiedDeadline["source"], { label: string; classNam
   },
   scholarship: {
     label: "Schol",
+    className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  },
+  custom: {
+    label: CUSTOM_SOURCE_PILL.visible,
     className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
   },
   event: {
@@ -129,7 +134,12 @@ export function UpcomingDeadlinesWidget() {
             <span
               className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${style.className}`}
             >
-              {style.label}
+              {item.source === "custom" ? (
+                <>
+                  <span aria-hidden="true">{CUSTOM_SOURCE_PILL.visible}</span>
+                  <span className="sr-only">{CUSTOM_SOURCE_PILL.spoken}</span>
+                </>
+              ) : style.label}
             </span>
             <span className="flex-1 min-w-0 truncate">{item.title}</span>
             <span
