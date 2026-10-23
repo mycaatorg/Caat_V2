@@ -83,6 +83,7 @@ describe('shared bookmark button', () => {
     const retry = button('Could not load major bookmark. Retry');
     expect(retry.disabled).toBe(false);
     expect(retry.hasAttribute('aria-pressed')).toBe(false);
+    expect(retry.getAttribute('title')).toBe('Could not load major bookmark. Retry');
     await click(retry);
     expect(io.upsert).not.toHaveBeenCalled();
     expect(io.read).toHaveBeenCalledTimes(2);
@@ -100,23 +101,62 @@ describe('shared bookmark button', () => {
     const write = deferred<Result>();
     io.upsert.mockReturnValueOnce(write.promise);
     await mountMajor();
-    const idle = button('Bookmark major');
-    await act(async () => {
-      idle.click();
-      idle.click();
-    });
+    await click(button('Bookmark major'));
     expect(io.upsert).toHaveBeenCalledTimes(1);
+    // The busy button stays clickable for focus reasons (aria-disabled, not
+    // disabled), so these clicks reach the handler and only the guard stops them.
     const busy = button('Remove bookmark');
-    expect(busy.disabled).toBe(true);
+    expect(busy.disabled).toBe(false);
+    expect(busy.getAttribute('aria-disabled')).toBe('true');
     expect(busy.getAttribute('aria-busy')).toBe('true');
     await click(busy);
+    await click(busy);
+    expect(io.upsert).toHaveBeenCalledTimes(1);
     expect(io.remove).not.toHaveBeenCalled();
 
     await act(async () => write.resolve(ok(null)));
     const done = button('Remove bookmark');
-    expect(done.disabled).toBe(false);
+    expect(done.hasAttribute('aria-disabled')).toBe(false);
+    expect(done.hasAttribute('aria-busy')).toBe(false);
     expect(done.getAttribute('aria-pressed')).toBe('true');
     expect(io.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps keyboard focus on the button through a toggle', async () => {
+    const write = deferred<Result>();
+    io.upsert.mockReturnValueOnce(write.promise);
+    await mountMajor();
+    const node = button('Bookmark major');
+    node.focus();
+    await click(node);
+    expect(button('Remove bookmark')).toBe(node);
+    expect(node.disabled).toBe(false);
+    expect(document.activeElement).toBe(node);
+    await act(async () => write.resolve(ok(null)));
+    expect(document.activeElement).toBe(node);
+    expect(node.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('keeps keyboard focus on the button through a retry', async () => {
+    const reread = deferred<Result>();
+    io.read
+      .mockResolvedValueOnce({ data: null, error: { message: 'offline' } })
+      .mockReturnValueOnce(reread.promise);
+    await mountMajor();
+    const node = button('Could not load major bookmark. Retry');
+    node.focus();
+    await click(node);
+    const loading = button('Loading major bookmark');
+    expect(loading).toBe(node);
+    expect(loading.disabled).toBe(false);
+    expect(loading.getAttribute('aria-disabled')).toBe('true');
+    expect(loading.getAttribute('aria-busy')).toBe('true');
+    await click(loading);
+    expect(io.read).toHaveBeenCalledTimes(2);
+    expect(document.activeElement).toBe(node);
+    await act(async () => reread.resolve(ok(null)));
+    expect(button('Bookmark major')).toBe(node);
+    expect(document.activeElement).toBe(node);
   });
 
   it('rolls back a failed toggle and allows another try', async () => {
@@ -133,6 +173,45 @@ describe('shared bookmark button', () => {
     await mountMajor({ initialBookmarked: true });
     expect(io.read).not.toHaveBeenCalled();
     expect(button('Remove bookmark').disabled).toBe(false);
+  });
+
+  it('follows a refreshed server-resolved state', async () => {
+    let setInitial!: (value: boolean) => void;
+    function Harness() {
+      const [initial, set] = React.useState(false);
+      setInitial = set;
+      return <BookmarkButton table="user_bookmarked_majors" column="major_id" id="major-1" label="major" initialBookmarked={initial} />;
+    }
+    await mountComponent(<Harness />);
+    expect(button('Bookmark major')).toBeTruthy();
+    await act(async () => setInitial(true));
+    expect(button('Remove bookmark').getAttribute('aria-pressed')).toBe('true');
+    expect(io.read).not.toHaveBeenCalled();
+  });
+
+  it('compact server-resolved card reports deltas and rolls back a failed remove', async () => {
+    const onToggle = vi.fn();
+    io.remove.mockResolvedValueOnce({ data: null, error: { message: 'denied' } });
+    await mountComponent(
+      <BookmarkButton table="user_bookmarked_schools" column="school_id" id={7} label="school" compact initialBookmarked onToggle={onToggle} />
+    );
+    expect(io.read).not.toHaveBeenCalled();
+    await click(button('Remove bookmark'));
+    expect(button('Remove bookmark').getAttribute('aria-pressed')).toBe('true');
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(io.toast.error).toHaveBeenCalledWith('Failed to update bookmark. Please try again.');
+    await click(button('Remove bookmark'));
+    expect(onToggle).toHaveBeenLastCalledWith(-1);
+    expect(button('Bookmark school').getAttribute('aria-pressed')).toBe('false');
+    await click(button('Bookmark school'));
+    expect(onToggle).toHaveBeenLastCalledWith(1);
+    expect(onToggle).toHaveBeenCalledTimes(2);
+  });
+
+  it('compact error button relies on its tooltip, not a second title tooltip', async () => {
+    io.read.mockResolvedValueOnce({ data: null, error: { message: 'offline' } });
+    await mountComponent(<BookmarkButton table="user_bookmarked_schools" column="school_id" id={7} label="school" compact />);
+    expect(button('Could not load school bookmark. Retry').hasAttribute('title')).toBe(false);
   });
 
   it('lets a signed-out visitor reach the sign-in prompt instead of a pending button', async () => {
