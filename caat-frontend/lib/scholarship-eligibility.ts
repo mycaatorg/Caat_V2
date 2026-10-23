@@ -56,7 +56,7 @@ export function explainEligibility(
   else if (isAustralian && profile?.student_status && !['domestic', 'not_sure'].includes(profile.student_status)) reason = 'Your nationality and Australian student-status answers may conflict. Check your profile and the provider’s definitions.';
   else if (isAustralian && citizenshipIncludesAU) {
     status = 'matched'; reason = 'Your listed Australian nationality matches the recorded Australian citizenship criterion. Other requirements still need checking.';
-  } else if (isAustralian && cits.length > 0 && cits.every(code => code === 'NZ')) {
+  } else if (isAustralian && !included.length && !excluded.length && cits.length > 0 && cits.every(code => code === 'NZ')) {
     status = 'unmet'; reason = 'The recorded citizenship rule requires New Zealand citizenship, while your profile lists Australian nationality. Check with the provider if you also hold New Zealand citizenship or an exception applies.';
   }
   if (status !== 'unknown' && (freshness !== 'recent' || !sourceUrl)) {

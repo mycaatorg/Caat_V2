@@ -51,6 +51,7 @@ describe('conservative scholarship criteria', () => {
   });
   it('keeps conflicting rules and profile answers unknown', () => {
     expect(citizenship({ excluded_countries: ['AU'] }).status).toBe('unknown');
+    expect(citizenship({ citizenships: ['NZ'], excluded_countries: ['New Zealand'] }).status).toBe('unknown');
     expect(citizenship({ eligible_countries: ['New Zealand'] }).status).toBe('unknown');
     expect(explainEligibility({ ...profile, student_status: 'international' }, row(), now).criteria.every(c => c.status === 'unknown')).toBe(true);
   });
