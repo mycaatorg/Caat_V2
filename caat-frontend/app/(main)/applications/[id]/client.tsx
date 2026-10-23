@@ -38,6 +38,13 @@ import {
 import { updateApplicationMajors } from "@/app/(main)/applications/api";
 import { SCHOLARSHIP_STATUS_LABELS } from "@/lib/scholarship-tracking";
 import {
+  PREP_CHECKLIST_TITLE,
+  PREP_STEP_COUNT,
+  PREP_STEP_LABELS,
+  prepScore,
+  prepScoreLabel,
+} from "@/lib/preparation-checklist";
+import {
   APPLICATION_STATUSES,
   STATUS_CONFIG,
   isSubmittedStatus,
@@ -201,9 +208,7 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
   // document signals come from the load. The status is not a preparation step.
   const deadlineSet = !!application.deadline_at;
   const submitted = isSubmittedStatus(application.status);
-  const PREP_STEPS = 3;
-  const prepScore =
-    (deadlineSet ? 1 : 0) + (readiness.essayDrafted ? 1 : 0) + (readiness.keyDocsUploaded ? 1 : 0);
+  const score = prepScore({ ...readiness, deadlineSet });
 
   return (
     <div className="p-6">
@@ -233,22 +238,20 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
             {/* preparation checklist */}
             <Card className="shadow-sm" data-prep-checklist>
               <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base">Preparation checklist</CardTitle>
-                <span className="text-sm text-muted-foreground">
-                  {prepScore} of {PREP_STEPS} steps
-                </span>
+                <CardTitle className="text-base">{PREP_CHECKLIST_TITLE}</CardTitle>
+                <span className="text-sm text-muted-foreground">{prepScoreLabel(score)}</span>
               </CardHeader>
               <CardContent>
                 <div className="h-1.5 w-full rounded-full bg-muted mb-5">
                   <div
                     className="h-full rounded-full bg-[#9a1a27] transition-all"
-                    style={{ width: `${(prepScore / PREP_STEPS) * 100}%` }}
+                    style={{ width: `${(score / PREP_STEP_COUNT) * 100}%` }}
                   />
                 </div>
                 <ul className="space-y-3">
-                  <ReadyItem done={deadlineSet}>Deadline is set</ReadyItem>
-                  <ReadyItem done={readiness.essayDrafted}>An essay drafted for this school or shared</ReadyItem>
-                  <ReadyItem done={readiness.keyDocsUploaded}>A document attached here or a shared key document</ReadyItem>
+                  <ReadyItem done={deadlineSet}>{PREP_STEP_LABELS.deadline}</ReadyItem>
+                  <ReadyItem done={readiness.essayDrafted}>{PREP_STEP_LABELS.essay}</ReadyItem>
+                  <ReadyItem done={readiness.keyDocsUploaded}>{PREP_STEP_LABELS.documents}</ReadyItem>
                 </ul>
                 <p className="text-xs text-muted-foreground mt-4">
                   Tracks what you have prepared in CAAT. It does not send anything to the university.

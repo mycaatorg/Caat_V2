@@ -6,23 +6,21 @@ import { ClipboardList, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ErrorState";
-import { fetchApplications, fetchGlobalReadinessSignals } from "@/app/(main)/applications/api";
-import { STATUS_CONFIG, type ApplicationRow, type ApplicationStatus } from "@/types/applications";
+import { fetchApplications, fetchPreparationInputs } from "@/app/(main)/applications/api";
+import { STATUS_CONFIG, type ApplicationRow } from "@/types/applications";
+import {
+  PREP_CHECKLIST_TITLE,
+  PREP_STEP_COUNT,
+  prepScoreLabel,
+  preparationFor,
+  type PreparationInputs,
+} from "@/lib/preparation-checklist";
 
 /**
- * Per-application readiness rollup for the dashboard (roadmap item 6),
- * replacing the old generic checklist. Shows the soonest 3 applications with
- * the same 4-signal readiness as the hub (deadline set, an essay drafted, key
- * docs uploaded, status reached submitted), plus a deadline countdown.
+ * Per-application preparation rollup for the dashboard (roadmap item 6).
+ * Shows the soonest 3 applications with the hub's preparation checklist score
+ * (the shared rule in lib/preparation-checklist), plus a deadline countdown.
  */
-
-const SUBMITTED_PLUS = new Set<ApplicationStatus>([
-  "submitted",
-  "decision_pending",
-  "accepted",
-  "rejected",
-  "waitlisted",
-]);
 
 function daysUntil(dateStr: string): number {
   const target = new Date(dateStr.slice(0, 10) + "T00:00:00");
@@ -39,7 +37,9 @@ function deadlineLabel(dateStr: string | null) {
 
 export function ApplicationsRollup() {
   const [apps, setApps] = useState<ApplicationRow[] | null>(null);
-  const [signals, setSignals] = useState({ essayDrafted: false, keyDocsUploaded: false });
+  // Null until loaded, or if the load fails: then no score is shown rather
+  // than a wrong one.
+  const [prepInputs, setPrepInputs] = useState<PreparationInputs | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -48,7 +48,9 @@ export function ApplicationsRollup() {
     fetchApplications()
       .then((a) => { if (!cancelled) setApps(a); })
       .catch(() => { if (!cancelled) { setError(true); setApps([]); } });
-    fetchGlobalReadinessSignals().then((s) => { if (!cancelled) setSignals(s); }).catch(() => {});
+    fetchPreparationInputs()
+      .then((inputs) => { if (!cancelled) setPrepInputs(inputs); })
+      .catch(() => { if (!cancelled) setPrepInputs(null); });
     return () => { cancelled = true; };
   }, [reloadKey]);
 
@@ -102,12 +104,6 @@ export function ApplicationsRollup() {
     );
   }
 
-  const readiness = (a: ApplicationRow) =>
-    (a.deadline_at ? 1 : 0) +
-    (signals.essayDrafted ? 1 : 0) +
-    (signals.keyDocsUploaded ? 1 : 0) +
-    (SUBMITTED_PLUS.has(a.status) ? 1 : 0);
-
   // Soonest deadlines first; applications without a deadline sink to the bottom.
   const sorted = [...apps].sort((a, b) => {
     if (!a.deadline_at && !b.deadline_at) return 0;
@@ -128,7 +124,7 @@ export function ApplicationsRollup() {
       <CardContent>
         <ul className="divide-y">
           {top.map((a) => {
-            const score = readiness(a);
+            const prep = prepInputs ? preparationFor(a, prepInputs) : null;
             const dl = deadlineLabel(a.deadline_at);
             return (
               <li key={a.id} className="py-3 first:pt-0 last:pb-0">
@@ -142,13 +138,23 @@ export function ApplicationsRollup() {
                         {STATUS_CONFIG[a.status].label}
                       </span>
                     </div>
-                    <div className="h-1.5 w-full max-w-[280px] rounded-full bg-muted mt-2">
-                      <div className="h-full rounded-full bg-[#9a1a27]" style={{ width: `${(score / 4) * 100}%` }} />
-                    </div>
+                    {prep ? (
+                      <div className="h-1.5 w-full max-w-[280px] rounded-full bg-muted mt-2" title={PREP_CHECKLIST_TITLE}>
+                        <div
+                          className="h-full rounded-full bg-[#9a1a27]"
+                          style={{ width: `${(prep.score / PREP_STEP_COUNT) * 100}%` }}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                   <div className="text-right shrink-0">
                     <div className={`text-sm font-mono ${dl.cls}`}>{dl.text}</div>
-                    <div className="text-xs text-muted-foreground">{score} of 4</div>
+                    {prep ? (
+                      <div data-prep-score className="text-xs text-muted-foreground">
+                        <span className="sr-only">{PREP_CHECKLIST_TITLE}: </span>
+                        {prepScoreLabel(prep.score)}
+                      </div>
+                    ) : null}
                   </div>
                 </Link>
               </li>

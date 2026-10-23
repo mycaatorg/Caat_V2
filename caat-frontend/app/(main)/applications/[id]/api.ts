@@ -6,6 +6,13 @@ import type { ProfileRow } from "@/types/profile";
 import { matchScholarship } from "@/lib/profile-match";
 import { fetchTrackedForSchool, type TrackedScholarship } from "@/lib/scholarship-tracking";
 import { assertApplicationWritten } from "@/app/(main)/applications/api";
+import {
+  KEY_DOC_CATEGORIES,
+  draftCountsFor,
+  isSharedPrompt,
+  preparationFor,
+  type PreparationChecklist,
+} from "@/lib/preparation-checklist";
 
 /**
  * Per-school application hub data. Aggregates everything a student needs for
@@ -24,20 +31,8 @@ async function getUser() {
   return user;
 }
 
-/**
- * The hub's preparation checklist. It tracks what the student has prepared in
- * CAAT for THIS application; it never says the application was sent (the
- * student's own status does that).
- */
-export interface ReadinessSignals {
-  deadlineSet: boolean;
-  /** an essay drafted for this school (per-school prompt) or a shared prompt */
-  essayDrafted: boolean;
-  /** a document attached to this application, or a shared key document */
-  keyDocsUploaded: boolean;
-  /** 0-3 */
-  score: number;
-}
+/** The hub's preparation checklist (shared rule: lib/preparation-checklist). */
+export type ReadinessSignals = PreparationChecklist;
 
 export interface EssayLine {
   promptId: string;
@@ -137,13 +132,6 @@ async function fetchSchoolScholarships(
   return { rows: (named.data ?? []) as ScholarshipRow[], error: false };
 }
 
-const KEY_DOC_CATEGORIES: { category: string; label: string }[] = [
-  { category: "transcripts", label: "Academic transcript" },
-  { category: "identity", label: "Passport / ID" },
-  { category: "language", label: "Language proficiency" },
-  { category: "letters", label: "Recommendation letter" },
-];
-
 /** Map a document's verification state to our three buckets. The documents
  *  table stores a status string; treat anything verified as verified, anything
  *  present-but-not-verified as pending, absent as missing. */
@@ -212,9 +200,9 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
   const essaysForSchool: EssayLine[] = [];
   const essaysShared: EssayLine[] = [];
   for (const p of prompts) {
-    const isShared = (p.scope ?? "per_school") === "shared";
+    const isShared = isSharedPrompt(p);
     const match = drafts
-      .filter((d) => d.prompt_id === p.id && (isShared ? d.school_id == null : d.school_id === schoolId))
+      .filter((d) => draftCountsFor(p, d, schoolId))
       .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))[0];
     const line: EssayLine = {
       promptId: p.id,
@@ -240,25 +228,11 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     status: docStatusFor(sharedDocRows, d.category),
   }));
 
-  // Preparation checklist, derived from exactly what the hub shows for this
-  // application, so a tick always has a matching line on the page:
-  //  - an essay: the per-school prompt draft tagged to THIS school, or a
-  //    shared prompt's untagged draft (null school_id means shared across
-  //    applications, as in the documents and essays tools);
-  //  - documents: one attached to this application, or a shared document in
-  //    one of the key categories the checklist lists.
-  // Other schools' drafts and documents never count, and the application's
-  // status is not a preparation step.
-  const deadlineSet = !!application.deadline_at;
-  const essayDrafted = [...essaysForSchool, ...essaysShared].some((e) => e.status === "drafted");
-  const keyDocsUploaded =
-    schoolDocuments.length > 0 || sharedDocuments.some((d) => d.status !== "missing");
-  const readiness: ReadinessSignals = {
-    deadlineSet,
-    essayDrafted,
-    keyDocsUploaded,
-    score: (deadlineSet ? 1 : 0) + (essayDrafted ? 1 : 0) + (keyDocsUploaded ? 1 : 0),
-  };
+  // Preparation checklist: the shared rule the applications list and the
+  // dashboard summary also use, so all three agree. It matches the essay and
+  // document lines above (same per-school/shared draft rule, same key
+  // categories), and the application's status is not a step.
+  const readiness: ReadinessSignals = preparationFor(application, { prompts, drafts, documents: docRows });
 
   // Active scholarships recorded for THIS school, already in deadline-then-
   // title order from the query. Fit is kept for display, not for ordering.

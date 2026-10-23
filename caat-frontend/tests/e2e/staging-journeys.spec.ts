@@ -529,6 +529,8 @@ test("school notes and application status/checklist persist across list and deta
     await expect(reloadedCard.getByRole("combobox")).toContainText("Applying");
     await reloadedCard.getByRole("button", { name: "Notes", exact: true }).click();
     await expect(reloadedCard.getByPlaceholder("Add notes about this application…")).toHaveValue(applicationNote);
+    // The list shows the hub's preparation checklist score, out of 3 steps.
+    await expect(reloadedCard.locator("[data-prep-score]")).toHaveText(/^Preparation checklist: [0-3] of 3 steps$/);
 
     const applicationHref = await reloadedCard.getByRole("link", { name: /open/i }).getAttribute("href");
     expect(applicationHref).toMatch(/^\/applications\/[0-9a-f-]+$/i);
