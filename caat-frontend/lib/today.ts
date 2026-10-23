@@ -151,6 +151,25 @@ export function deriveTasks(input: TodayInput): TodayTask[] {
     });
   }
 
+  // Scholarships the student added themselves (PROD-146): same 14-day window,
+  // wording and "interested only" rule, managed from their own list rather
+  // than a catalogue page. Acted-on rows stay in the feed and calendar.
+  for (const d of input.deadlines) {
+    if (d.source !== "custom") continue;
+    if ((d.status ?? "interested") !== "interested") continue;
+    const id = d.id.replace(/^cus-/, "");
+    const days = daysBetween(input.todayISO, d.dateISO);
+    if (days < 0 || days > SOON_DAYS) continue;
+    soon.push({
+      id: `soon-cus-${id}`,
+      kind: "deadline-soon",
+      title: `${d.title} ${days === 0 ? "closes today" : days === 1 ? "closes tomorrow" : `closes in ${days} days`}`,
+      detail: "Decide whether to apply, then check what it asks for.",
+      href: d.href,
+      dueISO: d.dateISO.slice(0, 10),
+    });
+  }
+
   soon.sort((a, b) => (a.dueISO ?? "").localeCompare(b.dueISO ?? ""));
   return [...soon, ...rest];
 }

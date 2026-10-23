@@ -1,6 +1,7 @@
 /**
  * Unified deadlines — merge user_school_applications, bookmarked
- * scholarships, and calendar_events into one chronological feed.
+ * scholarships, the student's own scholarships (user_scholarships) and
+ * calendar_events into one chronological feed.
  *
  * The fetch and the pure merge are split so the merge can be unit-tested
  * without hitting Supabase.
@@ -9,7 +10,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayKey } from "@/lib/local-date";
 
-export type DeadlineSource = "app" | "scholarship" | "event";
+/** "custom" is a scholarship the student added themselves (user_scholarships). */
+export type DeadlineSource = "app" | "scholarship" | "custom" | "event";
+
+/** Where students manage the scholarships they added themselves. */
+export const CUSTOM_SCHOLARSHIPS_HREF = "/scholarships?view=mine";
+
+/** Pill copy for custom rows: short visible text, and what it means for screen readers. */
+export const CUSTOM_SOURCE_PILL = { visible: "Custom", spoken: "Your own scholarship" } as const;
 
 export interface UnifiedDeadline {
   id: string;
@@ -19,6 +27,8 @@ export interface UnifiedDeadline {
   href: string;
   timeStart?: string;
   timeEnd?: string;
+  /** Tracking status of a custom scholarship ("interested", "applied", …). */
+  status?: string;
 }
 
 export interface RawAppDeadline {
@@ -31,6 +41,8 @@ export interface RawScholarshipDeadline {
   id: string;
   title: string;
   deadline_at: string;
+  /** Only custom scholarships carry their own status. */
+  status?: string;
 }
 export interface RawEventDeadline {
   id: string;
@@ -46,7 +58,8 @@ export function mergeDeadlines(
   apps: RawAppDeadline[],
   scholarships: RawScholarshipDeadline[],
   events: RawEventDeadline[],
-  todayISO: string
+  todayISO: string,
+  customScholarships: RawScholarshipDeadline[] = []
 ): UnifiedDeadline[] {
   const merged: UnifiedDeadline[] = [];
 
@@ -75,6 +88,19 @@ export function mergeDeadlines(
     });
   }
 
+  for (const s of customScholarships) {
+    const date = s.deadline_at.slice(0, 10);
+    if (date < todayISO) continue;
+    merged.push({
+      id: `cus-${s.id}`,
+      source: "custom",
+      title: s.title,
+      dateISO: date,
+      href: CUSTOM_SCHOLARSHIPS_HREF,
+      ...(s.status ? { status: s.status } : {}),
+    });
+  }
+
   for (const e of events) {
     if (e.event_date < todayISO) continue;
     merged.push({
@@ -100,7 +126,7 @@ export async function fetchUnifiedDeadlines(
   // deadlines a day early/late when comparing against date-only strings.
   const todayISO = todayKey();
 
-  const [appRes, schRes, evtRes] = await Promise.all([
+  const [appRes, schRes, evtRes, customRes] = await Promise.all([
     supabase
       .from("user_school_applications")
       .select("id, deadline_at, status, schools(name)")
@@ -114,11 +140,16 @@ export async function fetchUnifiedDeadlines(
       .from("calendar_events")
       .select("id, title, event_date, time_start, time_end")
       .eq("user_id", userId),
+    supabase
+      .from("user_scholarships")
+      .select("id, title, deadline_at, status")
+      .eq("user_id", userId)
+      .not("deadline_at", "is", null),
   ]);
 
   // Supabase returns query failures alongside data; a successful promise is
   // not proof that every source loaded. Never present a partial feed as empty.
-  for (const result of [appRes, schRes, evtRes]) {
+  for (const result of [appRes, schRes, evtRes, customRes]) {
     if (result.error) throw new Error("Could not load deadlines", { cause: result.error });
   }
 
@@ -168,5 +199,11 @@ export async function fetchUnifiedDeadlines(
     };
   });
 
-  return mergeDeadlines(apps, schols, evts, todayISO);
+  const custom: RawScholarshipDeadline[] = (customRes.data ?? []).flatMap((row: unknown) => {
+    const r = row as { id: string; title: string; deadline_at: string | null; status: string | null };
+    if (!r.deadline_at) return [];
+    return [{ id: r.id, title: r.title, deadline_at: r.deadline_at, ...(r.status ? { status: r.status } : {}) }];
+  });
+
+  return mergeDeadlines(apps, schols, evts, todayISO, custom);
 }

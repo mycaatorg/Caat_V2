@@ -81,6 +81,15 @@ describe("Today", () => {
     expect(document.body.textContent).toContain("0University courses");
   });
 
+  it("labels the student's own scholarship deadlines as Custom and links to where they are managed (PROD-146)", async () => {
+    await mountComponent(<TodayView {...props({ comingUp: [{ id: "cus-c1", source: "custom", title: "Rotary Club Bursary", dateISO: "2026-10-10", href: "/scholarships?view=mine" }] })} />);
+    const row = link(/Rotary Club Bursary/);
+    expect(row.getAttribute("href")).toBe("/scholarships?view=mine");
+    // Visible "Custom", announced as what it means.
+    expect(row.querySelector('[aria-hidden="true"]')?.textContent).toBe("Custom");
+    expect(row.querySelector(".sr-only")?.textContent).toBe("Your own scholarship");
+  });
+
   it("explains empty sections instead of showing blank boxes", async () => {
     await mountComponent(<TodayView {...props({ tasks: [], comingUp: [], recent: [], todos: [], savedPreview: [], saved: { scholarships: 0, schools: 0, majors: 0, courses: 0 } })} />);
     expect(document.body.textContent).toContain("Nothing needs you right now.");

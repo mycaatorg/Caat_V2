@@ -24,7 +24,7 @@ import { toggleTodo } from "@/components/dashboard/api";
 import { dismissOnboarding } from "@/lib/onboarding";
 import { daysBetween, type NextStep, type TaskKind, type TodayTask } from "@/lib/today";
 import { TIME_ZONE_COOKIE, type RecentWork, type SavedPreview, type TodayTodo } from "@/lib/today-data";
-import type { UnifiedDeadline } from "@/lib/unified-deadlines";
+import { CUSTOM_SOURCE_PILL, type UnifiedDeadline } from "@/lib/unified-deadlines";
 
 const MAROON = "text-[#9a1a27] dark:text-[#e06b78]";
 
@@ -67,6 +67,7 @@ const TASK_ICON: Record<TaskKind, typeof CalendarClock> = {
 const SOURCE_LABEL: Record<UnifiedDeadline["source"], string> = {
   app: "Application",
   scholarship: "Scholarship",
+  custom: "Custom",
   event: "Calendar",
 };
 
@@ -154,7 +155,12 @@ function ComingUpRows({ items, todayISO, compact = false }: { items: UnifiedDead
               </span>
               <span className="flex-1 min-w-0">
                 <span className={`text-sm font-medium ${compact ? "line-clamp-2" : "block break-words"}`}>{d.title}</span>
-                <span className="block font-code text-[10px] uppercase tracking-[0.1em] text-muted-foreground">{SOURCE_LABEL[d.source]}</span>
+                <span className="block font-code text-[10px] uppercase tracking-[0.1em] text-muted-foreground">{d.source === "custom" ? (
+                  <>
+                    <span aria-hidden="true">{CUSTOM_SOURCE_PILL.visible}</span>
+                    <span className="sr-only">{CUSTOM_SOURCE_PILL.spoken}</span>
+                  </>
+                ) : SOURCE_LABEL[d.source]}</span>
               </span>
               <span className={`text-sm font-medium shrink-0 ${days <= 7 ? MAROON : "text-muted-foreground"}`}>{relativeDays(days)}</span>
             </Link>

@@ -2,7 +2,7 @@
  * Full-stack journeys for a disposable local Supabase instance only.
  * This spec is intentionally excluded from the default Playwright project.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import routeCoverage from "./route-coverage.json";
 
 const STUDENT_EMAIL = "e2e.student@caat.local.test";
@@ -848,6 +848,84 @@ test("Today turns a missing application deadline into a task that clears once fi
     await expect(page.getByRole("region", { name: "Needs attention" }).getByText(/Add the deadline for E2E Test University/)).toHaveCount(0);
   } finally {
     if (!page.isClosed()) await removeSeededApplication(page).catch(() => {});
+  }
+});
+
+function customScholarshipCard(page: Page, title: string) {
+  return page
+    .getByRole("main")
+    .locator('[data-slot="card"]')
+    .filter({ has: page.getByRole("heading", { name: title, exact: true, level: 3 }) });
+}
+
+async function removeCustomScholarship(page: Page, title: string) {
+  await page.goto("/scholarships?view=mine");
+  await expect(page.getByRole("main").getByRole("heading", { name: "My Scholarships", level: 2 })).toBeVisible({ timeout: 15_000 });
+  const card = customScholarshipCard(page, title);
+  // Let the owner's list load before deciding there is nothing to remove.
+  await card.first().waitFor({ timeout: 10_000 }).catch(() => {});
+  if (!(await card.count())) return;
+  await card.getByRole("button", { name: "Delete scholarship" }).click();
+  await card.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(card).toHaveCount(0, { timeout: 10_000 });
+}
+
+/** Backstop cleanup that does not need the page: sign in as the seeded student
+ *  through local Auth with the anon key and delete their own rows by the run's
+ *  unique title. RLS keeps it owner-scoped; no service-role key is used. */
+async function deleteCustomScholarshipByTitle(request: APIRequestContext, title: string) {
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL").origin;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!anonKey) throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY must be set for isolated cleanup");
+  const auth = await request.post(`${api}/auth/v1/token?grant_type=password`, {
+    headers: { apikey: anonKey },
+    data: { email: STUDENT_EMAIL, password: process.env.E2E_TEST_PASSWORD },
+  });
+  expect(auth.ok(), "local student sign-in for cleanup").toBe(true);
+  const { access_token: token } = (await auth.json()) as { access_token: string };
+  const removed = await request.delete(`${api}/rest/v1/user_scholarships?title=eq.${encodeURIComponent(title)}`, {
+    headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
+  });
+  expect(removed.ok(), "custom scholarship cleanup").toBe(true);
+}
+
+test("a custom scholarship deadline becomes a Today task and Custom deadline that survive a reload (PROD-146)", async ({ page, request }) => {
+  test.setTimeout(90_000);
+  await signInToIsolatedStudent(page);
+  const title = marker("E2E custom scholarship");
+  // Three days out keeps it inside the 14-day window in any student time zone.
+  const deadline = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+  try {
+    await page.goto("/scholarships?view=mine");
+    await expect(page.getByRole("main").getByRole("heading", { name: "My Scholarships", level: 2 })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("main").getByRole("button", { name: "Add Scholarship", exact: true }).click();
+
+    const dialog = page.getByRole("dialog", { name: "Add Scholarship" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel(/Scholarship Name/).fill(title);
+    await dialog.getByLabel(/University \/ Provider/).fill("E2E Test Rotary Club");
+    await dialog.getByLabel("Application Deadline", { exact: true }).fill(deadline);
+    const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/user_scholarships") && r.request().method() === "POST" && r.ok());
+    await dialog.getByRole("button", { name: "Add Scholarship", exact: true }).click();
+    await saved;
+    await expect(dialog).toHaveCount(0);
+    await expect(customScholarshipCard(page, title)).toHaveCount(1);
+
+    await page.goto("/today");
+    for (let pass = 0; pass < 2; pass += 1) {
+      const task = page.getByRole("region", { name: "Needs attention" }).getByRole("link", { name: new RegExp(`${title} closes in \\d+ days`) });
+      await expect(task).toBeVisible({ timeout: 15_000 });
+      await expect(task).toHaveAttribute("href", "/scholarships?view=mine");
+      const upcoming = page.getByRole("region", { name: "Coming up" }).getByRole("link", { name: new RegExp(title) });
+      await expect(upcoming).toBeVisible();
+      await expect(upcoming).toContainText("Custom");
+      await expect(upcoming).toContainText("Your own scholarship");
+      if (pass === 0) await page.reload();
+    }
+  } finally {
+    if (!page.isClosed()) await removeCustomScholarship(page, title).catch(() => {});
+    // Always runs, even after a timeout closed the page.
+    await deleteCustomScholarshipByTitle(request, title);
   }
 });
 
