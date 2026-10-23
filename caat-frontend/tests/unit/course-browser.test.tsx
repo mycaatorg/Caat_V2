@@ -156,7 +156,7 @@ describe('track an application from a saved course (PROD-148)', () => {
     expect(tracks()).toHaveLength(0);
     const opens = [...document.querySelectorAll('a')].filter(a => a.textContent?.includes('Open your Example University application'));
     expect(opens.map(a => a.getAttribute('href'))).toEqual(['/applications/app-7', '/applications/app-7']);
-    expect(io.toast.success).toHaveBeenCalledWith('Started tracking your application to Example University.');
+    expect(io.toast.success).toHaveBeenCalledWith('Added Example University to My applications.');
   });
 
   it('says the application already exists when another tab created it', async () => {

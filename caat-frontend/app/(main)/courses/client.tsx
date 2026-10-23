@@ -114,7 +114,7 @@ export default function CoursesClient({ courses, initialUserId, initialSavedIds,
     try {
       const { application, created } = await startApplicationForSchool(schoolId);
       setApps(cur => cur.owner === owner ? { ...cur, bySchool: new Map(cur.bySchool).set(schoolId, application) } : cur);
-      if (currentUser.current === owner) toast.success(created ? `Started tracking your application to ${institutionName}.` : `You're already tracking ${institutionName}.`);
+      if (currentUser.current === owner) toast.success(created ? `Added ${institutionName} to My applications.` : `You're already tracking ${institutionName}.`);
     } catch {
       if (currentUser.current === owner) toast.error("Couldn't start tracking. Try again.");
     } finally { pending.current.delete(key); setBusy(new Set(pending.current)); }

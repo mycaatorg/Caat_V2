@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -140,6 +140,7 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
   const [view, setView] = useState<ViewState>(() => readViewState(initialQuery));
   const [restored, setRestored] = useState<{ kind: ShortlistKind; id: string | number; label: string } | null>(null);
   const [busy, setBusy] = useState<Set<string>>(new Set());
+  const inFlight = useRef(new Set<string>());
   const isBusy = (key: string) => busy.has(key);
   const setBusyKey = (key: string, on: boolean) =>
     setBusy((cur) => {
@@ -249,7 +250,9 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
    *  and the result updates every row for that university. */
   async function startApplication(schoolId: number, name: string) {
     const key = `apply-${schoolId}`;
-    if (isBusy(key)) return;
+    // The ref, not state, guards two clicks in one tick (state updates batch).
+    if (inFlight.current.has(key)) return;
+    inFlight.current.add(key);
     setBusyKey(key, true);
     try {
       const { application, created } = await startApplicationForSchool(schoolId);
@@ -260,10 +263,11 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
           courses: cur.courses.map((c) => (c.schoolId === schoolId ? { ...c, application } : c)),
         },
       );
-      toast.success(created ? `Started tracking your application to ${name}.` : `You're already tracking ${name}.`);
+      toast.success(created ? `Added ${name} to My applications.` : `You're already tracking ${name}.`);
     } catch {
       toast.error("Couldn't start tracking. Try again.");
     } finally {
+      inFlight.current.delete(key);
       setBusyKey(key, false);
     }
   }
