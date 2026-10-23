@@ -44,10 +44,14 @@ const student = createClient(url, anonKey, options);
 const base = `https://source-check-${key}.invalid`;
 const pageUrl = (path) => `${base}/${path}`;
 const OLD = '2026-01-01T00:00:00+00:00';
+// Imported two days ago: before the baselines below, inside the 7-day anchor tolerance.
+const RECENT = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
 const fixtures = [
-  { name: 'same-a', external_url: `${pageUrl('same')}#award-a` },
+  { name: 'same-a', external_url: `${pageUrl('same')}#award-a`, source_last_synced_at: RECENT },
+  // Shares same-a's page but was imported in January: the baseline proves nothing about it.
   { name: 'same-b', external_url: `${pageUrl('same')}#award-b`, last_verified_at: null },
-  { name: 'changes', external_url: pageUrl('changes') },
+  { name: 'stale', external_url: pageUrl('stale') },
+  { name: 'changes', external_url: pageUrl('changes'), source_last_synced_at: RECENT },
   { name: 'gone', external_url: pageUrl('gone') },
   { name: 'down', external_url: pageUrl('down') },
   { name: 'future-probe', external_url: null },
@@ -78,6 +82,7 @@ const refresh = async (pages, apply) => {
   return summary;
 };
 const same = (chrome) => ({ status: 200, body: html('Award $5,000', chrome) });
+const stalePage = { [pageUrl('stale')]: { status: 200, body: html('Closes 30 June', 'v1') } };
 
 try {
   ok(await student.auth.signInWithPassword({ email, password }));
@@ -93,27 +98,33 @@ try {
   }
   ok(await admin.from('scholarship_import_runs').update({ status: 'failed', finished_at: new Date().toISOString(), error_message: 'RLS probe' }).eq('id', probeRun.id));
   assert.equal((await admin.from('scholarships').update({ last_verified_at: '2999-01-01T00:00:00Z' }).eq('slug', `source-check-${key}-future-probe`)).error?.code, '23514', 'a future last_verified_at is rejected');
+  ok(await admin.from('scholarships').update({ last_verified_at: new Date(Date.now() + 2 * 60 * 1000).toISOString() }).eq('slug', `source-check-${key}-future-probe`));
+  const probeId = ok(await admin.from('scholarships').select('id').eq('slug', `source-check-${key}-future-probe`).single()).id;
+  for (const [who, client] of [['anon', anon], ['authenticated', student]]) {
+    assert.ok((await client.rpc('scholarship_mark_gone', { p_id: probeId, p_check: { outcome: 'gone' } })).error, `${who} cannot call scholarship_mark_gone`);
+  }
+  assert.equal(ok(await admin.from('scholarships').select('is_active').eq('id', probeId).single()).is_active, true, 'denied calls changed nothing');
 
   const before = await rowsBySlug();
 
   // Dry run reads and fetches only.
   const runsBefore = ok(await admin.from('scholarship_import_runs').select('id')).length;
-  const firstPages = { [pageUrl('same')]: same('v1'), [pageUrl('changes')]: { status: 200, body: html('Closes 1 March', 'v1') }, [pageUrl('gone')]: { status: 404 }, [pageUrl('down')]: new Error('ECONNRESET') };
+  const firstPages = { ...stalePage, [pageUrl('same')]: same('v1'), [pageUrl('changes')]: { status: 200, body: html('Closes 1 March', 'v1') }, [pageUrl('gone')]: { status: 404 }, [pageUrl('down')]: new Error('ECONNRESET') };
   const dry = await refresh(firstPages, false);
-  assert.equal(dry.urls, 4, 'fragments collapse to one url');
-  assert.deepEqual(dry.counts, { baseline: 2, unchanged: 0, changed: 0, unreachable: 2, gone: 0 });
+  assert.equal(dry.urls, 5, 'fragments collapse to one url');
+  assert.deepEqual(dry.counts, { baseline: 3, unchanged: 0, changed: 0, unreachable: 2, gone: 0, unanchored: 0, unanchored_rows: 0 });
   assert.equal(ok(await admin.from('scholarship_import_runs').select('id')).length, runsBefore, 'dry run writes no run row');
   assert.equal(ok(await admin.from('scholarship_source_checks').select('id').like('url', `${base}%`)).length, 0, 'dry run writes no checks');
   assert.deepEqual(await rowsBySlug(), before, 'dry run leaves scholarships untouched');
 
   // Run 1: baselines, first 404 strike, network error. Nothing on scholarships moves.
   const first = await refresh(firstPages, true);
-  assert.equal((await checksFor(first.runId)).length, 4, 'one check per distinct url');
-  assert.deepEqual(await outcomesFor(first.runId), { same: 'baseline', changes: 'baseline', gone: 'unreachable', down: 'unreachable' });
+  assert.equal((await checksFor(first.runId)).length, 5, 'one check per distinct url');
+  assert.deepEqual(await outcomesFor(first.runId), { same: 'baseline', stale: 'baseline', changes: 'baseline', gone: 'unreachable', down: 'unreachable' });
   assert.deepEqual(await rowsBySlug(), before, 'baseline and unreachable write nothing to scholarships');
 
   // A second 404 within 24 h is not yet gone.
-  const quick = await refresh({ [pageUrl('gone')]: { status: 404 }, [pageUrl('same')]: same('v1'), [pageUrl('changes')]: { status: 200, body: html('Closes 1 March', 'v1') }, [pageUrl('down')]: { status: 503 } }, true);
+  const quick = await refresh({ ...stalePage, [pageUrl('gone')]: { status: 404 }, [pageUrl('same')]: same('v1'), [pageUrl('changes')]: { status: 200, body: html('Closes 1 March', 'v1') }, [pageUrl('down')]: { status: 503 } }, true);
   assert.equal((await outcomesFor(quick.runId)).gone, 'unreachable', 'two strikes inside 24 h are not gone');
   // Age every stored check of this fixture by 25 h, as if the runs were a day apart.
   for (const id of [first.runId, quick.runId]) {
@@ -123,14 +134,18 @@ try {
   }
   const afterQuick = await rowsBySlug();
   for (const slug of ['same-a', 'same-b']) assert.equal(Date.parse(afterQuick[slug].updated_at), Date.parse(before[slug].updated_at), `${slug} updated_at untouched by verification`);
+  assert.equal((await outcomesFor(quick.runId)).stale, 'unanchored', 'an unchanged page whose rows predate the baseline is unanchored');
+  assert.deepEqual(afterQuick.stale, before.stale, 'unanchored writes nothing');
 
   // Run 2: same content under new chrome, a content change, a second 410 a day later, a 503.
-  const second = await refresh({ [pageUrl('same')]: { status: 200, body: html('Award   $5,000', 'redesigned v2') }, [pageUrl('changes')]: { status: 200, body: html('Closes 2 March', 'v1') }, [pageUrl('gone')]: { status: 410 }, [pageUrl('down')]: { status: 503 } }, true);
-  assert.deepEqual(await outcomesFor(second.runId), { same: 'unchanged', changes: 'changed', gone: 'gone', down: 'unreachable' });
+  const second = await refresh({ ...stalePage, [pageUrl('same')]: { status: 200, body: html('Award   $5,000', 'redesigned v2') }, [pageUrl('changes')]: { status: 200, body: html('Closes 2 March', 'v1') }, [pageUrl('gone')]: { status: 410 }, [pageUrl('down')]: { status: 503 } }, true);
+  assert.deepEqual(await outcomesFor(second.runId), { same: 'unchanged', stale: 'unanchored', changes: 'changed', gone: 'gone', down: 'unreachable' });
   const checks = Object.fromEntries((await checksFor(second.runId)).map((c) => [c.url, c]));
   const after = await rowsBySlug();
+  assert.equal(Date.parse(after['same-a'].last_verified_at), Date.parse(checks[pageUrl('same')].checked_at), "same-a last_verified_at is the unchanged check's checked_at");
+  assert.equal(after['same-b'].last_verified_at, null, 'same-b shares the page but predates the baseline: never verified');
+  assert.deepEqual(after.stale, before.stale, 'a stale row stays exactly as imported');
   for (const slug of ['same-a', 'same-b']) {
-    assert.equal(Date.parse(after[slug].last_verified_at), Date.parse(checks[pageUrl('same')].checked_at), `${slug} last_verified_at is the unchanged check's checked_at`);
     assert.equal(after[slug].source_last_synced_at, before[slug].source_last_synced_at, `${slug} import date untouched`);
     assert.equal(Date.parse(after[slug].updated_at), Date.parse(before[slug].updated_at), `${slug} updated_at (sitemap lastModified) unchanged by verification`);
   }
@@ -145,14 +160,14 @@ try {
   for (const slug of Object.keys(before)) assert.equal(after[slug].title, before[slug].title, 'extracted fields untouched');
   const run = ok(await admin.from('scholarship_import_runs').select('*').eq('id', second.runId).single());
   assert.equal(run.status, 'succeeded');
-  assert.equal(run.records_seen, 4);
-  assert.equal(run.records_updated, 3, 'two verified, one deactivated');
-  assert.deepEqual(run.check_counts, { baseline: 0, unchanged: 1, changed: 1, unreachable: 1, gone: 1 });
+  assert.equal(run.records_seen, 5);
+  assert.equal(run.records_updated, 2, 'one verified, one deactivated');
+  assert.deepEqual(run.check_counts, { baseline: 0, unchanged: 1, changed: 1, unreachable: 1, gone: 1, unanchored: 1, unanchored_rows: 2 });
 
   // Run 3: the changed page is still compared against the accepted hash, so it stays changed.
-  const changedPages = { [pageUrl('same')]: same('v3'), [pageUrl('changes')]: { status: 200, body: html('Closes 2 March', 'v1') }, [pageUrl('down')]: { status: 503 } };
+  const changedPages = { ...stalePage, [pageUrl('same')]: same('v3'), [pageUrl('changes')]: { status: 200, body: html('Closes 2 March', 'v1') }, [pageUrl('down')]: { status: 503 } };
   const third = await refresh(changedPages, true);
-  assert.equal(third.urls, 3, 'inactive (gone) rows are no longer checked');
+  assert.equal(third.urls, 4, 'inactive (gone) rows are no longer checked');
   assert.equal(third.counts.changed, 1, 'a changed page cannot drift back to unchanged without a re-import');
   assert.deepEqual((await rowsBySlug()).changes, afterQuick.changes);
 
@@ -165,7 +180,8 @@ try {
   const fifthCheck = (await checksFor(fifth.runId)).find((c) => c.url === pageUrl('changes'));
   assert.equal(Date.parse((await rowsBySlug()).changes.last_verified_at), Date.parse(fifthCheck.checked_at), 're-baselined page verifies on the next unchanged check');
 
-  console.log('Scholarship source checks passed: service-role-only table, validated future-date CHECK, RESTRICT run FK, updated_at kept on verification, dry run writes nothing, baseline/unchanged/changed/unreachable/gone (24 h gap) and re-baseline rules on real rows.');
+  assert.equal((await rowsBySlug())['same-b'].last_verified_at, null, 'nothing ever makes a pre-baseline import fresh');
+  console.log('Scholarship source checks passed: service-role-only table, validated future-date CHECK, RESTRICT run FK, updated_at kept on verification, dry run writes nothing, baseline/unchanged/unanchored/changed/unreachable/gone (24 h gap, one-statement deactivation) and re-baseline rules on real rows.');
 } finally {
   // Each cleanup step runs even if an earlier one fails; errors are reported together.
   const failures = [];

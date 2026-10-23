@@ -37,6 +37,8 @@ dry-run: 50 urls checked (run <random id>, not stored)
   changed     0
   unreachable 3
   gone        0
+  unanchored  0
+  rows left unverified because their import predates the baseline: 0
   scholarship rows that --apply would update: 0 (nothing written)
 sample:
   baseline    200  https://... rows=4 updates=0 (first stored content hash for this url)
@@ -47,7 +49,7 @@ sample:
 
 Up to three sample lines are printed per outcome. `rows` is how many scholarships share that URL; `updates` is how many of them `--apply` would change.
 
-Options: `--apply` writes; `--limit N` checks the first N distinct URLs; `--concurrency N` (default 4) parallel fetches; `--timeout-ms N` (default 15000) per page; `--url-prefix https://host/path` checks only URLs that start with that prefix (normalised like the URLs: lower-case host, fragment dropped), for one provider.
+Options: `--apply` writes; `--limit N` checks the first N distinct URLs; `--concurrency N` (default 4) parallel fetches; `--timeout-ms N` (default 15000) per page; `--url-prefix https://host/path` checks only URLs under that prefix, for one provider. The prefix is normalised like the URLs (lower-case host, fragment dropped) and matches on a path boundary: `/path` covers `/path`, `/path/...` and `/path?...`, not `/pathology`.
 
 ## Applying
 
@@ -57,7 +59,7 @@ node --env-file="$HOME/.config/caat/source-refresh.env" scripts/refresh-scholars
 
 `--apply` first checks that `scholarship_source_checks` and `scholarship_import_runs.check_counts` exist and stops with a clear message if not, before writing anything. It then creates one `scholarship_import_runs` row (`status` started, then succeeded or failed, with `records_seen` = URLs checked, `records_updated` = scholarship rows the guarded updates actually changed, and `check_counts` holding the count per outcome) and one `scholarship_source_checks` row per URL. If a write fails, no new URL starts, URLs already in flight finish, and the run is marked failed with accurate counts; if even that summary cannot be stored, a minimal failed status is written so a run never stays `started`.
 
-Each check's `checked_at` is stamped by the database when the check is stored, and that exact value is what goes onto scholarships. The first `--apply` on a database only records baselines; verification dates start moving on the second run.
+Each check's `checked_at` is stamped by the database when the check is stored, and that exact value is what goes onto scholarships. The first `--apply` on a database only records baselines. From the second run, verification dates move only for rows anchored to that baseline (next section); on today's catalogue, imported months before any baseline, that is none of them.
 
 Runs and checks are never pruned. A run that has checks cannot be deleted (`ON DELETE RESTRICT`); the history is the evidence behind every verification date.
 
@@ -65,17 +67,27 @@ Runs and checks are never pruned. A run that has checks cannot be deleted (`ON D
 
 | Outcome | Meaning | What changes on `scholarships` |
 | --- | --- | --- |
-| `baseline` | Page fetched and no accepted hash yet for this URL, or a row on it was re-imported (`source_last_synced_at` later than the accepted check). | Nothing. |
-| `unchanged` | Page text hashes the same as the last accepted hash. | `last_verified_at` = this check's `checked_at`, only where the current value is null or earlier (guarded in SQL too). |
-| `changed` | Page text differs from the last accepted hash. | Nothing. The check row records it. |
+| `baseline` | Page fetched and no baseline yet for this URL, or the page changed and a row on it was re-imported after the baseline (`source_last_synced_at` later than the baseline's `checked_at`). | Nothing. |
+| `unchanged` | Page text hashes the same as the baseline, and at least one row on it is anchored to that baseline. | `last_verified_at` = this check's `checked_at` on anchored rows only, and only where the current value is null or earlier (guarded in SQL too). Unanchored rows on the same page are left alone and counted. |
+| `changed` | Page text differs from the baseline hash and no row was re-imported since. | Nothing. The check row records it. |
+| `unanchored` | Page text hashes the same as the baseline, but every row on it was imported before the baseline (beyond the tolerance). | Nothing. |
 | `unreachable` | Network error, timeout, 429, 5xx, any other non-2xx, a redirect to a different URL, or a 404/410 without a qualifying earlier strike. | Nothing. |
-| `gone` | 404 or 410 now, and the previous stored check was also 404/410 (at the same URL) at least 24 h earlier. | `is_active = false` (only while still active); `raw_payload.source_check` records the status, URL, time and run, merged into the row's current `raw_payload`. The row is kept. |
+| `gone` | 404 or 410 now, and the previous stored check was also 404/410 (at the same URL) at least 24 h earlier. | `is_active = false` (only while still active); `raw_payload.source_check` records the status, URL, time and run, merged into the row's current `raw_payload` in one statement (`scholarship_mark_gone`, service role only). The row is kept. |
 
 The hash covers the visible text of the page's content area: on `www.sydney.edu.au` (AEM pages with no `<main>`) the `div.content-container`; elsewhere `<main>`, else `<body>`. Scripts, styles, `noscript`, templates, SVG, `<nav>`, `<footer>`, comments and all attribute values are removed and whitespace is collapsed. A redesign that keeps the same words stays `unchanged`; a new amount or date is `changed`. Non-HTML pages (PDFs) are hashed byte for byte. Add a host to `HOST_CONTENT` in the script when a provider's pages have no `<main>`.
 
 A redirect is never hashed into a baseline: if the final URL differs from the requested one the check is `unreachable` with "redirected to ...". Fix the stored `external_url` (a re-import) if the move is permanent.
 
-The "last accepted hash" is the latest `baseline` or `unchanged` check for that URL. A `changed` hash never becomes the reference, so a changed page keeps reporting `changed` and cannot quietly re-verify fields extracted from the old page. It clears when the scraper re-imports the row: a `source_last_synced_at` later than the accepted check makes the next check a new `baseline`, and verification resumes from the run after that.
+The reference for a URL is its latest `baseline` check: its hash is the accepted content (`unchanged` and `unanchored` checks repeat it), and its `checked_at` is the time rows are anchored against. A `changed` hash never becomes the reference, so a changed page keeps reporting `changed` and cannot quietly re-verify fields extracted from the old page. It clears when the scraper re-imports a row on it: a `source_last_synced_at` later than the baseline makes the next check a new `baseline`.
+
+### Anchoring: why old imports never become fresh
+
+A baseline taken today proves only what the page says today. It says nothing about fields imported in May, which may already have been out of date when the baseline was hashed. So a check may verify a row only when that row's stored fields came from the content the baseline hashed. The runner decides this per row, not per URL, because several rows often share one page:
+
+- A row is **anchored** when its `source_last_synced_at` is no more than `ANCHOR_TOLERANCE_MS` (7 days) before the baseline's `checked_at`. The tolerance exists because the scraper stamps `source_last_synced_at` with its run's start time, and a run plus the manual load after it can take days; an import inside that window is treated as extracted from the page the baseline hashed.
+- Only anchored rows get `last_verified_at` advanced. An unchanged page whose rows are all unanchored is recorded as `unanchored`, and every unanchored row (including ones sharing a page with anchored rows) is counted in `check_counts.unanchored_rows`, so the dry-run summary shows the size of the gap.
+
+**Until a row is re-imported or re-extracted after its page's baseline, nothing can make it fresh. This is deliberate.** Today's catalogue was imported in one scraper run months ago, so a first `--apply` followed by any number of runs verifies no existing row: the eligibility panel keeps showing them as stale until the scraper re-imports them. Re-importing a row (with the scraper no longer writing `last_verified_at`) is what turns its next unchanged check into a verification.
 
 The panel on a scholarship page shows `last_verified_at` as "Recorded verification" and `source_last_synced_at` as "Last imported". This runner never writes "Last imported".
 
@@ -84,17 +96,17 @@ Verification does not touch `updated_at`, which the sitemap publishes as `lastMo
 ## What it never does
 
 - Delete anything. Gone rows are deactivated; bookmarks keep working.
-- Invent or backfill dates. Every timestamp it writes onto a scholarship comes from one stored check. It never writes `now()` onto a scholarship, and the database rejects a `last_verified_at` in the future (`scholarships_last_verified_not_future`).
+- Invent or backfill dates. Every timestamp it writes onto a scholarship comes from one stored check. It never writes `now()` onto a scholarship, and the database rejects a `last_verified_at` more than 5 minutes in the future (`scholarships_last_verified_not_future`; the 5 minutes keep an importer whose clock runs slightly ahead of the database from failing a load).
 - Change extracted fields (title, amounts, deadlines, eligibility, description) or `source_last_synced_at`. Only `last_verified_at`, `is_active` and the `source_check` key in `raw_payload`.
 - Re-activate a row. Deactivation is one way; reversing it is a manual decision.
 
 ## Known limits
 
-- `unchanged` means the page is the same as at its baseline check by this runner, not that the stored fields match the page. Rows imported long before the baseline may already be out of date when the baseline is taken. A spot check of a sample of baseline pages against their rows is the honest way to close that gap.
-- One page often carries many sub-awards (one URL, many rows). Any change on that page marks every row on it `changed`, and an unchanged page verifies them all. The runner cannot tell which sub-award changed.
+- Anchoring trusts `source_last_synced_at` as the time the row's fields were extracted. If an import stamps it without re-extracting the fields, the row would be anchored to a baseline its fields never came from. The scraper must set it only on a real extraction.
+- One page often carries many sub-awards (one URL, many rows). Any change on that page marks it `changed` for every row on it, and an unchanged page verifies every anchored row on it. The runner cannot tell which sub-award changed.
 - Passed deadlines are not handled here. A page that still lists last year's closing date can be `unchanged` and verified; deadline expiry belongs to the listing logic, not to this check.
 - Pages that need JavaScript to render, block bots (403), or rotate tokens in visible text will report `unreachable` or `changed` every time. Provider-wide redirects (for example to a new site) show as `unreachable` until the URLs are re-imported.
-- The re-baseline rule trusts `source_last_synced_at`. If the scraper stamps it with its run's start time and the run began before the accepted check, that import is not detected.
+- The re-baseline rule (a changed page plus a re-imported row) also trusts `source_last_synced_at`: an import stamped with a run start time before the baseline is not detected as a re-import, and the page stays `changed` until the next import.
 - No per-host rate limit beyond `--concurrency`. Keep it at 4 or lower for the large provider sites.
 - Nothing schedules it yet. Run it by hand on the mini until the dry-run numbers look right.
 
