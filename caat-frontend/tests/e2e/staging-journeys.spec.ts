@@ -510,6 +510,72 @@ test("scholarship status persists on detail and tracked-list views after reload"
   }
 });
 
+async function chooseScholarshipStatus(page: Page, label: string) {
+  const statusButton = page.getByRole("button", { name: /^(Save|Interested|Applied|Awarded|Not selected)$/ });
+  await expect(statusButton).toBeVisible({ timeout: 15_000 });
+  const saved = page.waitForResponse(
+    (r) => r.url().includes("/rest/v1/user_bookmarked_scholarships") && r.request().method() === "POST",
+  );
+  await statusButton.click();
+  await page.getByRole("menuitem", { name: label, exact: true }).click();
+  await saved;
+}
+
+async function expectTrackedScholarshipStatus(page: Page, label: string) {
+  // The scholarships list, filtered to the status, shows the seeded card with its label.
+  await page.goto(`/scholarships?status=${label.toLowerCase()}`);
+  const card = page.locator('[data-slot="card"]:visible').filter({
+    has: page.getByRole("heading", { name: "E2E Test Scholarship", exact: true }),
+  });
+  await expect(card).toHaveCount(1, { timeout: 15_000 });
+  await expect(card.getByText(label, { exact: true })).toBeVisible();
+  // The shortlist's scholarship row carries the same status pill.
+  await page.goto(`/shortlist?tab=scholarship&status=${label.toLowerCase()}`);
+  const row = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: "E2E Test Scholarship", exact: true }) });
+  await expect(row).toHaveCount(1, { timeout: 15_000 });
+  await expect(row.getByText(label, { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(row).toHaveCount(1, { timeout: 15_000 });
+  await expect(row.getByText(label, { exact: true })).toBeVisible();
+}
+
+// PROD-150: changing an already-saved scholarship's status is an UPDATE of the
+// existing row, which needs its own owner policy. Saving a new scholarship is an
+// INSERT, so the journey above (straight to Applied) never exercised it.
+test("an already-saved scholarship moves from Interested to Applied and stays Applied after reloads (PROD-150)", async ({ page }) => {
+  await signInToIsolatedStudent(page);
+  const detailPath = `/scholarships/${SCHOLARSHIP_ID}`;
+  try {
+    await page.goto(detailPath);
+    await expect(page.getByRole("heading", { name: "E2E Test Scholarship" })).toBeVisible({ timeout: 15_000 });
+    // A reused isolated database may still hold this save from an interrupted run.
+    await expect(page.getByRole("button", { name: /^(Save|Interested|Applied|Awarded|Not selected)$/ })).toBeVisible({ timeout: 15_000 });
+    await untrackSeedScholarship(page);
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible({ timeout: 15_000 });
+
+    await chooseScholarshipStatus(page, "Interested");
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Interested", exact: true })).toBeVisible({ timeout: 15_000 });
+    await expectTrackedScholarshipStatus(page, "Interested");
+
+    await page.goto(detailPath);
+    await chooseScholarshipStatus(page, "Applied");
+    await expect(page.getByRole("button", { name: "Applied", exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Applied", exact: true })).toBeVisible({ timeout: 15_000 });
+    await expectTrackedScholarshipStatus(page, "Applied");
+  } finally {
+    if (!page.isClosed()) {
+      try {
+        await page.goto(detailPath);
+        await untrackSeedScholarship(page);
+      } catch {
+        // Cleanup must not mask the assertion that failed above.
+      }
+    }
+  }
+});
+
 test("school notes and application status/checklist persist across list and detail reloads", { tag: "@phone" }, async ({ page }) => {
   await signInToIsolatedStudent(page);
   const schoolNote = marker("School note");
