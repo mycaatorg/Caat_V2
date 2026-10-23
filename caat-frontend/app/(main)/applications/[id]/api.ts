@@ -10,6 +10,7 @@ import {
 } from "@/lib/scholarship-tracking";
 import { assertApplicationWritten } from "@/app/(main)/applications/api";
 import { normalizeHubCourse, type HubCourse } from "@/lib/course-data";
+import { readEvidenceLinks, type EvidenceLink } from "@/lib/evidence-links";
 
 export type { HubCourse };
 import {
@@ -101,6 +102,11 @@ export interface ApplicationHub {
   savedCourses: HubCourse[];
   /** true when that read failed, so the card shows Retry rather than "none saved" */
   savedCoursesUnavailable: boolean;
+  /** PROD-78: library documents linked to this application (owner-only read).
+   *  Not a preparation step: they never change the 3-step checklist. */
+  evidenceLinks: EvidenceLink[];
+  /** true when that read failed, so the card shows Retry rather than "none linked" */
+  evidenceLinksUnavailable: boolean;
 }
 
 export const HUB_SCHOLARSHIP_LIMIT = 5;
@@ -222,7 +228,7 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
 
   // Parallel: profile, prompts (+scope), all essay drafts (+school_id), all
   // documents (+school_id), active scholarships recorded for this school.
-  const [profileRes, promptsRes, draftsRes, docsRes, schRes, coursesRes, savedSchRes, ticksRes] = await Promise.all([
+  const [profileRes, promptsRes, draftsRes, docsRes, schRes, coursesRes, savedSchRes, ticksRes, linksRes] = await Promise.all([
     supabase
       .from("profiles")
       .select("target_majors")
@@ -244,6 +250,11 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     fetchPrepChecks().then(
       (checks) => ({ checks, unavailable: false }),
       () => ({ checks: {} as Record<string, string[]>, unavailable: true }),
+    ),
+    // PROD-78: library documents linked here (and their tailoring).
+    readEvidenceLinks(user.id, application.id).then(
+      (links) => ({ links, unavailable: false }),
+      () => ({ links: [] as EvidenceLink[], unavailable: true }),
     ),
   ]);
 
@@ -343,6 +354,8 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     scholarshipsUnavailable: schRes.error,
     savedCourses: coursesRes.courses,
     savedCoursesUnavailable: coursesRes.unavailable,
+    evidenceLinks: linksRes.links,
+    evidenceLinksUnavailable: linksRes.unavailable,
   };
 }
 

@@ -498,3 +498,47 @@ describe("fetchMajorOptions", () => {
     expect(await fetchMajorOptions()).toEqual(["Commerce", "Law"]);
   });
 });
+
+describe("fetchApplicationHub: linked library documents (PROD-78)", () => {
+  const linkRow = {
+    id: "link-1",
+    application_id: "app-1",
+    document_id: "d4",
+    tailored_title: "Portfolio for Melbourne",
+    tailored_body: null,
+    tailored_at: "2026-10-21T00:00:00.000Z",
+    created_at: "2026-10-20T00:00:00.000Z",
+    documents: { id: "d4", file_name: "elsewhere.pdf", category: "letters", status: "verified", uploaded_at: "2026-10-01T00:00:00.000Z" },
+  };
+
+  it("reads this application's links for the caller only", async () => {
+    use(hubResolver({ application_evidence_links: { data: [linkRow], error: null } }));
+    const hub = await fetchApplicationHub("app-1");
+    const q = io.client.queries.find((x) => x.table === "application_evidence_links")!;
+    expect(q.calls.filter((c) => c.method === "eq").map((c) => c.args)).toEqual([["user_id", "student-1"], ["application_id", "app-1"]]);
+    expect(hub.evidenceLinksUnavailable).toBe(false);
+    expect(hub.evidenceLinks).toHaveLength(1);
+    expect(hub.evidenceLinks[0]).toMatchObject({ id: "link-1", documentId: "d4", tailoredTitle: "Portfolio for Melbourne" });
+  });
+
+  it("marks links unavailable on a failed read and keeps the rest of the hub", async () => {
+    use(hubResolver({ application_evidence_links: { data: null, error: { message: "down" } } }));
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.evidenceLinks).toEqual([]);
+    expect(hub.evidenceLinksUnavailable).toBe(true);
+    expect(hub.readiness.score).toBe(2);
+  });
+
+  it("never counts a linked document as a document attached here in the 3-step checklist", async () => {
+    const otherSchoolKeyDoc = { id: "d4", file_name: "elsewhere.pdf", category: "letters", status: "verified", school_id: 99 };
+    const withoutLink = await (use(hubResolver({ documents: { data: [otherSchoolKeyDoc], error: null } })), fetchApplicationHub("app-1"));
+    use(hubResolver({
+      documents: { data: [otherSchoolKeyDoc], error: null },
+      application_evidence_links: { data: [linkRow], error: null },
+    }));
+    const withLink = await fetchApplicationHub("app-1");
+    expect(withLink.evidenceLinks).toHaveLength(1);
+    expect(withLink.readiness).toEqual(withoutLink.readiness);
+    expect(withLink.readiness.keyDocsUploaded).toBe(false);
+  });
+});
