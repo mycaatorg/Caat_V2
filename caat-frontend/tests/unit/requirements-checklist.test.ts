@@ -70,6 +70,19 @@ describe('requirements checklist: fixed items from recorded fields', () => {
     }
   });
 
+  it('a closing date counts in whole calendar days: today is not passed, yesterday is', () => {
+    // Local times on the closing day, in whatever zone the test runs (11am in
+    // Sydney is 01:00 UTC, already past the date-only value's UTC midnight).
+    const morning = new Date(2026, 9, 23, 11, 0);
+    const at = (deadline_at: string, now: Date) => requirementsChecklist(row({ deadline_at }), now).items.find((i) => i.key === 'deadline')!;
+    expect(at('2026-10-23', morning)).toMatchObject({ label: 'Closes 23 Oct 2026 (recorded)', state: 'recorded' });
+    expect(at('2026-10-23', new Date(2026, 9, 23, 23, 59))).toMatchObject({ state: 'recorded' });
+    expect(at('2026-10-22', morning)).toMatchObject({
+      label: 'The recorded closing date (22 Oct 2026) has passed. Check whether it has reopened.', state: 'passed',
+    });
+    expect(at('2026-10-24', morning).state).toBe('recorded');
+  });
+
   it('official link only when the recorded URL is safe', () => {
     expect(item({ external_url: 'https://provider.example/s' }, 'official-link')).toMatchObject({
       label: 'Read the official scholarship page', href: 'https://provider.example/s', state: 'recorded',

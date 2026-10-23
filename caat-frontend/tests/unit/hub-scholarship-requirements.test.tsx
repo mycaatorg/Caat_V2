@@ -127,7 +127,7 @@ describe("attach and detach", () => {
     const pending = deferred();
     io.attachScholarship.mockReturnValueOnce(pending.promise);
     await click(button("Attach Scholarship b"));
-    expect(io.attachScholarship).toHaveBeenCalledWith("b", 7);
+    expect(io.attachScholarship).toHaveBeenCalledWith("b", 7, null);
     expect(button("Attach Scholarship b").disabled).toBe(true);
     expect(attachedGroup()?.textContent ?? "").not.toContain("Scholarship b");
     pending.resolve();
@@ -149,7 +149,7 @@ describe("attach and detach", () => {
     await mountComponent(<Harness initial={[saved("a", { schoolId: 7, attachedSchoolName: "Alpha University" })]} />);
     await click(button("Detach Scholarship a"));
     await flush();
-    expect(io.detachScholarship).toHaveBeenCalledWith("a");
+    expect(io.detachScholarship).toHaveBeenCalledWith("a", 7);
     expect(attachedGroup()!.textContent).toContain("You haven't attached a scholarship to this application.");
     expect(suggestions()!.textContent).toContain("Scholarship a");
   });
@@ -173,13 +173,23 @@ describe("attach and detach", () => {
     await click(button("Confirm move", dialog));
     await flush();
     expect(io.attachScholarship).toHaveBeenCalledTimes(1);
-    expect(io.attachScholarship).toHaveBeenCalledWith("c", 7);
+    expect(io.attachScholarship).toHaveBeenCalledWith("c", 7, 9);
     expect(attachedGroup()!.textContent).toContain("Scholarship c");
   });
 });
 
 describe("preparation ticks", () => {
   const attached = () => [saved("a", { schoolId: 7, attachedSchoolName: "Alpha University" })];
+
+  it("a rule's tick is the student's own check with the provider, never meeting the rule", async () => {
+    await mountComponent(<Harness initial={attached()} />);
+    const rule = document.querySelector('[data-checklist-item^="rule:"] input[type="checkbox"]') as HTMLInputElement;
+    expect(rule.getAttribute("aria-label")).toBe("I've checked this with the provider: Recorded rule: Rule one");
+    expect(document.querySelector(`input[aria-label^="I've prepared this: Recorded rule"]`)).toBeNull();
+    expect(checkbox("An essay is required (recorded)")).not.toBeNull();
+    const labels = [...document.querySelectorAll('input[type="checkbox"]')].map((el) => el.getAttribute("aria-label") ?? "");
+    for (const label of labels) expect(label).not.toMatch(/\b(meet|met|eligib|qualif)/i);
+  });
 
   it("shows persisted ticks, ignores keys that no longer match an item", async () => {
     await mountComponent(<Harness initial={attached()} prepChecks={{ a: ["essay", "rule:ffffffffffffffff"] }} />);

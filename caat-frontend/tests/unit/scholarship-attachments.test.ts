@@ -85,31 +85,44 @@ describe("mentionsSchool", () => {
 });
 
 describe("attach and detach", () => {
-  it("attach updates the owner's row and asserts the returned attachment", async () => {
+  const iss = (ctx: Ctx) => ctx.calls.filter((c) => c.method === "is").map((c) => c.args);
+
+  it("attach from unattached updates only the owner's still-unattached row and asserts the result", async () => {
     state.resolver = () => ({ data: [{ scholarship_id: "s1", school_id: 7 }], error: null });
-    await attachScholarship("s1", 7);
+    await attachScholarship("s1", 7, null);
     const ctx = last();
     expect(ctx.op).toBe("update");
     expect(ctx.calls.find((c) => c.method === "update")?.args[0]).toEqual({ school_id: 7 });
     expect(eqs(ctx)).toEqual([["user_id", "user-1"], ["scholarship_id", "s1"]]);
+    expect(iss(ctx)).toEqual([["school_id", null]]);
     expect(ctx.calls.find((c) => c.method === "select")?.args[0]).toBe("scholarship_id, school_id");
     expect(state.queries).toHaveLength(1);
   });
 
-  it("zero rows or a policy error fail with the attach message", async () => {
-    state.resolver = () => ({ data: [], error: null });
-    await expect(attachScholarship("s1", 7)).rejects.toThrow("Couldn't attach. Make sure you still have this application, then try again.");
-    state.resolver = () => ({ data: null, error: { message: "new row violates row-level security policy", code: "42501" } });
-    await expect(attachScholarship("s1", 7)).rejects.toThrow("Couldn't attach. Make sure you still have this application, then try again.");
+  it("a move only applies while the row is still attached where this tab last saw it", async () => {
+    state.resolver = () => ({ data: [{ scholarship_id: "s1", school_id: 7 }], error: null });
+    await attachScholarship("s1", 7, 9);
+    expect(eqs(last())).toEqual([["user_id", "user-1"], ["scholarship_id", "s1"], ["school_id", 9]]);
+    expect(iss(last())).toEqual([]);
   });
 
-  it("detach writes null on the owner's row and fails on zero rows", async () => {
-    state.resolver = () => ({ data: [{ scholarship_id: "s1", school_id: null }], error: null });
-    await detachScholarship("s1");
-    expect(last().calls.find((c) => c.method === "update")?.args[0]).toEqual({ school_id: null });
-    expect(eqs(last())).toEqual([["user_id", "user-1"], ["scholarship_id", "s1"]]);
+  it("zero rows mean the attachment changed elsewhere; a policy error means no application", async () => {
     state.resolver = () => ({ data: [], error: null });
-    await expect(detachScholarship("s1")).rejects.toThrow("Couldn't detach");
+    await expect(attachScholarship("s1", 7, null)).rejects.toThrow("Attachment changed in another tab. Reload.");
+    await expect(attachScholarship("s1", 7, 9)).rejects.toThrow("Attachment changed in another tab. Reload.");
+    state.resolver = () => ({ data: null, error: { message: "new row violates row-level security policy", code: "42501" } });
+    await expect(attachScholarship("s1", 7, null)).rejects.toThrow("Couldn't attach. Make sure you still have this application, then try again.");
+  });
+
+  it("detach writes null only while still attached to the expected university", async () => {
+    state.resolver = () => ({ data: [{ scholarship_id: "s1", school_id: null }], error: null });
+    await detachScholarship("s1", 7);
+    expect(last().calls.find((c) => c.method === "update")?.args[0]).toEqual({ school_id: null });
+    expect(eqs(last())).toEqual([["user_id", "user-1"], ["scholarship_id", "s1"], ["school_id", 7]]);
+    state.resolver = () => ({ data: [], error: null });
+    await expect(detachScholarship("s1", 7)).rejects.toThrow("Attachment changed in another tab. Reload.");
+    state.resolver = () => ({ data: null, error: { message: "boom" } });
+    await expect(detachScholarship("s1", 7)).rejects.toThrow("Couldn't detach");
   });
 });
 

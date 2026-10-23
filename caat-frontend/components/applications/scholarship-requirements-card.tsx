@@ -78,7 +78,9 @@ export function ScholarshipRequirementsCard({
                 id={id}
                 type="checkbox"
                 className="mt-0.5 h-4 w-4 shrink-0 accent-[#9a1a27]"
-                aria-label={`I've prepared this: ${item.label}`}
+                // A rule's tick records the student's own check with the provider,
+                // never that they meet it; requirement items are preparation.
+                aria-label={`${item.kind === "rule" ? "I've checked this with the provider" : "I've prepared this"}: ${item.label}`}
                 checked={ticked.has(item.key)}
                 disabled={!ticksAvailable || pendingKeys.has(item.key)}
                 onChange={(e) => onToggle(item, e.target.checked)}

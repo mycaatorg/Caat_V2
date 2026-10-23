@@ -206,29 +206,38 @@ export function mentionsSchool(recordedName: string | null, schoolName: string):
 const ATTACH_FAILED = "Couldn't attach. Make sure you still have this application, then try again.";
 const DETACH_FAILED = "Couldn't detach this scholarship. Try again.";
 
-async function writeAttachment(scholarshipId: string, schoolId: number | null, failure: string): Promise<void> {
+const ATTACHMENT_CHANGED = "Attachment changed in another tab. Reload.";
+
+/** Write school_id only while the row is still attached where this tab last
+ *  saw it (`from`), so a stale tab cannot silently move an attachment. */
+async function writeAttachment(scholarshipId: string, from: number | null, to: number | null, failure: string): Promise<void> {
   const userId = await getUserId();
   if (!userId) throw new Error("Not authenticated");
-  const { data, error } = await supabase
+  const scoped = supabase
     .from("user_bookmarked_scholarships")
-    .update({ school_id: schoolId })
+    .update({ school_id: to })
     .eq("user_id", userId)
-    .eq("scholarship_id", scholarshipId)
-    .select("scholarship_id, school_id");
-  // Row security turns a foreign or missing row into zero rows, and a school
-  // without the student's application into an error: both are failures here.
+    .eq("scholarship_id", scholarshipId);
+  const guarded = from === null ? scoped.is("school_id", null) : scoped.eq("school_id", from);
+  const { data, error } = await guarded.select("scholarship_id, school_id");
+  // A school without the student's application is a policy error. Zero rows
+  // means the row moved since this tab loaded it (or is no longer the
+  // caller's): never report either as saved.
+  if (error) throw new Error(failure);
   const rows = (data ?? []) as { scholarship_id: string; school_id: number | null }[];
-  if (error || rows.length !== 1 || rows[0].school_id !== schoolId) throw new Error(failure);
+  if (rows.length === 0) throw new Error(ATTACHMENT_CHANGED);
+  if (rows.length !== 1 || rows[0].school_id !== to) throw new Error(failure);
 }
 
-/** Attach (or move) a saved scholarship to the student's application at schoolId. */
-export function attachScholarship(scholarshipId: string, schoolId: number): Promise<void> {
-  return writeAttachment(scholarshipId, schoolId, ATTACH_FAILED);
+/** Attach (or move, when `from` is another university) a saved scholarship to
+ *  the student's application at schoolId. `from` is the attachment this tab saw. */
+export function attachScholarship(scholarshipId: string, schoolId: number, from: number | null): Promise<void> {
+  return writeAttachment(scholarshipId, from, schoolId, ATTACH_FAILED);
 }
 
-/** Detach a saved scholarship from its application. The save itself stays. */
-export function detachScholarship(scholarshipId: string): Promise<void> {
-  return writeAttachment(scholarshipId, null, DETACH_FAILED);
+/** Detach a saved scholarship from its application at `from`. The save stays. */
+export function detachScholarship(scholarshipId: string, from: number): Promise<void> {
+  return writeAttachment(scholarshipId, from, null, DETACH_FAILED);
 }
 
 /** The caller's preparation ticks, grouped by scholarship. Throws on error. */
