@@ -28,7 +28,7 @@ export interface TodayInput {
   applications: TodayApplication[];
   /** Prompts, drafts and documents for the shared preparation-checklist rule. */
   preparation: PreparationInputs;
-  saved: { scholarships: number; schools: number; majors: number };
+  saved: { scholarships: number; schools: number; majors: number; courses: number };
   deadlines: UnifiedDeadline[];
   /** Saved scholarship id → tracking status ("interested", "applied", …). */
   scholarshipStatuses?: Record<string, string>;
@@ -166,7 +166,7 @@ export function comingUp(input: Pick<TodayInput, "todayISO" | "deadlines">): Uni
 }
 
 export function chooseNextStep(input: TodayInput, tasks: TodayTask[] = deriveTasks(input)): NextStep {
-  const savedTotal = input.saved.scholarships + input.saved.schools + input.saved.majors;
+  const savedTotal = input.saved.scholarships + input.saved.schools + input.saved.majors + input.saved.courses;
   const { onboarding } = input;
 
   if (!onboarding.completed && !onboarding.dismissed && !onboarding.hasBasics && savedTotal === 0) {

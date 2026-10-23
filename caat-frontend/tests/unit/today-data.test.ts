@@ -49,6 +49,36 @@ describe("loadToday", () => {
   };
   const resolver = (ctx: QueryContext): QueryResult => ({ data: rows[ctx.table] ?? [], error: null });
 
+  it("includes newly saved courses in counts and the recent saved preview", async () => {
+    const client = createMockSupabase({ resolver: ctx => ctx.table === 'user_course_bookmarks' ? { data: [{ course_id: 'course-1', created_at: '2026-10-23T00:00:00Z', course_offerings: { id: 'course-1', name: 'Advanced Computing', institution_name: 'Example University' } }], error: null } : resolver(ctx) });
+    const data = await loadToday(client as never, 'student-1');
+    expect(data.input.saved.courses).toBe(1);
+    expect(data.savedPreview[0]).toMatchObject({ kind: 'course', title: 'Advanced Computing — Example University', href: '/courses?course=course-1' });
+  });
+  it("keeps the legacy saved preview order for students without course saves, and gives the newest course one slot", async () => {
+    const legacy: Record<string, unknown[]> = {
+      user_bookmarked_scholarships: [
+        { scholarship_id: "s1", created_at: "2026-01-01T00:00:00Z", scholarships: { id: "s1", title: "Oldest scholarship" } },
+        { scholarship_id: "s2", created_at: "2026-01-02T00:00:00Z", scholarships: { id: "s2", title: "Older scholarship" } },
+      ],
+      user_bookmarked_schools: [{ school_id: 7, created_at: "2026-09-01T00:00:00Z", schools: { id: 7, name: "Harbourside University" } }],
+      user_bookmarked_majors: [{ major_id: "m1", created_at: "2026-10-01T00:00:00Z", majors: { id: "m1", name: "Law" } }],
+    };
+    const withLegacy = (courses: unknown[]) => createMockSupabase({ resolver: ctx => ctx.table === "user_course_bookmarks" ? { data: courses, error: null } : { data: legacy[ctx.table] ?? rows[ctx.table] ?? [], error: null } });
+    const before = await loadToday(withLegacy([]) as never, "student-1");
+    expect(before.savedPreview.map(s => s.href)).toEqual(["/scholarships/s1", "/scholarships/s2", "/schools/7"]);
+    const after = await loadToday(withLegacy([
+      { course_id: "c2", created_at: "2026-10-22T00:00:00Z", course_offerings: { id: "c2", name: "Law", institution_name: "Example University" } },
+      { course_id: "c1", created_at: "2026-10-20T00:00:00Z", course_offerings: { id: "c1", name: "Science", institution_name: "Example University" } },
+    ]) as never, "student-1");
+    expect(after.savedPreview.map(s => s.href)).toEqual(["/courses?course=c2", "/scholarships/s1", "/scholarships/s2"]);
+    expect(after.savedPreview[1]).toEqual({ kind: "scholarship", id: "s1", title: "Oldest scholarship", href: "/scholarships/s1" });
+  });
+  it("refuses an incomplete Today view when course saves fail to load", async () => {
+    const client = createMockSupabase({ resolver: ctx => ctx.table === 'user_course_bookmarks' ? { data: null, error: { message: 'offline' } } : resolver(ctx) });
+    await expect(loadToday(client as never, 'student-1')).rejects.toThrow('Could not load Today');
+  });
+
   it("maps the student's data into Today's input, most recent work first", async () => {
     const client = createMockSupabase({ resolver });
     const data = await loadToday(client as never, "student-1", new Date("2026-10-07T01:00:00Z"));
@@ -61,7 +91,7 @@ describe("loadToday", () => {
       drafts: [{ prompt_id: "p1", school_id: null }],
       documents: [{ category: "identity", school_id: 7 }],
     });
-    expect(data.input.saved).toEqual({ scholarships: 1, schools: 0, majors: 1 });
+    expect(data.input.saved).toEqual({ scholarships: 1, schools: 0, majors: 1, courses: 0 });
     expect(data.recent.map((r) => r.kind)).toEqual(["essay", "application", "resume"]);
     expect(data.recent[0]).toMatchObject({ title: "Why this course", detail: "Essay", href: "/essays?prompt=p1" });
     expect(data.todos).toEqual([{ id: "t1", text: "Book open day", dueDate: null, priority: 2 }]);

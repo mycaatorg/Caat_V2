@@ -51,7 +51,7 @@ export interface TodayTodo {
 }
 
 export interface SavedPreview {
-  kind: "scholarship" | "school" | "major";
+  kind: "scholarship" | "school" | "major" | "course";
   id: string;
   title: string;
   href: string;
@@ -94,7 +94,7 @@ export async function loadToday(
   timeZone: string = DEFAULT_TIME_ZONE,
 ): Promise<TodayData> {
   const todayISO = zonedTodayISO(timeZone, now);
-  const [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, todos, resumesRes, promptsRes, customRes, deadlines] =
+  const [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, savedCourseRes, todos, resumesRes, promptsRes, customRes, deadlines] =
     await Promise.all([
       supabase
         .from("profiles")
@@ -122,6 +122,7 @@ export async function loadToday(
         .select("major_id, created_at, majors(id, name)")
         .eq("user_id", userId)
         .order("created_at", { ascending: false }),
+      supabase.from("user_course_bookmarks").select("course_id, created_at, course_offerings(id, name, institution_name)").eq("user_id", userId).order("created_at", { ascending: false }),
       loadOpenTodos(supabase, userId),
       supabase
         .from("resumes")
@@ -138,7 +139,7 @@ export async function loadToday(
   // student with applications to "save your first scholarship").
   // The prompt catalogue decides which drafts count for which school, so a
   // failed read would turn into wrong "start an essay" tasks.
-  for (const res of [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, promptsRes]) {
+  for (const res of [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, savedCourseRes, promptsRes]) {
     if (res.error) throw new Error("Could not load Today");
   }
 
@@ -161,6 +162,7 @@ export async function loadToday(
   const drafts = (draftsRes.data ?? []) as Row[];
   const savedSch = (savedSchRes.data ?? []) as Row[];
   const savedSchools = (savedSchoolRes.data ?? []) as Row[];
+  const savedCourses = (savedCourseRes.data ?? []) as Row[];
   const savedMajors = (savedMajorRes.data ?? []) as Row[];
 
   const promptTitles = new Map<string, string>();
@@ -202,7 +204,14 @@ export async function loadToday(
   }
   recent.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
+  // The newest course save (query is newest first) takes one slot; legacy kinds
+  // keep their previous scholarships, universities, majors order.
+  const newestCourse = savedCourses.flatMap(r => {
+    const c = r.course_offerings as { id: string; name: string; institution_name: string } | null;
+    return c ? [{ kind: "course" as const, id: c.id, title: `${c.name} — ${c.institution_name}`, href: `/courses?course=${encodeURIComponent(c.id)}` }] : [];
+  }).slice(0, 1);
   const savedPreview: SavedPreview[] = [
+    ...newestCourse,
     ...savedSch.flatMap((r) => {
       const s = r.scholarships as { id: string; title: string } | null;
       return s ? [{ kind: "scholarship" as const, id: s.id, title: s.title, href: `/scholarships/${s.id}` }] : [];
@@ -242,7 +251,7 @@ export async function loadToday(
           school_id: (d.school_id as number | null) ?? null,
         })),
       },
-      saved: { scholarships: savedSch.length, schools: savedSchools.length, majors: savedMajors.length },
+      saved: { scholarships: savedSch.length, schools: savedSchools.length, majors: savedMajors.length, courses: savedCourses.length },
       deadlines,
       scholarshipStatuses: Object.fromEntries(savedSch.map((r) => [r.scholarship_id as string, (r.status as string | null) ?? "interested"])),
     },
