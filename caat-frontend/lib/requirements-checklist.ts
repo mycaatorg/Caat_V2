@@ -12,6 +12,8 @@
  */
 import type { ScholarshipRow } from "@/types/scholarships";
 import { scholarshipSourceState, type SourceFreshness } from "@/lib/scholarship-eligibility";
+import { daysBetween } from "@/lib/today";
+import { todayKey } from "@/lib/local-date";
 
 export type ChecklistScholarship = Pick<
   ScholarshipRow,
@@ -160,14 +162,15 @@ export function requirementsChecklist(row: ChecklistScholarship, now: Date): Req
         : { label: "Not recorded whether an essay is required", state: "not-recorded" as const, source: PROVIDER }),
   });
 
-  // 3. Closing date
+  // 3. Closing date, compared in whole calendar days (the Today rule), so the
+  //    closing day itself never reads as passed after UTC midnight.
   const deadline = validDate(row.deadline_at);
   add({
     key: "deadline",
     kind: "deadline",
     ...(!deadline
       ? { label: "No closing date recorded", state: "not-recorded" as const, source: PROVIDER }
-      : deadline.getTime() >= now.getTime()
+      : daysBetween(todayKey(now), row.deadline_at!) >= 0
         ? { label: `Closes ${formatDay(row.deadline_at!)} (recorded)`, state: "recorded" as const, source: RECORDED }
         : {
             label: `The recorded closing date (${formatDay(row.deadline_at!)}) has passed. Check whether it has reopened.`,
