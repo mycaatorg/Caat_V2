@@ -818,6 +818,62 @@ test("Today turns a missing application deadline into a task that clears once fi
   }
 });
 
+function customScholarshipCard(page: Page, title: string) {
+  return page
+    .getByRole("main")
+    .locator('[data-slot="card"]')
+    .filter({ has: page.getByRole("heading", { name: title, exact: true, level: 3 }) });
+}
+
+async function removeCustomScholarship(page: Page, title: string) {
+  await page.goto("/scholarships?view=mine");
+  await expect(page.getByRole("main").getByRole("heading", { name: "My Scholarships", level: 2 })).toBeVisible({ timeout: 15_000 });
+  const card = customScholarshipCard(page, title);
+  // Let the owner's list load before deciding there is nothing to remove.
+  await card.first().waitFor({ timeout: 10_000 }).catch(() => {});
+  if (!(await card.count())) return;
+  await card.getByRole("button", { name: "Delete scholarship" }).click();
+  await card.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(card).toHaveCount(0, { timeout: 10_000 });
+}
+
+test("a custom scholarship deadline becomes a Today task and Custom deadline that survive a reload (PROD-146)", async ({ page }) => {
+  test.setTimeout(90_000);
+  await signInToIsolatedStudent(page);
+  const title = marker("E2E custom scholarship");
+  // Three days out keeps it inside the 14-day window in any student time zone.
+  const deadline = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+  try {
+    await page.goto("/scholarships?view=mine");
+    await expect(page.getByRole("main").getByRole("heading", { name: "My Scholarships", level: 2 })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("main").getByRole("button", { name: "Add Scholarship", exact: true }).click();
+
+    const dialog = page.getByRole("dialog", { name: "Add Scholarship" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel(/Scholarship Name/).fill(title);
+    await dialog.getByLabel(/University \/ Provider/).fill("E2E Test Rotary Club");
+    await dialog.getByLabel("Application Deadline", { exact: true }).fill(deadline);
+    const saved = page.waitForResponse((r) => r.url().includes("/rest/v1/user_scholarships") && r.request().method() === "POST" && r.ok());
+    await dialog.getByRole("button", { name: "Add Scholarship", exact: true }).click();
+    await saved;
+    await expect(dialog).toHaveCount(0);
+    await expect(customScholarshipCard(page, title)).toHaveCount(1);
+
+    await page.goto("/today");
+    for (let pass = 0; pass < 2; pass += 1) {
+      const task = page.getByRole("region", { name: "Needs attention" }).getByRole("link", { name: new RegExp(`${title} closes in \\d+ days`) });
+      await expect(task).toBeVisible({ timeout: 15_000 });
+      await expect(task).toHaveAttribute("href", "/scholarships?view=mine");
+      const upcoming = page.getByRole("region", { name: "Coming up" }).getByRole("link", { name: new RegExp(title) });
+      await expect(upcoming).toBeVisible();
+      await expect(upcoming).toContainText("Custom");
+      if (pass === 0) await page.reload();
+    }
+  } finally {
+    if (!page.isClosed()) await removeCustomScholarship(page, title).catch(() => {});
+  }
+});
+
 test('three-major comparison shows seeded careers, coursework and honest missing values', { tag: '@phone' }, async ({ page }) => {
   await signInToIsolatedStudent(page);
   await page.goto('/majors');
