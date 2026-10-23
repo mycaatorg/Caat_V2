@@ -383,15 +383,33 @@ test("rich resume formatting survives a reload and is what Print / PDF exports",
   }
 });
 
+/** On the open major detail page, wait for the loaded bookmark state and leave it unbookmarked. */
+async function resetMajorBookmark(page: Page) {
+  const loaded = page.getByRole("button", { name: /^(Bookmark major|Remove bookmark)$/ });
+  await expect(loaded).toBeEnabled({ timeout: 15_000 });
+  const saved = page.getByRole("button", { name: "Remove bookmark" });
+  if (await saved.count()) {
+    await saved.click();
+    await expect(page.getByRole("button", { name: "Bookmark major" })).toBeEnabled({ timeout: 15_000 });
+  }
+}
+
 test("seeded major detail bookmark persists after reload and appears in the bookmarked list", async ({ page }) => {
   await signInToIsolatedStudent(page);
   const detailPath = `/majors/${MAJOR_ID}`;
   try {
     await assertIsolatedDetailRoute(page, "/majors/[id]", detailPath);
+    // Reset first: a reused isolated database may still hold this bookmark from
+    // an earlier interrupted run. Wait for the loaded state (the button is named
+    // "Loading major bookmark" until the saved state is read) before acting.
+    await resetMajorBookmark(page);
     const bookmark = page.getByRole("button", { name: "Bookmark major" });
-    await expect(bookmark).toBeVisible();
+    await expect(bookmark).toHaveAttribute("aria-pressed", "false");
     await bookmark.click();
-    await expect(page.getByRole("button", { name: "Remove bookmark" })).toHaveAttribute("aria-pressed", "true");
+    const saved = page.getByRole("button", { name: "Remove bookmark" });
+    await expect(saved).toHaveAttribute("aria-pressed", "true");
+    // Enabled again only once the write has settled, so the reload cannot cut it off.
+    await expect(saved).toBeEnabled({ timeout: 15_000 });
 
     await page.reload();
     await expect(page.getByRole("button", { name: "Remove bookmark" })).toHaveAttribute("aria-pressed", "true", { timeout: 15_000 });
@@ -399,7 +417,7 @@ test("seeded major detail bookmark persists after reload and appears in the book
     await expect(page.getByRole("link", { name: /E2E Test Engineering/ }).first()).toBeVisible({ timeout: 15_000 });
   } finally {
     await page.goto(detailPath).catch(() => {});
-    await page.getByRole("button", { name: "Remove bookmark" }).click().catch(() => {});
+    await resetMajorBookmark(page).catch(() => {});
   }
 });
 
