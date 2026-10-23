@@ -370,6 +370,8 @@ export default function ScholarshipsClient({
                 <Input
                   className="pl-9"
                   placeholder="Search scholarships..."
+                  aria-label="Search scholarships"
+                  aria-describedby="scholarship-search-help"
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -377,6 +379,10 @@ export default function ScholarshipsClient({
                   }}
                 />
               </div>
+
+              <p id="scholarship-search-help" className="mb-4 text-xs text-muted-foreground">
+                Search with up to 8 keywords and 200 characters. Shorten longer searches to see results.
+              </p>
 
               <div className="flex flex-wrap items-center gap-2">
                 {/* Location */}
@@ -695,7 +701,7 @@ export default function ScholarshipsClient({
               <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
                 <p className="text-lg font-medium">No scholarships found</p>
                 <p className="text-sm mt-1">
-                  Try a broader search, or clear your filters to see everything again.
+                  Try fewer keywords (up to 8 and 200 characters), or clear your filters to see everything again.
                 </p>
                 <Button variant="outline" className="mt-4 rounded-none" onClick={clearAll}>
                   Clear search and filters

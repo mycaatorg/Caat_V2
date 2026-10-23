@@ -268,6 +268,7 @@ export function TodayLoadError() {
 }
 
 export interface TodayViewProps {
+  initialQuery?: string;
   name: string | null;
   hour: number;
   todayISO: string;
@@ -316,7 +317,14 @@ export function TodayView(props: TodayViewProps) {
   const pendingTodoIdsRef = useRef(new Set<string>());
   const todoVersionsRef = useRef(new Map<string, number>());
   const [nudge, setNudge] = useState(props.showOnboardingNudge && nextStep.kind !== "onboarding");
-  const [focus, setFocus] = useState<FocusState>({ view: null, page: 1 });
+  const [focus, setFocus] = useState<FocusState>(() => {
+    const params = new URLSearchParams(props.initialQuery ?? "");
+    const requestedView = params.get("view");
+    const view = requestedView === "attention" || requestedView === "upcoming" || requestedView === "recent" || requestedView === "todos" ? requestedView : null;
+    const items = view === "attention" ? tasks : view === "upcoming" ? comingUp : view === "recent" ? recent : view === "todos" ? props.todos : [];
+    const requestedPage = Number(params.get("page"));
+    return { view, page: Number.isInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, pageCount(items.length)) : 1 };
+  });
   const focusedHeadingRef = useRef<HTMLHeadingElement>(null);
   const todayHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusMountedRef = useRef(false);

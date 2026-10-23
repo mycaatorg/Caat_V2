@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMockSupabase } from "./mock-supabase";
 import { button, click, link, mountComponent, unmountAll } from "./dom-helpers";
@@ -59,5 +60,9 @@ describe("Today deadline recovery", () => {
     await click(button("Next page"));
     expect(document.body.textContent).toContain("Campus task 11");
     expect(window.location.search).toBe("?view=todos&page=2");
+    const html = renderToStaticMarkup(await TodayPage({ searchParams: Promise.resolve({ view: "todos", page: "2" }) }));
+    expect(html).toContain("Campus task 11");
+    expect(html).not.toContain("Your next step");
+    expect(html).not.toContain("Campus task 10");
   });
 });
