@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  ANCHOR_TOLERANCE_MS,
   classifyCheck,
+  isAnchored,
   contentHash,
   createSupabaseStore,
   extractVisibleText,
@@ -12,9 +14,12 @@ import {
 } from '@/scripts/refresh-scholarship-sources.mjs';
 import { createMockSupabase } from './mock-supabase';
 
+// Imported 15 Oct: two days before the 17 Oct baselines used below, inside the anchor tolerance.
+const FRESH = '2026-10-15T00:00:00.000Z';
+const STALE = '2026-05-01T00:00:00.000Z';
 type Row = { id: string; external_url: string | null; last_verified_at: string | null; source_last_synced_at: string | null; is_active: boolean; raw_payload: Record<string, unknown> | null };
 const row = (id: string, external_url: string | null, extra: Partial<Row> = {}): Row => ({
-  id, external_url, last_verified_at: '2026-06-01T00:00:00.000Z', source_last_synced_at: '2026-06-01T00:00:00.000Z', is_active: true, raw_payload: { title: 'Kept' }, ...extra,
+  id, external_url, last_verified_at: '2026-06-01T00:00:00.000Z', source_last_synced_at: FRESH, is_active: true, raw_payload: { title: 'Kept' }, ...extra,
 });
 
 const page = (main: string, chrome = '') => `<!doctype html><html><head><title>t</title><style>.a{}</style></head><body>
@@ -111,11 +116,24 @@ describe('classification', () => {
     expect(classifyCheck({ ...ok, reference, previous: null }).outcome).toBe('unchanged');
     expect(classifyCheck({ ...ok, reference: { ...reference, content_hash: 'h0' }, previous: null }).outcome).toBe('changed');
   });
-  it('re-baselines when a row was re-imported after the reference check', () => {
+  it('re-baselines a changed page when a row was re-imported after the baseline', () => {
     const rows = [row('r', url, { source_last_synced_at: ago(DAY) })];
     expect(classifyCheck({ ...ok, rows, reference: { ...reference, content_hash: 'h0' }, previous: null })).toMatchObject({ outcome: 'baseline', detail: expect.stringMatching(/re-import/) });
-    const older = [row('r', url, { source_last_synced_at: ago(30 * DAY) })];
-    expect(classifyCheck({ ...ok, rows: older, reference, previous: null }).outcome).toBe('unchanged');
+    expect(classifyCheck({ ...ok, rows: [row('r', url, { source_last_synced_at: ago(30 * DAY) })], reference: { ...reference, content_hash: 'h0' }, previous: null }).outcome).toBe('changed');
+  });
+  it('an unchanged page whose rows were imported before the baseline is unanchored', () => {
+    const stale = [row('r', url, { source_last_synced_at: STALE })];
+    expect(classifyCheck({ ...ok, rows: stale, reference, previous: null })).toMatchObject({ outcome: 'unanchored', detail: expect.stringMatching(/predate/) });
+    const mixed = [row('r', url), row('s', url, { source_last_synced_at: STALE })];
+    expect(classifyCheck({ ...ok, rows: mixed, reference, previous: null })).toMatchObject({ outcome: 'unchanged', detail: expect.stringMatching(/1 of 2/) });
+  });
+  it('anchoring allows imports up to the tolerance before the baseline, and is per row', () => {
+    const at = '2026-10-17T00:00:00.000Z';
+    expect(ANCHOR_TOLERANCE_MS).toBe(7 * DAY);
+    expect(isAnchored({ source_last_synced_at: new Date(Date.parse(at) - 7 * DAY).toISOString() }, at)).toBe(true);
+    expect(isAnchored({ source_last_synced_at: new Date(Date.parse(at) - 7 * DAY - 1000).toISOString() }, at)).toBe(false);
+    expect(isAnchored({ source_last_synced_at: null }, at)).toBe(false);
+    expect(isAnchored({ source_last_synced_at: FRESH }, null)).toBe(false);
   });
   it('a redirect to another url is unreachable and never a baseline', () => {
     const moved = classifyCheck({ ...ok, finalUrl: 'https://u.example/new-home', reference: null, previous: null });
@@ -144,22 +162,35 @@ describe('classification', () => {
 
 describe('scholarship updates', () => {
   const checkedAt = '2026-10-24T01:02:03.000Z';
+  const baselineAt = '2026-10-17T00:00:00.000Z';
   const rows = [
     row('old', 'https://u.example/a', { last_verified_at: '2026-06-01T00:00:00.000Z' }),
     row('same', 'https://u.example/a#x', { last_verified_at: checkedAt }),
     row('null', 'https://u.example/a', { last_verified_at: null }),
   ];
   it('only unchanged advances last_verified_at, and only rows whose value would change', () => {
-    expect(planScholarshipUpdates(rows, { outcome: 'unchanged', checked_at: checkedAt })).toEqual([
+    expect(planScholarshipUpdates(rows, { outcome: 'unchanged', checked_at: checkedAt, baseline_at: baselineAt })).toEqual([
       { id: 'old', action: 'verify', at: checkedAt },
       { id: 'null', action: 'verify', at: checkedAt },
     ]);
   });
   it('never moves last_verified_at backwards', () => {
-    expect(planScholarshipUpdates([row('newer', 'https://u.example/a', { last_verified_at: '2026-10-25T00:00:00.000Z' })], { outcome: 'unchanged', checked_at: checkedAt })).toEqual([]);
+    expect(planScholarshipUpdates([row('newer', 'https://u.example/a', { last_verified_at: '2026-10-25T00:00:00.000Z' })], { outcome: 'unchanged', checked_at: checkedAt, baseline_at: baselineAt })).toEqual([]);
+  });
+  it('old import + baseline + unchanged page verifies nothing', () => {
+    const stale = [row('old', 'https://u.example/a', { source_last_synced_at: STALE })];
+    expect(planScholarshipUpdates(stale, { outcome: 'unchanged', checked_at: checkedAt, baseline_at: baselineAt })).toEqual([]);
+    expect(planScholarshipUpdates(stale, { outcome: 'unanchored', checked_at: checkedAt, baseline_at: baselineAt })).toEqual([]);
+  });
+  it('two rows on one url: only the re-imported one verifies', () => {
+    const shared = [row('reimported', 'https://u.example/a#x', { source_last_synced_at: '2026-10-23T00:00:00.000Z' }), row('old', 'https://u.example/a#y', { source_last_synced_at: STALE })];
+    expect(planScholarshipUpdates(shared, { outcome: 'unchanged', checked_at: checkedAt, baseline_at: baselineAt })).toEqual([{ id: 'reimported', action: 'verify', at: checkedAt }]);
+  });
+  it('refuses to verify without the baseline time', () => {
+    expect(() => planScholarshipUpdates(rows, { outcome: 'unchanged', checked_at: checkedAt })).toThrow(/baseline/);
   });
   it('changed, unreachable and baseline write nothing to scholarships', () => {
-    for (const outcome of ['changed', 'unreachable', 'baseline']) expect(planScholarshipUpdates(rows, { outcome, checked_at: checkedAt })).toEqual([]);
+    for (const outcome of ['changed', 'unreachable', 'baseline', 'unanchored']) expect(planScholarshipUpdates(rows, { outcome, checked_at: checkedAt })).toEqual([]);
   });
   it('gone deactivates active rows and carries the reason', () => {
     const plan = planScholarshipUpdates([rows[0], row('off', 'https://u.example/a', { is_active: false })], { outcome: 'gone', checked_at: checkedAt, http_status: 404, url: 'https://u.example/a', run_id: 'run-1' });
@@ -176,7 +207,7 @@ function fakeStore(rows: Row[], history: Record<string, { previous?: object | nu
     loadActiveScholarships: vi.fn(async () => rows),
     latestChecks: vi.fn(async (url: string) => ({ previous: history[url]?.previous ?? null, reference: history[url]?.reference ?? null, missing: false })),
     startRun: vi.fn(async () => ({ id: 'run-1' })),
-    recordCheck: vi.fn(async () => ({ checked_at: `2026-10-24T00:00:0${n++}.000Z` })),
+    recordCheck: vi.fn<(check: Record<string, unknown>) => Promise<{ checked_at: string }>>(async () => ({ checked_at: `2026-10-24T00:00:0${n++}.000Z` })),
     verifyScholarship: vi.fn<(id: string, at: string) => Promise<boolean>>(async () => true),
     deactivateScholarship: vi.fn<(id: string, check: object) => Promise<boolean>>(async () => true),
     finishRun: vi.fn<(id: string, patch: object) => Promise<void>>(async () => undefined),
@@ -222,7 +253,7 @@ describe('runRefresh', () => {
     const fetchImpl = stubFetch(pages);
     const summary = await runRefresh({ store, fetchImpl, apply: false, ...quiet });
     expect(fetchImpl).toHaveBeenCalledTimes(5);
-    expect(summary.counts).toEqual({ baseline: 1, unchanged: 1, changed: 1, unreachable: 1, gone: 1 });
+    expect(summary.counts).toEqual({ baseline: 1, unchanged: 1, changed: 1, unreachable: 1, gone: 1, unanchored: 0, unanchored_rows: 0 });
     expect(summary.mode).toBe('dry-run');
     expect(summary.plannedUpdates).toBe(3);
     for (const write of [store.assertReady, store.startRun, store.recordCheck, store.verifyScholarship, store.deactivateScholarship, store.finishRun]) expect(write).not.toHaveBeenCalled();
@@ -241,7 +272,7 @@ describe('runRefresh', () => {
     expect(store.deactivateScholarship.mock.calls.map(([id]) => id)).toEqual(['g1']);
     expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({
       status: 'succeeded', records_seen: 5, records_inserted: 0, records_updated: 3,
-      check_counts: { baseline: 1, unchanged: 1, changed: 1, unreachable: 1, gone: 1 },
+      check_counts: { baseline: 1, unchanged: 1, changed: 1, unreachable: 1, gone: 1, unanchored: 0, unanchored_rows: 0 },
     }));
     expect(summary.scholarshipsUpdated).toBe(3);
   });
@@ -260,9 +291,41 @@ describe('runRefresh', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it('makes the unanchored gap visible and writes nothing for it', async () => {
+    const stale = [
+      row('s1', 'https://u.example/same#a', { source_last_synced_at: STALE }),
+      row('f1', 'https://u.example/same#b'),
+      row('s2', 'https://u.example/old', { source_last_synced_at: STALE }),
+    ];
+    const hist = {
+      'https://u.example/same': history['https://u.example/same'],
+      'https://u.example/old': { reference: { content_hash: hash, checked_at: ago(7 * DAY) } },
+    };
+    const store = fakeStore(stale, hist);
+    const summary = await runRefresh({ store, fetchImpl: stubFetch({ 'https://u.example/same': { status: 200, body }, 'https://u.example/old': { status: 200, body } }), apply: true, concurrency: 1, ...quiet });
+    expect(summary.counts).toMatchObject({ unchanged: 1, unanchored: 1, unanchored_rows: 2 });
+    expect(store.verifyScholarship.mock.calls.map(([id]) => id)).toEqual(['f1']);
+    expect(store.recordCheck.mock.calls.map(([c]) => c.outcome)).toEqual(['unchanged', 'unanchored']);
+  });
+
+  it('counts an outcome only after its check is stored', async () => {
+    const store = fakeStore(rows, history);
+    store.recordCheck.mockRejectedValueOnce(new Error('insert failed'));
+    await expect(runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, ...quiet })).rejects.toThrow('insert failed');
+    expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ status: 'failed', records_seen: 5, check_counts: expect.objectContaining({ unchanged: 0 }) }));
+  });
+
+  it('matches --url-prefix only on a path boundary', async () => {
+    const r = [row('a', 'https://u.example/path'), row('b', 'https://u.example/pathology'), row('c', 'https://u.example/path/sub')];
+    const fetchImpl = stubFetch({ 'https://u.example/path': { status: 200, body }, 'https://u.example/path/sub': { status: 200, body } });
+    const summary = await runRefresh({ store: fakeStore(r), fetchImpl, apply: false, urlPrefix: 'https://u.example/path', ...quiet });
+    expect(summary.urls).toBe(2);
+    expect(fetchImpl.mock.calls.map(([u]) => u).sort()).toEqual(['https://u.example/path', 'https://u.example/path/sub']);
+  });
+
   it('scopes a run to a normalised --url-prefix', async () => {
     const fetchImpl = stubFetch(pages);
-    const summary = await runRefresh({ store: fakeStore(rows, history), fetchImpl, apply: false, urlPrefix: 'HTTPS://U.Example/ch#x', ...quiet });
+    const summary = await runRefresh({ store: fakeStore(rows, history), fetchImpl, apply: false, urlPrefix: 'HTTPS://U.Example/changed#x', ...quiet });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(summary.counts.changed).toBe(1);
   });
@@ -361,16 +424,15 @@ describe('supabase store', () => {
     expect(update.calls).toContainEqual({ method: 'or', args: ['last_verified_at.is.null,last_verified_at.lt."2026-10-24T01:02:03.123456+00:00"'] });
   });
 
-  it('deactivates from a fresh read and only while still active', async () => {
-    const supabase = createMockSupabase({
-      resolver: (ctx) => (ctx.op === 'select' ? { data: { raw_payload: { title: 'Fresh', other: 1 } }, error: null } : { data: [{ id: 'a' }], error: null }),
-    });
+  it('deactivates in one statement through scholarship_mark_gone', async () => {
+    const calls: [string, Record<string, unknown>][] = [];
+    const supabase = createMockSupabase({ rpc: (name, args) => { calls.push([name, args]); return { data: name === 'scholarship_mark_gone' && calls.length === 1 ? 'a' : null, error: null }; } });
+    const store = createSupabaseStore(supabase);
     const sourceCheck = { outcome: 'gone', http_status: 410 };
-    expect(await createSupabaseStore(supabase).deactivateScholarship('a', sourceCheck)).toBe(true);
-    const [read, write] = supabase.queries;
-    expect(read.op).toBe('select');
-    expect(write.calls).toContainEqual({ method: 'update', args: [{ is_active: false, raw_payload: { title: 'Fresh', other: 1, source_check: sourceCheck } }] });
-    expect(write.calls).toContainEqual({ method: 'eq', args: ['is_active', true] });
+    expect(await store.deactivateScholarship('a', sourceCheck)).toBe(true);
+    expect(await store.deactivateScholarship('a', sourceCheck)).toBe(false);
+    expect(calls[0]).toEqual(['scholarship_mark_gone', { p_id: 'a', p_check: sourceCheck }]);
+    expect(supabase.queries).toEqual([]);
   });
 });
 
@@ -383,6 +445,7 @@ describe('arguments', () => {
   });
   it('normalises --url-prefix like source urls', () => {
     expect(parseArgs(['--url-prefix', 'HTTPS://U.Example/a#frag']).urlPrefix).toBe('https://u.example/a');
+    expect(parseArgs(['--url-prefix=https://u.example/a?id=2&x=y']).urlPrefix).toBe('https://u.example/a?id=2&x=y');
     expect(() => parseArgs(['--url-prefix', 'nope'])).toThrow();
   });
 });

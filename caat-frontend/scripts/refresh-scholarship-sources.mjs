@@ -7,17 +7,24 @@
 // Dry run is the default: it reads and fetches, prints counts and a sample, and writes nothing.
 // See docs/operations/scholarship-source-refresh.md. Rules this file keeps:
 // - one scholarship_source_checks row per distinct URL (fragment removed) per run;
-// - only an `unchanged` check advances scholarships.last_verified_at, to that check's checked_at;
+// - only an `unchanged` check advances scholarships.last_verified_at, to that check's checked_at,
+//   and only for rows whose stored fields were imported from the content the baseline hashed
+//   ("anchored"); an unchanged page whose rows all predate the baseline is `unanchored`;
 // - `gone` (404/410 now and on a check at least 24 h earlier) sets is_active=false and records why
-//   in raw_payload; `changed`, `unreachable` and `baseline` never touch scholarships;
+//   in raw_payload; `changed`, `unreachable`, `unanchored` and `baseline` never touch scholarships;
 // - nothing is deleted, no date is invented, no extracted field is changed.
 import { createHash, randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const OUTCOMES = /** @type {const} */ (['baseline', 'unchanged', 'changed', 'unreachable', 'gone']);
+export const OUTCOMES = /** @type {const} */ (['baseline', 'unchanged', 'changed', 'unreachable', 'gone', 'unanchored']);
 export const USER_AGENT = 'CAAT-SourceCheck/1.0 (scholarship listing freshness check; one request per page per run)';
 export const GONE_GAP_MS = 24 * 60 * 60 * 1000;
+// A baseline hash proves something about a row only if the row's fields were extracted from that
+// content. The scraper stamps source_last_synced_at with its run's start time, and a run (plus the
+// manual load after it) can take days, so an import up to 7 days before the baseline still counts as
+// extracted from the page the baseline hashed. Anything older predates the baseline: unanchored.
+export const ANCHOR_TOLERANCE_MS = 7 * 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 1000;
 const SAMPLE_PER_OUTCOME = 3;
 const MIGRATION = 'supabase/migrations/20261024090000_scholarship_source_checks.sql';
@@ -133,11 +140,19 @@ export function contentHash(body, contentType, url) {
 
 const sameUrl = (a, b) => !a || normaliseUrl(a) === b;
 
+/** True when the row was imported no earlier than ANCHOR_TOLERANCE_MS before the baseline. */
+export function isAnchored(row, baselineAt) {
+  if (!row?.source_last_synced_at || !baselineAt) return false;
+  return Date.parse(row.source_last_synced_at) >= Date.parse(baselineAt) - ANCHOR_TOLERANCE_MS;
+}
+
 /**
  * previous: the most recent stored check for this URL (any outcome).
- * reference: the most recent stored check whose hash was accepted (baseline or unchanged).
- * A `changed` hash never becomes the reference, so a changed page stays `changed`
- * until a re-import (a row's source_last_synced_at later than the reference) re-baselines it.
+ * reference: the most recent `baseline` check: its hash is the accepted content and its
+ * checked_at is the time rows are anchored against. `unchanged`/`unanchored` checks repeat
+ * that hash, and a `changed` hash never becomes the reference, so a changed page stays
+ * `changed` until a re-import (a row's source_last_synced_at later than the baseline)
+ * re-baselines it.
  * @param {{
  *   url: string, status?: number | null, error?: string | null, hash?: string | null, finalUrl?: string | null,
  *   previous?: { http_status?: number | null, checked_at?: string | null, final_url?: string | null } | null,
@@ -160,13 +175,18 @@ export function classifyCheck({ url, status, error, hash, finalUrl, previous, re
   if (status === 429 || (status ?? 0) >= 500) return { outcome: 'unreachable', detail: `HTTP ${status}` };
   if (!(status && status >= 200 && status < 300)) return { outcome: 'unreachable', detail: `HTTP ${status}; not a usable page` };
   if (!reference?.content_hash) return { outcome: 'baseline', detail: 'first stored content hash for this url' };
-  const referenceAt = Date.parse(reference.checked_at ?? '');
-  if (rows.some((r) => r.source_last_synced_at && Date.parse(r.source_last_synced_at) > referenceAt)) {
-    return { outcome: 'baseline', detail: 're-imported since the reference check; new baseline' };
+  if (reference.content_hash !== hash) {
+    const baselineAt = Date.parse(reference.checked_at ?? '');
+    if (rows.some((r) => r.source_last_synced_at && Date.parse(r.source_last_synced_at) > baselineAt)) {
+      return { outcome: 'baseline', detail: 're-imported since the baseline; new baseline' };
+    }
+    return { outcome: 'changed', detail: 'content differs from the baseline hash' };
   }
-  return reference.content_hash === hash
-    ? { outcome: 'unchanged', detail: null }
-    : { outcome: 'changed', detail: 'content differs from the last accepted hash' };
+  const anchored = rows.filter((r) => isAnchored(r, reference.checked_at)).length;
+  if (anchored === 0) {
+    return { outcome: 'unanchored', detail: `page unchanged since the baseline at ${reference.checked_at}, but the stored fields predate it; needs a re-import` };
+  }
+  return { outcome: 'unchanged', detail: anchored < rows.length ? `${rows.length - anchored} of ${rows.length} rows predate the baseline and stay unverified` : null };
 }
 
 const later = (candidate, current) => !current || Date.parse(candidate) > Date.parse(current);
@@ -176,7 +196,8 @@ export function planScholarshipUpdates(rows, check) {
   const at = check.checked_at;
   if (!at) throw new Error('A check without checked_at cannot update scholarships.');
   if (check.outcome === 'unchanged') {
-    return rows.filter((r) => later(at, r.last_verified_at)).map((r) => ({ id: r.id, action: 'verify', at }));
+    if (!check.baseline_at) throw new Error('An unchanged check without its baseline time cannot verify anything.');
+    return rows.filter((r) => isAnchored(r, check.baseline_at) && later(at, r.last_verified_at)).map((r) => ({ id: r.id, action: 'verify', at }));
   }
   if (check.outcome === 'gone') {
     return rows.filter((r) => r.is_active !== false).map((r) => ({
@@ -218,6 +239,13 @@ export async function checkUrl(url, { fetchImpl, timeoutMs }) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** `prefix` matches at a path boundary: /path matches /path, /path/x and /path?x, not /pathology. */
+export function matchesPrefix(url, prefix) {
+  if (!url.startsWith(prefix)) return false;
+  if (url.length === prefix.length || prefix.endsWith('/')) return true;
+  return url[prefix.length] === '/' || url[prefix.length] === '?';
 }
 
 /** Run `worker` over items; after the first failure no new item starts, in-flight ones finish, then it rethrows. */
@@ -266,14 +294,14 @@ export function createSupabaseStore(client) {
         if (page.length < PAGE_SIZE) return rows;
       }
     },
-    /** Latest check and latest accepted check. A missing table reads as no history (`missing: true`). */
+    /** Latest check and latest baseline. A missing table reads as no history (`missing: true`). */
     async latestChecks(url) {
       const previous = await client.from('scholarship_source_checks')
         .select('checked_at,http_status,final_url,content_hash,outcome').eq('url', url)
         .order('checked_at', { ascending: false }).limit(1);
       if (missingTable(previous.error)) return { previous: null, reference: null, missing: true };
       const reference = await client.from('scholarship_source_checks')
-        .select('checked_at,content_hash,final_url,outcome').eq('url', url).in('outcome', ['baseline', 'unchanged'])
+        .select('checked_at,content_hash,final_url,outcome').eq('url', url).eq('outcome', 'baseline')
         .not('content_hash', 'is', null).order('checked_at', { ascending: false }).limit(1);
       if (missingTable(reference.error)) return { previous: null, reference: null, missing: true };
       return { previous: must(previous, 'load previous check')?.[0] ?? null, reference: must(reference, 'load reference check')?.[0] ?? null, missing: false };
@@ -290,13 +318,10 @@ export function createSupabaseStore(client) {
         .or(`last_verified_at.is.null,last_verified_at.lt."${at}"`).select('id'), `verify scholarship ${id}`);
       return Array.isArray(data) && data.length > 0;
     },
-    /** Deactivates a still-active row, merging the reason into a freshly read raw_payload. */
+    /** Deactivates a still-active row and merges the reason into raw_payload in one statement. */
     async deactivateScholarship(id, sourceCheck) {
-      const current = must(await client.from('scholarships').select('raw_payload').eq('id', id).single(), `read scholarship ${id}`);
-      const payload = current?.raw_payload && typeof current.raw_payload === 'object' && !Array.isArray(current.raw_payload) ? current.raw_payload : {};
-      const data = must(await client.from('scholarships').update({ is_active: false, raw_payload: { ...payload, source_check: sourceCheck } })
-        .eq('id', id).eq('is_active', true).select('id'), `deactivate scholarship ${id}`);
-      return Array.isArray(data) && data.length > 0;
+      const data = must(await client.rpc('scholarship_mark_gone', { p_id: id, p_check: sourceCheck }), `deactivate scholarship ${id}`);
+      return Boolean(data);
     },
     async finishRun(id, patch) {
       must(await client.from('scholarship_import_runs').update(patch).eq('id', id), 'finish run');
@@ -328,9 +353,10 @@ export async function runRefresh({ store, fetchImpl = globalThis.fetch, apply = 
   const groups = groupRowsByUrl(await store.loadActiveScholarships());
   const prefix = urlPrefix ? normaliseUrl(urlPrefix) : null;
   if (urlPrefix && !prefix) throw new Error(`--url-prefix needs an http(s) url, got ${urlPrefix}`);
-  if (prefix) for (const url of [...groups.keys()]) if (!url.startsWith(prefix)) groups.delete(url);
+  if (prefix) for (const url of [...groups.keys()]) if (!matchesPrefix(url, prefix)) groups.delete(url);
   const urls = [...groups.keys()].slice(0, limit ?? undefined);
-  const counts = Object.fromEntries(OUTCOMES.map((o) => [o, 0]));
+  /** @type {Record<string, number>} */
+  const counts = { ...Object.fromEntries(OUTCOMES.map((o) => [o, 0])), unanchored_rows: 0 };
   const sample = [];
   let plannedUpdates = 0;
   let scholarshipsUpdated = 0;
@@ -348,12 +374,15 @@ export async function runRefresh({ store, fetchImpl = globalThis.fetch, apply = 
         log('Note: scholarship_source_checks does not exist here yet; dry run treats every url as having no history.');
       }
       const { outcome, detail } = classifyCheck({ url, ...fetched, previous: history.previous, reference: history.reference, rows, now: now() });
-      counts[outcome] += 1;
       const check = { run_id: run.id, url, http_status: fetched.status, final_url: fetched.finalUrl, content_hash: fetched.hash, outcome, detail };
       // checked_at comes from the stored check row (database clock at record time).
       // Dry-run never stores, so it uses the local clock purely to count planned updates.
       const checkedAt = apply ? (await store.recordCheck(check)).checked_at : new Date(now()).toISOString();
-      const plan = planScholarshipUpdates(rows, { ...check, checked_at: checkedAt });
+      counts[outcome] += 1;
+      if (outcome === 'unchanged' || outcome === 'unanchored') {
+        counts.unanchored_rows += rows.filter((r) => !isAnchored(r, history.reference?.checked_at)).length;
+      }
+      const plan = planScholarshipUpdates(rows, { ...check, checked_at: checkedAt, baseline_at: history.reference?.checked_at ?? null });
       plannedUpdates += plan.length;
       if (apply) {
         for (const op of plan) {
@@ -404,7 +433,9 @@ export function parseArgs(argv) {
     return n;
   };
   for (let i = 0; i < argv.length; i += 1) {
-    const [flag, inline] = argv[i].split('=', 2);
+    const eq = argv[i].indexOf('=');
+    const flag = eq < 0 ? argv[i] : argv[i].slice(0, eq);
+    const inline = eq < 0 ? undefined : argv[i].slice(eq + 1);
     const value = () => inline ?? argv[++i];
     if (flag === '--apply') options.apply = true;
     else if (flag === '--dry-run') options.apply = false;
@@ -424,6 +455,7 @@ export function parseArgs(argv) {
 export function formatSummary(summary) {
   const lines = [`${summary.mode}: ${summary.urls} urls checked (run ${summary.runId}${summary.mode === 'apply' ? '' : ', not stored'})`];
   for (const outcome of OUTCOMES) lines.push(`  ${outcome.padEnd(11)} ${summary.counts[outcome]}`);
+  lines.push(`  rows left unverified because their import predates the baseline: ${summary.counts.unanchored_rows}`);
   lines.push(summary.mode === 'apply'
     ? `  scholarship rows updated: ${summary.scholarshipsUpdated}`
     : `  scholarship rows that --apply would update: ${summary.plannedUpdates} (nothing written)`);
