@@ -34,11 +34,13 @@ import {
   updateApplicationDeadline,
   fetchMajorOptions,
   fetchSavedCoursesForSchool,
+  fetchHubScholarshipAttachments,
   type ApplicationHub,
 } from "./api";
 import { SavedCoursesCard } from "@/components/applications/saved-courses-card";
 import { updateApplicationMajors } from "@/app/(main)/applications/api";
-import { SCHOLARSHIP_STATUS_LABELS } from "@/lib/scholarship-tracking";
+import { mentionsSchool, type SavedScholarshipForHub } from "@/lib/scholarship-tracking";
+import { HubScholarshipAttachments } from "@/components/applications/hub-scholarship-attachments";
 import {
   PREP_CHECKLIST_TITLE,
   PREP_STEP_COUNT,
@@ -85,6 +87,8 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
   const [majorOptions, setMajorOptions] = useState<string[]>([]);
   const [checkedAt] = useState(() => new Date().toISOString());
   const [retryingCourses, setRetryingCourses] = useState(false);
+  const [retryingScholarships, setRetryingScholarships] = useState(false);
+  const [checklistNow] = useState(() => new Date());
 
   useEffect(() => {
     fetchMajorOptions().then(setMajorOptions).catch(() => {});
@@ -120,6 +124,20 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
       setRetryingCourses(false);
     }
   };
+
+  /** PROD-77: the scholarships card retries its own reads (saved + ticks). */
+  const retryScholarshipAttachments = async () => {
+    if (!hub || retryingScholarships) return;
+    setRetryingScholarships(true);
+    try {
+      const next = await fetchHubScholarshipAttachments();
+      setHub((cur) => (cur ? { ...cur, ...next } : cur));
+    } finally {
+      setRetryingScholarships(false);
+    }
+  };
+  const setSavedScholarships = (savedScholarships: SavedScholarshipForHub[]) =>
+    setHub((cur) => (cur ? { ...cur, savedScholarships } : cur));
 
   // Status and deadline writes go out in the order they were made, so the
   // saved row always matches the last thing the student chose.
@@ -212,7 +230,10 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
     schoolName,
     schoolCountry,
     intendedMajors,
-    trackedScholarships,
+    savedScholarships,
+    savedScholarshipsUnavailable,
+    prepChecks,
+    prepChecksUnavailable,
     readiness,
     essaysForSchool,
     essaysShared,
@@ -229,6 +250,10 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
   const deadlineSet = !!application.deadline_at;
   const submitted = isSubmittedStatus(application.status);
   const score = prepScore({ ...readiness, deadlineSet });
+  // Saved scholarships shown above (attached here or naming this school).
+  const hasSavedHere = savedScholarships.some(
+    (s) => s.schoolId === schoolId || mentionsSchool(s.scholarshipSchoolName, schoolName),
+  );
 
   return (
     <div className="p-6">
@@ -400,32 +425,20 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
                 </Link>
               </CardHeader>
               <CardContent>
-                {trackedScholarships.length > 0 ? (
-                  <div className="mb-5">
-                    <GroupLabel>You&apos;re tracking</GroupLabel>
-                    <ul className="space-y-2.5">
-                      {trackedScholarships.map((s) => (
-                        <li
-                          key={s.id}
-                          className="rounded-lg border bg-muted/20 px-4 py-3 flex items-start justify-between gap-3"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="font-medium text-sm truncate">{s.title}</div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              {s.amount ?? s.provider}
-                            </div>
-                          </div>
-                          <span className="shrink-0 text-[10px] font-mono uppercase tracking-wide px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
-                            {SCHOLARSHIP_STATUS_LABELS[s.status]}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    {scholarships.length > 0 ? (
-                      <GroupLabel>Also listed for this school</GroupLabel>
-                    ) : null}
-                  </div>
-                ) : null}
+                {/* PROD-77: attached checklists, then name-matched suggestions */}
+                <HubScholarshipAttachments
+                  schoolId={schoolId}
+                  schoolName={schoolName}
+                  saved={savedScholarships}
+                  savedUnavailable={savedScholarshipsUnavailable}
+                  prepChecks={prepChecks}
+                  prepUnavailable={prepChecksUnavailable}
+                  onSavedChange={setSavedScholarships}
+                  onRetry={() => void retryScholarshipAttachments()}
+                  retrying={retryingScholarships}
+                  now={checklistNow}
+                />
+                {scholarships.length > 0 ? <GroupLabel>Also listed for this school</GroupLabel> : null}
                 {scholarshipsUnavailable && scholarships.length === 0 ? (
                   <p
                     role="status"
@@ -433,7 +446,7 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
                   >
                     Couldn&apos;t load scholarships for this university right now.
                   </p>
-                ) : scholarships.length === 0 && trackedScholarships.length === 0 ? (
+                ) : scholarships.length === 0 && !hasSavedHere ? (
                   <div className="rounded-lg border border-dashed bg-muted/20 px-6 py-8 text-center">
                     <p className="font-medium mb-1">No scholarships recorded for this university yet</p>
                     <p className="text-sm text-muted-foreground">

@@ -3,7 +3,8 @@ import { createMockSupabase, type QueryContext, type QueryResult } from "./mock-
 
 const io = vi.hoisted(() => ({
   client: null as unknown as ReturnType<typeof createMockSupabase>,
-  tracked: vi.fn(),
+  saved: vi.fn(),
+  ticks: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/client", () => ({
@@ -15,7 +16,7 @@ vi.mock("@/lib/safe-error", () => ({
   sanitizeError: (e: unknown) =>
     typeof e === "object" && e && "message" in e ? String((e as { message: string }).message) : "error",
 }));
-vi.mock("@/lib/scholarship-tracking", () => ({ fetchTrackedForSchool: io.tracked }));
+vi.mock("@/lib/scholarship-tracking", () => ({ fetchSavedScholarshipsForHub: io.saved, fetchPrepChecks: io.ticks }));
 
 import {
   fetchApplicationHub,
@@ -103,8 +104,10 @@ function hubResolver(overrides: Partial<Record<string, QueryResult>> = {}) {
 }
 
 beforeEach(() => {
-  io.tracked.mockReset();
-  io.tracked.mockResolvedValue([]);
+  io.saved.mockReset();
+  io.saved.mockResolvedValue([]);
+  io.ticks.mockReset();
+  io.ticks.mockResolvedValue({});
   use(hubResolver());
 });
 
@@ -240,12 +243,35 @@ describe("fetchApplicationHub", () => {
     });
   });
 
-  it("passes tracked scholarships and intended majors through", async () => {
-    io.tracked.mockResolvedValue([{ id: "t1", title: "Tracked", provider: "P", amount: null, status: "applied" }]);
+  it("passes saved scholarships, ticks and intended majors through", async () => {
+    const saved = [{ id: "t1", title: "Tracked", provider: "P", amount: null, status: "applied", schoolId: 7 }];
+    io.saved.mockResolvedValue(saved);
+    io.ticks.mockResolvedValue({ t1: ["essay"] });
     const hub = await fetchApplicationHub("app-1");
-    expect(io.tracked).toHaveBeenCalledWith("The University of Melbourne");
-    expect(hub.trackedScholarships).toHaveLength(1);
+    expect(hub.savedScholarships).toEqual(saved);
+    expect(hub.savedScholarshipsUnavailable).toBe(false);
+    expect(hub.prepChecks).toEqual({ t1: ["essay"] });
+    expect(hub.prepChecksUnavailable).toBe(false);
     expect(hub.intendedMajors).toEqual(["Law"]);
+  });
+
+  it("PROD-77: a failed saved-scholarship or tick read is unavailable, not empty, and the hub still loads", async () => {
+    io.saved.mockRejectedValue(new Error("boom"));
+    io.ticks.mockRejectedValue(new Error("boom"));
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.savedScholarshipsUnavailable).toBe(true);
+    expect(hub.prepChecksUnavailable).toBe(true);
+    expect(hub.savedScholarships).toEqual([]);
+    expect(hub.readiness).toBeDefined();
+  });
+
+  it("PROD-77: reads saved scholarships and ticks in the parallel batch, not after it", async () => {
+    let started = 0;
+    io.saved.mockImplementation(() => { started += 1; return new Promise(() => {}); });
+    io.ticks.mockImplementation(() => { started += 1; return new Promise(() => {}); });
+    void fetchApplicationHub("app-1");
+    await vi.waitFor(() => expect(started).toBe(2));
+    expect(io.client.queries.some((q) => q.table === "essay_prompts")).toBe(true);
   });
 });
 

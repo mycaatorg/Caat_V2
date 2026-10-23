@@ -14,6 +14,8 @@ export interface ShortlistScholarship {
   amount: string | null;
   deadlineAt: string | null;
   status: ScholarshipStatus;
+  /** PROD-77: the owner's application this saved scholarship is attached to. */
+  attachedTo?: { schoolId: number; schoolName: string; applicationId: string } | null;
 }
 
 export interface ShortlistSchool {
@@ -55,7 +57,7 @@ export async function loadShortlist(supabase: SupabaseClient, userId: string): P
   const [schRes, schoolRes, majorRes, appRes, courseRes] = await Promise.all([
     supabase
       .from("user_bookmarked_scholarships")
-      .select("scholarship_id, status, created_at, scholarships(id, title, provider_name, amount_display, deadline_at)")
+      .select("scholarship_id, status, school_id, created_at, schools(name), scholarships(id, title, provider_name, amount_display, deadline_at)")
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
     supabase
@@ -80,6 +82,14 @@ export async function loadShortlist(supabase: SupabaseClient, userId: string): P
     appsBySchool.set(Number(a.school_id), { id: a.id as string, status: a.status as ApplicationStatus });
   }
 
+  // Only an attachment to one of the owner's own applications is shown.
+  const attachmentFor = (r: Row): ShortlistScholarship["attachedTo"] => {
+    const schoolId = typeof r.school_id === "number" ? r.school_id : null;
+    const app = schoolId === null ? undefined : appsBySchool.get(schoolId);
+    const name = (r.schools as Row | null)?.name;
+    return schoolId !== null && app && typeof name === "string" ? { schoolId, schoolName: name, applicationId: app.id } : null;
+  };
+
   return {
     courses: ((courseRes.data ?? []) as Row[]).flatMap(r => {
       const c = r.course_offerings as Row | null;
@@ -97,6 +107,7 @@ export async function loadShortlist(supabase: SupabaseClient, userId: string): P
         amount: (s.amount_display as string | null) ?? null,
         deadlineAt: (s.deadline_at as string | null) ?? null,
         status: ((r.status as ScholarshipStatus | null) ?? "interested") as ScholarshipStatus,
+        attachedTo: attachmentFor(r),
       }];
     }),
     schools: ((schoolRes.data ?? []) as Row[]).flatMap((r) => {
