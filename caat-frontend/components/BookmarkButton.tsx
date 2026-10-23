@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Bookmark } from "lucide-react";
+import { useState, useEffect, useRef, type ReactElement } from "react";
+import { Bookmark, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -42,10 +42,25 @@ interface BookmarkButtonProps {
   initialBookmarked?: boolean;
 }
 
+type ReadStatus = "loading" | "ready" | "error";
+
+interface ReadState {
+  /** Which read this result belongs to (entity + owner + attempt). */
+  key: string;
+  status: ReadStatus;
+  bookmarked: boolean;
+}
+
 /**
  * Shared bookmark toggle button for majors, scholarships and schools. Optimistic
  * toggle with rollback + error toast on failure. Preserves the per-entity
  * behavior the three original buttons had (labels, sizing, schools' list event).
+ *
+ * Until the owner's saved state is known (auth still resolving, or the bookmark
+ * read in flight) the button is disabled and named "Loading <label> bookmark",
+ * so it never claims "not bookmarked" or acts on a guess. A failed read becomes
+ * a retry button rather than an unsaved state, and a second click while a write
+ * is in flight is ignored (PROD-149).
  */
 export default function BookmarkButton({
   table,
@@ -57,40 +72,67 @@ export default function BookmarkButton({
   onToggle,
   initialBookmarked,
 }: BookmarkButtonProps) {
-  const [isBookmarked, setIsBookmarked] = useState(initialBookmarked ?? false);
   // The user is resolved once, app-wide, by AuthProvider — no per-card getUser.
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const userId = user?.id ?? null;
 
-  // Only fetch the initial bookmark state when the caller did not provide it.
-  // List pages pass `initialBookmarked` (resolved in one server query), so this
-  // effect is skipped there and the N+1 per-card query disappears (C2).
+  // List pages pass `initialBookmarked` (resolved in one server query), so the
+  // per-card read is skipped there and the N+1 query stays gone (C2).
   const skipInitialFetch = initialBookmarked !== undefined;
+  const [attempt, setAttempt] = useState(0);
+  const key = skipInitialFetch ? "server" : `${table}:${column}:${id}:${userId}:${attempt}`;
+  const [read, setRead] = useState<ReadState>(() => ({
+    key: skipInitialFetch ? "server" : "",
+    status: skipInitialFetch ? "ready" : "loading",
+    bookmarked: initialBookmarked ?? false,
+  }));
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+
   useEffect(() => {
-    if (skipInitialFetch || !userId) return;
+    if (skipInitialFetch || authLoading || !userId) return;
     let active = true;
-    supabase
-      .from(table)
-      .select(column)
-      .eq("user_id", userId)
-      .eq(column, id as never)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (active) setIsBookmarked(!!data);
-      });
+    const settle = (status: ReadStatus, bookmarked = false) => {
+      if (active) setRead({ key, status, bookmarked });
+    };
+    Promise.resolve(
+      supabase
+        .from(table)
+        .select(column)
+        .eq("user_id", userId)
+        .eq(column, id as never)
+        .maybeSingle()
+    ).then(
+      ({ data, error }) => (error ? settle("error") : settle("ready", !!data)),
+      () => settle("error")
+    );
     return () => {
       active = false;
     };
-  }, [table, column, id, userId, skipInitialFetch]);
+  }, [table, column, id, userId, authLoading, skipInitialFetch, key]);
+
+  // A result only counts for the read it answered; anything else is pending.
+  let status: ReadStatus | "signed-out";
+  if (skipInitialFetch) status = read.status;
+  else if (authLoading) status = "loading";
+  else if (!userId) status = "signed-out";
+  else status = read.key === key ? read.status : "loading";
+  const isBookmarked = status === "ready" && read.bookmarked;
 
   async function handleToggle() {
-    if (!userId) {
+    if (status === "signed-out" || !userId) {
       toast.error(`Sign in to bookmark ${label}s.`);
       return;
     }
+    if (status !== "ready" || inFlight.current) return;
 
-    const prev = isBookmarked;
-    setIsBookmarked(!prev);
+    inFlight.current = true;
+    setBusy(true);
+    const readKey = key;
+    const prev = read.bookmarked;
+    const show = (bookmarked: boolean) =>
+      setRead((cur) => (cur.key === readKey ? { ...cur, bookmarked } : cur));
+    show(!prev);
 
     try {
       if (prev) {
@@ -109,27 +151,65 @@ export default function BookmarkButton({
         onToggle?.(1);
       }
     } catch {
-      setIsBookmarked(prev);
+      show(prev);
       toast.error("Failed to update bookmark. Please try again.");
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
     }
   }
 
-  const button = (
-    <Button
-      size="icon"
-      variant={isBookmarked ? "default" : "outline"}
-      onClick={handleToggle}
-      aria-pressed={isBookmarked}
-      aria-label={isBookmarked ? "Remove bookmark" : `Bookmark ${label}`}
-      className={compact ? "h-8 w-8" : undefined}
-    >
-      <Bookmark
-        className={
-          `${compact ? "h-3.5 w-3.5" : iconSize ?? ""} ${isBookmarked ? "fill-current" : ""}`.trim()
-        }
-      />
-    </Button>
-  );
+  const sizeClass = compact ? "h-8 w-8" : undefined;
+  const iconClass = (extra = "") =>
+    `${compact ? "h-3.5 w-3.5" : iconSize ?? ""} ${extra}`.trim();
+
+  let button: ReactElement;
+  let tip: string;
+  if (status === "loading") {
+    tip = `Loading ${label} bookmark`;
+    button = (
+      <Button
+        size="icon"
+        variant="outline"
+        disabled
+        aria-busy
+        aria-label={tip}
+        className={sizeClass}
+      >
+        <Loader2 className={iconClass("animate-spin")} />
+      </Button>
+    );
+  } else if (status === "error") {
+    tip = `Could not load ${label} bookmark. Retry`;
+    button = (
+      <Button
+        size="icon"
+        variant="outline"
+        onClick={() => setAttempt((n) => n + 1)}
+        aria-label={tip}
+        title={tip}
+        className={`text-destructive ${sizeClass ?? ""}`.trim()}
+      >
+        <RotateCcw className={iconClass()} />
+      </Button>
+    );
+  } else {
+    tip = isBookmarked ? "Remove bookmark" : "Bookmark";
+    button = (
+      <Button
+        size="icon"
+        variant={isBookmarked ? "default" : "outline"}
+        onClick={handleToggle}
+        disabled={busy}
+        aria-busy={busy || undefined}
+        aria-pressed={isBookmarked}
+        aria-label={isBookmarked ? "Remove bookmark" : `Bookmark ${label}`}
+        className={sizeClass}
+      >
+        <Bookmark className={iconClass(isBookmarked ? "fill-current" : "")} />
+      </Button>
+    );
+  }
 
   if (compact) {
     return (
@@ -137,7 +217,7 @@ export default function BookmarkButton({
         <Tooltip>
           <TooltipTrigger asChild>{button}</TooltipTrigger>
           <TooltipContent>
-            <p>{isBookmarked ? "Remove bookmark" : "Bookmark"}</p>
+            <p>{tip}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
