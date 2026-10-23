@@ -3,19 +3,21 @@
  */
 import { test, expect } from "@playwright/test";
 
+// PROD-74 navigation: primary destinations, Explore, Workspace.
 const NAV_ITEMS = [
-  { name: /dashboard/i, url: /\/dashboard/ },
-  { name: /profile/i, url: /\/profile/ },
-  { name: /schools/i, url: /\/schools/ },
-  { name: /majors/i, url: /\/majors/ },
-  { name: /scholarships/i, url: /\/scholarships/ },
-  { name: /documents/i, url: /\/documents/ },
-  { name: /essays/i, url: /\/essays/ },
-  { name: /resume/i, url: /\/resume-builder/ },
+  { name: /^today$/i, url: /\/today/ },
+  { name: /my shortlist/i, url: /\/shortlist/ },
+  { name: /my applications/i, url: /\/applications/ },
+  { name: /^scholarships$/i, url: /\/scholarships/ },
+  { name: /^universities$/i, url: /\/schools/ },
+  { name: /^courses$/i, url: /\/majors/ },
+  { name: /^essays$/i, url: /\/essays/ },
+  { name: /^documents$/i, url: /\/documents/ },
+  { name: /resume builder/i, url: /\/resume-builder/ },
 ];
 
 test.describe("Navigation", () => {
-  test("sidebar renders all 8 navigation items", async ({ page }) => {
+  test("sidebar renders every primary, explore and workspace item", async ({ page }) => {
     await page.goto("/dashboard");
     for (const { name } of NAV_ITEMS) {
       await expect(page.getByRole("link", { name }).first()).toBeVisible({ timeout: 10_000 });
@@ -31,8 +33,8 @@ test.describe("Navigation", () => {
   }
 
   test("active nav item is highlighted on current page", async ({ page }) => {
-    await page.goto("/profile");
-    const activeLink = page.getByRole("link", { name: /profile/i }).first();
+    await page.goto("/shortlist");
+    const activeLink = page.getByRole("link", { name: /my shortlist/i }).first();
     // Sidebar sets data-active="true" on the active item
     await expect(activeLink).toHaveAttribute("data-active", "true", { timeout: 5_000 });
   });

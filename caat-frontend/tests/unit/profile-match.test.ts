@@ -110,7 +110,7 @@ describe("reasonFor()", () => {
           levelMatches: true,
         })
       )
-    ).toBe("Strong match — your major, country and level");
+    ).toBe("Strong match: your major, country and level");
   });
 
   it("returns 'Strong match' template when all 4 dimensions match", () => {
@@ -123,7 +123,7 @@ describe("reasonFor()", () => {
           levelMatches: true,
         })
       )
-    ).toBe("Strong match — your major, country, citizenship and level");
+    ).toBe("Strong match: your major, country, citizenship and level");
   });
 
   it("strong-match label names only the dimensions that matched (no false country)", () => {
@@ -140,7 +140,7 @@ describe("reasonFor()", () => {
           levelMatches: true,
         })
       )
-    ).toBe("Strong match — your major, citizenship and level");
+    ).toBe("Strong match: your major, citizenship and level");
   });
 
   it("strong-match label uses country+citizenship+level when major is absent", () => {
@@ -153,7 +153,7 @@ describe("reasonFor()", () => {
           levelMatches: true,
         })
       )
-    ).toBe("Strong match — your country, citizenship and level");
+    ).toBe("Strong match: your country, citizenship and level");
   });
 });
 
@@ -257,7 +257,7 @@ describe("matchScholarship()", () => {
     });
     const result = matchScholarship(profile, sch);
     expect(result.score).toBe(3);
-    expect(result.reason).toBe("Strong match — your major, country and level");
+    expect(result.reason).toBe("Strong match: your major, country and level");
   });
 
   it("level alone never triggers a match", () => {

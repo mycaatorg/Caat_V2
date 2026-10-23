@@ -264,12 +264,15 @@ export async function toggleTodo(id: string, done: boolean): Promise<void> {
   } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Not authenticated");
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("user_todos")
     .update({ done })
     .eq("id", id)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("id")
+    .maybeSingle();
   if (error) throw new Error(sanitizeError(error));
+  if (!data) throw new Error("To-do not found");
 }
 
 export async function deleteTodo(id: string): Promise<void> {

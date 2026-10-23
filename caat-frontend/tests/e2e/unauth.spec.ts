@@ -9,6 +9,9 @@ import { test, expect } from "@playwright/test";
 // ── 2.2 Route protection ───────────────────────────────────────────────────────
 
 const PROTECTED_ROUTES = [
+  "/today",
+  "/shortlist",
+  "/welcome",
   "/dashboard",
   "/profile",
   "/schools",

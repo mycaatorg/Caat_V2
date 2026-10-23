@@ -2,7 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
-      "codex/caat-community-permission-tests": false
+      "codex/caat-community-permission-tests": false,
+      "feat/caat-m2-australian-plan": false,
+      "feat/caat-m2-landing-copy": false
     }
   }
 }

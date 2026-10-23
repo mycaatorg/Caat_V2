@@ -182,7 +182,8 @@ jobs:
   e2e-smoke:
     name: E2E browser journeys (isolated Supabase)
     needs: discover-projects
-    runs-on: ubuntu-latest
+    # Playwright 1.59.1 supports 24.04; ubuntu-latest is rolling to 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     # Every browser test, including authenticated writes, uses a disposable
     # loopback-only Supabase stack built from synthetic schema/data. No

@@ -31,7 +31,17 @@ export interface ProfileRow {
   preferred_countries: string[] | null;
   activities: string[] | null;
   default_resume_id: string | null;
+  /** PROD-73 onboarding answers; null until answered. */
+  year_level?: YearLevel | null;
+  student_status?: StudentStatus | null;
+  journey_stage?: JourneyStage | null;
+  onboarding_completed_at?: string | null;
+  onboarding_dismissed_at?: string | null;
 }
+
+export type YearLevel = "year_10" | "year_11" | "year_12" | "finished" | "not_sure";
+export type StudentStatus = "domestic" | "international" | "not_sure";
+export type JourneyStage = "exploring" | "shortlisting" | "applying" | "waiting";
 
 /** Row from the standardised_test_scores table */
 export interface StandardisedTestScoreRow {

@@ -11,6 +11,9 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: "/",
       disallow: [
+        "/today",
+        "/shortlist",
+        "/welcome",
         "/dashboard",
         "/profile",
         "/applications",
