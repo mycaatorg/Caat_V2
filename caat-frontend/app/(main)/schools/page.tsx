@@ -27,6 +27,7 @@ import SchoolFilterBarClient from "./school-filter-bar-client";
 import SchoolBookmarkButton from "./school-bookmark-button";
 import type { ProfileRow } from "@/types/profile";
 import { matchSchool, type MatchResult } from "@/lib/profile-match";
+import { schoolBookmarkLookup } from "@/lib/school-bookmarks";
 
 type ServerClient = Awaited<ReturnType<typeof createServerClient>>;
 
@@ -155,7 +156,7 @@ export default async function SchoolsPage({
           .from("user_bookmarked_schools")
           .select("school_id")
           .eq("user_id", userId)
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
   ]);
   const { data: schools, count, error } = schoolsRes;
 
@@ -169,11 +170,12 @@ export default async function SchoolsPage({
         )
       : new Map<number, string[]>();
 
-  const bookmarkedSchoolIds = new Set(
-    ((bookmarkedRes.data as { school_id: number }[] | null) ?? []).map(
-      (r) => r.school_id,
-    ),
-  );
+  // A failed bookmark read leaves each card's state unknown (it reads itself
+  // and can retry) instead of showing every school as unsaved.
+  const initialBookmarkedFor = schoolBookmarkLookup({
+    data: bookmarkedRes.data as { school_id: number }[] | null,
+    error: bookmarkedRes.error,
+  });
 
   if (error) {
     return <div className="p-10 text-[#9a1a27] dark:text-[#e06b78]">Unable to load schools. Please try again later.</div>;
@@ -259,7 +261,7 @@ export default async function SchoolsPage({
                       <SchoolBookmarkButton
                         schoolId={school.id}
                         compact
-                        initialBookmarked={bookmarkedSchoolIds.has(school.id)}
+                        initialBookmarked={initialBookmarkedFor(school.id)}
                       />
                     </div>
                     <CardDescription className="text-base font-medium text-zinc-600 dark:text-zinc-400">

@@ -57,10 +57,11 @@ interface ReadState {
  * behavior the three original buttons had (labels, sizing, schools' list event).
  *
  * Until the owner's saved state is known (auth still resolving, or the bookmark
- * read in flight) the button is disabled and named "Loading <label> bookmark",
+ * read in flight) the button is inert and named "Loading <label> bookmark",
  * so it never claims "not bookmarked" or acts on a guess. A failed read becomes
  * a retry button rather than an unsaved state, and a second click while a write
- * is in flight is ignored (PROD-149).
+ * is in flight is ignored (PROD-149). Pending states after a click use
+ * aria-disabled + aria-busy rather than `disabled`, so keyboard focus stays put.
  */
 export default function BookmarkButton({
   table,
@@ -80,14 +81,21 @@ export default function BookmarkButton({
   // per-card read is skipped there and the N+1 query stays gone (C2).
   const skipInitialFetch = initialBookmarked !== undefined;
   const [attempt, setAttempt] = useState(0);
-  const key = skipInitialFetch ? "server" : `${table}:${column}:${id}:${userId}:${attempt}`;
+  // The server value is part of the key, so a refreshed prop (router.refresh,
+  // a new list page) replaces the local state instead of being ignored.
+  const key = skipInitialFetch
+    ? `server:${initialBookmarked}`
+    : `${table}:${column}:${id}:${userId}:${attempt}`;
   const [read, setRead] = useState<ReadState>(() => ({
-    key: skipInitialFetch ? "server" : "",
+    key: skipInitialFetch ? key : "",
     status: skipInitialFetch ? "ready" : "loading",
     bookmarked: initialBookmarked ?? false,
   }));
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
+  // Once the user has clicked, focus may be on the button, so later pending
+  // states use aria-disabled instead of `disabled` (which would drop focus).
+  const [interacted, setInteracted] = useState(false);
 
   useEffect(() => {
     if (skipInitialFetch || authLoading || !userId) return;
@@ -113,11 +121,13 @@ export default function BookmarkButton({
 
   // A result only counts for the read it answered; anything else is pending.
   let status: ReadStatus | "signed-out";
-  if (skipInitialFetch) status = read.status;
+  if (skipInitialFetch) status = "ready";
   else if (authLoading) status = "loading";
   else if (!userId) status = "signed-out";
   else status = read.key === key ? read.status : "loading";
-  const isBookmarked = status === "ready" && read.bookmarked;
+  const current =
+    read.key === key ? read.bookmarked : skipInitialFetch && !!initialBookmarked;
+  const isBookmarked = status === "ready" && current;
 
   async function handleToggle() {
     if (status === "signed-out" || !userId) {
@@ -127,11 +137,17 @@ export default function BookmarkButton({
     if (status !== "ready" || inFlight.current) return;
 
     inFlight.current = true;
+    setInteracted(true);
     setBusy(true);
     const readKey = key;
-    const prev = read.bookmarked;
+    const prev = current;
+    // Server-resolved state has no read to match, so it adopts this key.
     const show = (bookmarked: boolean) =>
-      setRead((cur) => (cur.key === readKey ? { ...cur, bookmarked } : cur));
+      setRead((cur) =>
+        cur.key === readKey || skipInitialFetch
+          ? { key: readKey, status: "ready", bookmarked }
+          : cur
+      );
     show(!prev);
 
     try {
@@ -160,6 +176,8 @@ export default function BookmarkButton({
   }
 
   const sizeClass = compact ? "h-8 w-8" : undefined;
+  // Looks disabled while staying focusable; the handlers ignore the clicks.
+  const pendingClass = "opacity-50 cursor-not-allowed";
   const iconClass = (extra = "") =>
     `${compact ? "h-3.5 w-3.5" : iconSize ?? ""} ${extra}`.trim();
 
@@ -171,10 +189,11 @@ export default function BookmarkButton({
       <Button
         size="icon"
         variant="outline"
-        disabled
+        disabled={!interacted}
+        aria-disabled
         aria-busy
         aria-label={tip}
-        className={sizeClass}
+        className={`${pendingClass} ${sizeClass ?? ""}`.trim()}
       >
         <Loader2 className={iconClass("animate-spin")} />
       </Button>
@@ -185,9 +204,12 @@ export default function BookmarkButton({
       <Button
         size="icon"
         variant="outline"
-        onClick={() => setAttempt((n) => n + 1)}
+        onClick={() => {
+          setInteracted(true);
+          setAttempt((n) => n + 1);
+        }}
         aria-label={tip}
-        title={tip}
+        title={compact ? undefined : tip}
         className={`text-destructive ${sizeClass ?? ""}`.trim()}
       >
         <RotateCcw className={iconClass()} />
@@ -200,11 +222,11 @@ export default function BookmarkButton({
         size="icon"
         variant={isBookmarked ? "default" : "outline"}
         onClick={handleToggle}
-        disabled={busy}
+        aria-disabled={busy || undefined}
         aria-busy={busy || undefined}
         aria-pressed={isBookmarked}
         aria-label={isBookmarked ? "Remove bookmark" : `Bookmark ${label}`}
-        className={sizeClass}
+        className={busy ? `${pendingClass} ${sizeClass ?? ""}`.trim() : sizeClass}
       >
         <Bookmark className={iconClass(isBookmarked ? "fill-current" : "")} />
       </Button>

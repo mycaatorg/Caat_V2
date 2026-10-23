@@ -176,15 +176,16 @@ describe('shared bookmark button', () => {
   });
 
   it('follows a refreshed server-resolved state', async () => {
-    let setInitial!: (value: boolean) => void;
     function Harness() {
-      const [initial, set] = React.useState(false);
-      setInitial = set;
-      return <BookmarkButton table="user_bookmarked_majors" column="major_id" id="major-1" label="major" initialBookmarked={initial} />;
+      const [initial, setInitial] = React.useState(false);
+      return <>
+        <button type="button" onClick={() => setInitial(true)}>Refresh server state</button>
+        <BookmarkButton table="user_bookmarked_majors" column="major_id" id="major-1" label="major" initialBookmarked={initial} />
+      </>;
     }
     await mountComponent(<Harness />);
     expect(button('Bookmark major')).toBeTruthy();
-    await act(async () => setInitial(true));
+    await click(button('Refresh server state'));
     expect(button('Remove bookmark').getAttribute('aria-pressed')).toBe('true');
     expect(io.read).not.toHaveBeenCalled();
   });
