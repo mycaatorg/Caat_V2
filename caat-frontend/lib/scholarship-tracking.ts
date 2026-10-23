@@ -59,10 +59,17 @@ export async function fetchBookmarkTracking(): Promise<Map<string, BookmarkTrack
 export async function trackScholarship(scholarshipId: string, status: ScholarshipStatus): Promise<void> {
   const userId = await getUserId();
   if (!userId) throw new Error("Not authenticated");
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("user_bookmarked_scholarships")
-    .upsert({ user_id: userId, scholarship_id: scholarshipId, status }, { onConflict: "user_id,scholarship_id" });
+    .upsert({ user_id: userId, scholarship_id: scholarshipId, status }, { onConflict: "user_id,scholarship_id" })
+    .select("status");
   if (error) throw new Error(error.message);
+  // PROD-150: row security can turn a write into a no-op that returns no
+  // error, so only the returned row at the new status counts as saved.
+  const rows = (data ?? []) as { status: string | null }[];
+  if (rows.length !== 1 || rows[0].status !== status) {
+    throw new Error("Scholarship status was not saved.");
+  }
 }
 
 /** Stop tracking a scholarship (removes the bookmark row entirely). */
