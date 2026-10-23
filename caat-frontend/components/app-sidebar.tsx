@@ -78,6 +78,7 @@ const navGroups: { label: string | null; items: NavItem[] }[] = [
 /** The single nav URL that best matches the path (longest segment prefix),
  *  so /communities/saved highlights only "Saved posts". */
 export function activeNavUrl(pathname: string): string | null {
+  if (pathname === "/courses" || pathname.startsWith("/courses/")) return "/majors"
   let best: string | null = null
   for (const group of navGroups) {
     for (const { url } of group.items) {

@@ -837,3 +837,264 @@ test('three-major comparison shows seeded careers, coursework and honest missing
   await page.keyboard.press('Escape');
   await expect(comparison).toHaveCount(0);
 });
+
+// PROD-76: specific university course offerings. Seeded by
+// supabase/migrations/20261023070000_course_offerings.sql (a public catalogue,
+// so these ids and facts are the same in every isolated stack).
+const COURSES = {
+  unswCs: { id: "unsw-3778-kensington", name: "Bachelor of Science (Computer Science)", institution: "UNSW Sydney" },
+  unswScienceCs: { id: "unsw-3789-kensington", name: "Bachelor of Science / Science (Computer Science)", institution: "UNSW Sydney" },
+  anu: { id: "anu-aacom", name: "Bachelor of Advanced Computing (Honours)", institution: "Australian National University" },
+  sydney: { id: "sydney-bpadvcmp1000-camperdown", name: "Bachelor of Advanced Computing", institution: "University of Sydney" },
+} as const;
+type SeededCourse = (typeof COURSES)[keyof typeof COURSES];
+const COURSE_SAVES = "/rest/v1/user_course_bookmarks";
+
+async function openCourses(page: Page, path = "/courses") {
+  await page.goto(path);
+  await expect(page.getByRole("main").getByRole("heading", { name: "Find the degree behind your interests", level: 1 })).toBeVisible({ timeout: 15_000 });
+}
+
+/** The visible card for one offering; Next.js may retain a hidden previous page. */
+function courseCard(page: Page, course: SeededCourse) {
+  return page.getByRole("main").getByRole("article", { name: `${course.name} at ${course.institution}`, exact: true });
+}
+
+function courseSaveWrite(page: Page, method: "POST" | "DELETE") {
+  return page.waitForResponse((r) => r.request().method() === method
+    && new URL(r.url()).pathname.endsWith(COURSE_SAVES) && r.ok(), { timeout: 15_000 });
+}
+
+/** Persisted removal of one saved course, if a previous run left it saved. */
+async function unsaveCourse(page: Page, course: SeededCourse) {
+  await openCourses(page, `/courses?course=${course.id}`);
+  const saveButton = courseCard(page, course).getByRole("button", { name: new RegExp(`^(Save ${escapeRegExp(course.name)}|Remove ${escapeRegExp(course.name)} from saved courses)$`) });
+  await expect(saveButton).toBeEnabled({ timeout: 15_000 });
+  if ((await saveButton.getAttribute("aria-label")) !== `Remove ${course.name} from saved courses`) return;
+  const removed = courseSaveWrite(page, "DELETE");
+  await saveButton.click();
+  await removed;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Bookmark (or un-bookmark) the seeded major and wait for the write to persist. */
+async function setSeedMajorBookmark(page: Page, bookmarked: boolean) {
+  // The button renders "not bookmarked" until its own read returns, so wait
+  // for that read and its rendered state before deciding whether to toggle.
+  const initialRead = page.waitForResponse((r) => r.request().method() === "GET"
+    && new URL(r.url()).pathname.endsWith("/rest/v1/user_bookmarked_majors"), { timeout: 15_000 });
+  await assertIsolatedDetailRoute(page, "/majors/[id]", `/majors/${MAJOR_ID}`);
+  const read = await initialRead;
+  const current = read.ok() && (await read.text()).includes(MAJOR_ID);
+  const toggle = page.getByRole("button", { name: /^(Bookmark major|Remove bookmark)$/ });
+  await expect(toggle).toHaveAttribute("aria-pressed", String(current));
+  if (current === bookmarked) return;
+  const written = page.waitForResponse((r) => r.request().method() !== "GET"
+    && new URL(r.url()).pathname.endsWith("/rest/v1/user_bookmarked_majors") && r.ok(), { timeout: 15_000 });
+  await toggle.click();
+  await written;
+  await expect(toggle).toHaveAttribute("aria-pressed", String(bookmarked));
+}
+
+test("a saved university course persists through reload, Shortlist and Today, and removal persists", { tag: "@phone" }, async ({ page }) => {
+  await signInToIsolatedStudent(page);
+  const course = COURSES.unswCs;
+  const removeLabel = `Remove ${course.name} from saved courses`;
+  let majorBookmarked = false;
+  try {
+    // Start clean, then hold one legacy save so Shortlist must keep both kinds.
+    await unsaveCourse(page, course);
+    await setSeedMajorBookmark(page, true);
+    majorBookmarked = true;
+
+    await openCourses(page);
+    const card = courseCard(page, course);
+    await expect(card).toHaveCount(1);
+    // Same UAC code, different degree: saving one must not save the other.
+    const sibling = courseCard(page, COURSES.unswScienceCs);
+    await expect(sibling.getByRole("button", { name: `Save ${COURSES.unswScienceCs.name}`, exact: true })).toBeEnabled({ timeout: 15_000 });
+    const save = card.getByRole("button", { name: `Save ${course.name}`, exact: true });
+    await expect(save).toBeEnabled({ timeout: 15_000 });
+    const saved = courseSaveWrite(page, "POST");
+    await save.click();
+    await saved;
+    await expect(card.getByRole("button", { name: removeLabel, exact: true })).toHaveText("Saved");
+
+    await page.reload();
+    await expect(courseCard(page, course).getByRole("button", { name: removeLabel, exact: true })).toBeEnabled({ timeout: 15_000 });
+    await expect(courseCard(page, COURSES.unswScienceCs).getByRole("button", { name: `Save ${COURSES.unswScienceCs.name}`, exact: true })).toBeVisible();
+    const savedOnly = page.getByRole("main").getByRole("button", { name: "Saved courses", exact: true });
+    await savedOnly.click();
+    await expect(savedOnly).toHaveAttribute("aria-pressed", "true");
+    await expect(courseCard(page, course)).toBeVisible();
+    await expect(courseCard(page, COURSES.unswScienceCs)).toHaveCount(0);
+
+    await page.goto("/shortlist");
+    const main = page.getByRole("main");
+    await expect(main.getByRole("heading", { name: /Everything you have saved/, level: 1 })).toBeVisible({ timeout: 15_000 });
+    const courseSection = main.getByRole("region", { name: "University courses", exact: true });
+    await expect(courseSection.getByRole("link", { name: course.name, exact: true })).toHaveAttribute("href", `/courses?course=${course.id}`);
+    await expect(courseSection.getByText(`${course.institution} · Kensington`, { exact: true })).toBeVisible();
+    await expect(courseSection.getByRole("link", { name: COURSES.unswScienceCs.name, exact: true })).toHaveCount(0);
+    // Legacy kinds keep their own sections; a course is not a major.
+    const majorSection = main.getByRole("region", { name: "Majors", exact: true });
+    await expect(majorSection.getByRole("link", { name: "E2E Test Engineering", exact: true })).toBeVisible();
+    await expect(majorSection.getByRole("link", { name: course.name, exact: true })).toHaveCount(0);
+    await expect(main.getByRole("region", { name: "Universities", exact: true })).toBeVisible();
+    await expect(main.getByRole("region", { name: "Scholarships", exact: true })).toBeVisible();
+
+    await page.goto("/today");
+    const todayShortlist = page.getByRole("main").getByRole("region", { name: "My shortlist", exact: true });
+    const todayCourse = todayShortlist.getByRole("link", { name: `${course.name} — ${course.institution}`, exact: true });
+    await expect(todayCourse).toBeVisible({ timeout: 15_000 });
+    await expect(todayShortlist.getByRole("link", { name: "E2E Test Engineering", exact: true })).toBeVisible();
+    // The Today link returns to that specific saved offering.
+    await todayCourse.click();
+    await page.waitForURL((url) => url.pathname === "/courses" && url.searchParams.get("course") === course.id);
+    await expect(courseCard(page, course).getByRole("button", { name: removeLabel, exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("main").getByRole("article")).toHaveCount(1);
+
+    await page.goto("/shortlist");
+    const removeFromShortlist = page.getByRole("main").getByRole("region", { name: "University courses", exact: true })
+      .getByRole("button", { name: `Remove ${course.name} from shortlist`, exact: true });
+    const removed = courseSaveWrite(page, "DELETE");
+    await removeFromShortlist.click();
+    await removed;
+    await expect(page.getByRole("main").getByRole("region", { name: "University courses", exact: true }).getByRole("link", { name: course.name, exact: true })).toHaveCount(0);
+
+    await page.reload();
+    const reloadedMain = page.getByRole("main");
+    await expect(reloadedMain.getByRole("heading", { name: /Everything you have saved/, level: 1 })).toBeVisible({ timeout: 15_000 });
+    const reloadedCourses = reloadedMain.getByRole("region", { name: "University courses", exact: true });
+    await expect(reloadedCourses.getByText("No saved university courses.", { exact: false })).toBeVisible();
+    await expect(reloadedCourses.getByRole("link", { name: course.name, exact: true })).toHaveCount(0);
+    await expect(reloadedMain.getByRole("region", { name: "Majors", exact: true }).getByRole("link", { name: "E2E Test Engineering", exact: true })).toBeVisible();
+
+    await openCourses(page);
+    await expect(courseCard(page, course).getByRole("button", { name: `Save ${course.name}`, exact: true })).toBeEnabled({ timeout: 15_000 });
+    await expect(courseCard(page, course).getByRole("button", { name: removeLabel, exact: true })).toHaveCount(0);
+  } finally {
+    if (!page.isClosed()) {
+      await unsaveCourse(page, course).catch(() => {});
+      if (majorBookmarked) await setSeedMajorBookmark(page, false).catch(() => {});
+    }
+  }
+});
+
+test("course comparison keeps shared-UAC degrees distinct and shows unknowns, fee years and sources honestly", async ({ page }) => {
+  await signInToIsolatedStudent(page);
+  await openCourses(page);
+  const main = page.getByRole("main");
+  const compareButton = (course: SeededCourse) => courseCard(page, course)
+    .getByRole("button", { name: `Compare ${course.name} at ${course.institution}`, exact: true });
+  for (const course of [COURSES.unswCs, COURSES.unswScienceCs, COURSES.anu]) {
+    await compareButton(course).click();
+    await expect(compareButton(course)).toHaveAttribute("aria-pressed", "true");
+  }
+  const selection = main.getByRole("region", { name: "Selected courses", exact: true });
+  await expect(selection.getByText("3 of 3 courses selected", { exact: true })).toBeVisible();
+  await expect(compareButton(COURSES.sydney)).toBeDisabled();
+
+  // Search and the saved filter hide cards but keep the selection.
+  const search = main.getByRole("searchbox", { name: "Search degrees, universities or campuses" });
+  await search.fill("Advanced Computing");
+  await expect(courseCard(page, COURSES.unswCs)).toHaveCount(0);
+  await expect(courseCard(page, COURSES.sydney)).toBeVisible();
+  await expect(selection.getByText("3 of 3 courses selected", { exact: true })).toBeVisible();
+  const savedOnly = main.getByRole("button", { name: "Saved courses", exact: true });
+  await savedOnly.click();
+  await expect(savedOnly).toHaveAttribute("aria-pressed", "true");
+  await expect(selection.getByRole("button", { name: `Remove ${COURSES.unswCs.name} from comparison`, exact: true })).toBeVisible();
+  await savedOnly.click();
+  await expect(savedOnly).toHaveAttribute("aria-pressed", "false");
+  await expect(selection.getByText("3 of 3 courses selected", { exact: true })).toBeVisible();
+
+  const comparison = page.getByRole("dialog", { name: "Compare university courses" });
+  const table = comparison.getByRole("table", { name: "Side-by-side comparison of selected university courses" });
+  const row = (label: string) => table.getByRole("row").filter({ has: page.getByRole("rowheader", { name: label, exact: true }) }).getByRole("cell");
+  const mixedYears = comparison.getByText(/These fees cover different years/);
+
+  await selection.getByRole("button", { name: "Compare selected courses", exact: true }).click();
+  await expect(table).toBeVisible();
+  await expect(table.getByRole("columnheader")).toHaveText([
+    "Attribute",
+    `${COURSES.unswCs.name}${COURSES.unswCs.institution}`,
+    `${COURSES.unswScienceCs.name}${COURSES.unswScienceCs.institution}`,
+    `${COURSES.anu.name}${COURSES.anu.institution}`,
+  ]);
+  // Same UAC code, two distinct programs.
+  await expect(row("Program and application codes")).toHaveText(["Program 3778; UAC 425800", "Program 3789; UAC 425800", "Program AACOM; UAC 135705"]);
+  // Unknown campus and fee are stated as unknown: never blank and never $0.
+  await expect(row("Campus")).toHaveText(["Kensington", "Kensington", "Campus not confirmed"]);
+  await expect(row("Duration")).toHaveText([/^3 years full-time/, /^4 years full-time/, "4 years full-time"]);
+  await expect(row("Indicative fees")).toHaveText([/^\$8,500 AUD \(2026\)\. Domestic Commonwealth Supported Place\./, /^\$8,000 AUD \(2026\)\./, "Fee not confirmed. Check the provider."]);
+  await expect(row("Indicative fees").nth(2)).not.toContainText("$0");
+  // Prerequisites and assumed knowledge are separate rows with separate values.
+  await expect(row("Prerequisites")).toHaveText([
+    "Prerequisites not confirmed. Check the provider.",
+    "Prerequisites not confirmed. Check the provider.",
+    /^Mathematics prerequisite varies by qualification\..*Check prerequisite details/,
+  ]);
+  await expect(row("Assumed knowledge")).toHaveText(["Mathematics Extension 1", "Mathematics Extension 1", "Assumed knowledge not confirmed"]);
+  await expect(row("Prerequisites").nth(2).getByRole("link", { name: /Check prerequisite details/ }))
+    .toHaveAttribute("href", "https://programsandcourses.anu.edu.au/2027/program/aacom#admission-and-fees");
+  // One known fee year among these three, so no mixed-year warning yet.
+  await expect(mixedYears).toHaveCount(0);
+  const sources = row("Source");
+  await expect(sources).toHaveCount(3);
+  for (const [index, url] of [
+    "https://www.unsw.edu.au/study/undergraduate/bachelor-of-computer-science",
+    "https://www.unsw.edu.au/study/undergraduate/bachelor-of-science-computer-science",
+    "https://programsandcourses.anu.edu.au/2027/program/aacom",
+  ].entries()) {
+    await expect(sources.nth(index)).toContainText(/Source checked 23 Oct\.? 2026\./);
+    await expect(sources.nth(index).getByRole("link", { name: /View official course details/ })).toHaveAttribute("href", url);
+  }
+  await page.keyboard.press("Escape");
+  await expect(comparison).toHaveCount(0);
+
+  // Remove one selected offering by keyboard only: Tab to it, press Enter.
+  const clearComparison = selection.getByRole("button", { name: "Clear comparison", exact: true });
+  await clearComparison.focus();
+  for (const course of [COURSES.unswCs, COURSES.unswScienceCs, COURSES.anu]) {
+    await page.keyboard.press("Tab");
+    await expect(selection.getByRole("button", { name: `Remove ${course.name} from comparison`, exact: true })).toBeFocused();
+  }
+  await page.keyboard.press("Enter");
+  await expect(selection.getByText("2 of 3 courses selected", { exact: true })).toBeVisible();
+  await expect(selection.getByRole("button", { name: `Remove ${COURSES.anu.name} from comparison`, exact: true })).toHaveCount(0);
+  await expect(compareButton(COURSES.anu)).toHaveAttribute("aria-pressed", "false");
+
+  // Swap in Sydney, whose published fee is for a different year.
+  await compareButton(COURSES.sydney).click();
+  await expect(selection.getByText("3 of 3 courses selected", { exact: true })).toBeVisible();
+  await selection.getByRole("button", { name: "Compare selected courses", exact: true }).click();
+  await expect(table).toBeVisible();
+  await expect(mixedYears).toBeVisible();
+  await expect(row("Indicative fees")).toHaveText([/^\$8,500 AUD \(2026\)\./, /^\$8,000 AUD \(2026\)\./, /^\$9,552 AUD \(2027\)\./]);
+  await expect(row("Campus")).toHaveText(["Kensington", "Kensington", "Camperdown/Darlington"]);
+  await comparison.getByRole("button", { name: "Close comparison" }).click();
+  await expect(comparison).toHaveCount(0);
+});
+
+test("majors and university courses link to each other through the paired navigation", async ({ page }) => {
+  await signInToIsolatedStudent(page);
+  await page.goto("/majors");
+  const pairedNav = () => page.getByRole("main").getByRole("navigation", { name: "Course exploration" });
+  await expect(pairedNav().getByRole("link", { name: "Explore majors", exact: true })).toHaveAttribute("aria-current", "page", { timeout: 15_000 });
+  await expect(page.getByRole("main").getByRole("link", { name: "E2E Test Engineering", exact: true })).toBeVisible();
+
+  await pairedNav().getByRole("link", { name: "University courses", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/courses");
+  await expect(page.getByRole("main").getByRole("heading", { name: "Find the degree behind your interests", level: 1 })).toBeVisible({ timeout: 15_000 });
+  await expect(pairedNav().getByRole("link", { name: "University courses", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(courseCard(page, COURSES.unswCs)).toBeVisible();
+
+  await pairedNav().getByRole("link", { name: "Explore majors", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/majors");
+  await expect(pairedNav().getByRole("link", { name: "Explore majors", exact: true })).toHaveAttribute("aria-current", "page", { timeout: 15_000 });
+  await expect(page.getByRole("main").getByRole("link", { name: "E2E Test Engineering", exact: true })).toBeVisible();
+});

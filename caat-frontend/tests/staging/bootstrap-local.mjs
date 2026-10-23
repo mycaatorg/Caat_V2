@@ -29,4 +29,5 @@ const search = spawnSync(process.execPath, [join(here, 'apply-search-migration.m
 if (search.error) throw search.error;
 if (search.status !== 0) throw new Error('Local scholarship search migration failed.');
 runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, 'seed.sql')]);
+runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261023070000_course_offerings.sql')]);
 console.log('Local-only CAAT schema and synthetic catalog fixtures installed.');

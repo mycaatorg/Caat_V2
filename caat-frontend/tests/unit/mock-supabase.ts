@@ -32,6 +32,8 @@ export function createMockSupabase(opts: {
   rpc?: RpcResolver;
   user?: { id: string } | null;
   claimsSub?: string | null;
+  /** Session user for getSession(); defaults to `user`. */
+  sessionUser?: { id: string } | null;
 }) {
   const resolver: Resolver = opts.resolver ?? (() => ({ data: null, error: null }));
   const queries: QueryContext[] = [];
@@ -74,7 +76,9 @@ export function createMockSupabase(opts: {
     Promise.resolve(opts.rpc ? opts.rpc(name, args) : { data: [], error: null }),
   );
 
+  const sessionUser = opts.sessionUser === undefined ? opts.user ?? null : opts.sessionUser;
   const auth = {
+    getSession: vi.fn(() => Promise.resolve({ data: { session: sessionUser ? { user: sessionUser } : null }, error: null })),
     getUser: vi.fn(() => Promise.resolve({ data: { user: opts.user ?? null }, error: null })),
     getClaims: vi.fn(() =>
       Promise.resolve({
