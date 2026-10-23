@@ -149,7 +149,7 @@ export function BookmarkedSchoolsList() {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
         <School className="h-10 w-10 opacity-40" />
-        <p className="text-base font-medium">No bookmarked schools yet.</p>
+        <p className="text-base font-medium">No saved universities yet.</p>
         <p className="text-sm">
           Browse schools and click the bookmark icon on any school to save it here.
         </p>

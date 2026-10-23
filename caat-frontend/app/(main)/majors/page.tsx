@@ -21,7 +21,7 @@ export default async function MajorsPage({
 
   return (
     <>
-      <PageHeader title="Majors" />
+      <PageHeader title="Courses" />
       <Suspense>
         <MajorsClient majors={majors} initialFilter={initialFilter} profile={profile} />
       </Suspense>

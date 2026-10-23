@@ -361,7 +361,7 @@ describe("reset password recovery", () => {
     await submitForm();
     expect(mocks.updateUser).toHaveBeenNthCalledWith(1, { password: "new-password" });
     expect(mocks.updateUser).toHaveBeenCalledTimes(2);
-    expect(mocks.routerPush).toHaveBeenCalledExactlyOnceWith("/dashboard");
+    expect(mocks.routerPush).toHaveBeenCalledExactlyOnceWith("/today");
   });
 
   it("disables repeated password updates while the request is pending", async () => {
@@ -378,6 +378,6 @@ describe("reset password recovery", () => {
     expect(mocks.updateUser).toHaveBeenCalledOnce();
     await act(async () => pending.resolve({ error: null }));
     await settleEffects();
-    expect(mocks.routerPush).toHaveBeenCalledExactlyOnceWith("/dashboard");
+    expect(mocks.routerPush).toHaveBeenCalledExactlyOnceWith("/today");
   });
 });

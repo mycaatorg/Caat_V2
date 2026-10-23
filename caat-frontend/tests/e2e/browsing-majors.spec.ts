@@ -36,7 +36,7 @@ test.describe("Majors browsing", () => {
     await page.goto("/majors");
     await page.getByRole("button", { name: /bookmarked/i }).click();
     await expect(
-      page.getByText(/no majors|no bookmarks|0 major/i)
+      page.getByText(/no majors|no courses|no bookmarks|0 major/i)
         .or(page.locator("a[href^='/majors/']").first())
     ).toBeVisible({ timeout: 5_000 });
   });

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Trash2, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,7 @@ function isDuePast(iso: string | null): boolean {
 }
 
 export function TodoWidget() {
+  const router = useRouter();
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [input, setInput] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -60,6 +62,12 @@ export function TodoWidget() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [recentlyCompletedIds, setRecentlyCompletedIds] = useState<Set<string>>(() => new Set());
+  const recentlyCompletedIdsRef = useRef(new Set<string>());
+  const [pendingTodoIds, setPendingTodoIds] = useState<Set<string>>(() => new Set());
+  const pendingTodoIdsRef = useRef(new Set<string>());
+  const todoVersionsRef = useRef(new Map<string, number>());
 
   useEffect(() => {
     load();
@@ -98,26 +106,68 @@ export function TodoWidget() {
     }
   }
 
+  function setRecentlyCompleted(id: string, completed: boolean) {
+    const next = new Set(recentlyCompletedIdsRef.current);
+    if (completed) next.add(id);
+    else next.delete(id);
+    recentlyCompletedIdsRef.current = next;
+    setRecentlyCompletedIds(next);
+  }
+
   async function handleToggle(id: string, current: boolean) {
-    setTodos((prev) => sortTodos(prev.map((t) => (t.id === id ? { ...t, done: !current } : t))));
+    if (pendingTodoIdsRef.current.has(id)) return;
+    // Toast actions outlive the render that created them. Read the latest
+    // membership so a failed Undo restores the task in its current section.
+    const wasRecentlyCompleted = recentlyCompletedIdsRef.current.has(id);
+    const nextDone = !current;
+    const version = (todoVersionsRef.current.get(id) ?? 0) + 1;
+    todoVersionsRef.current.set(id, version);
+    pendingTodoIdsRef.current.add(id);
+    setPendingTodoIds(new Set(pendingTodoIdsRef.current));
+    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done: nextDone } : t)));
+    setRecentlyCompleted(id, nextDone);
     try {
-      await toggleTodo(id, !current);
+      await toggleTodo(id, nextDone);
+      pendingTodoIdsRef.current.delete(id);
+      setPendingTodoIds(new Set(pendingTodoIdsRef.current));
+      router.refresh();
+      if (todoVersionsRef.current.get(id) === version && nextDone) {
+        toast.success("To-do completed", {
+          duration: 5000,
+          action: {
+            label: "Undo",
+            onClick: () => {
+              if (todoVersionsRef.current.get(id) === version) void handleToggle(id, true);
+            },
+          },
+        });
+      }
     } catch {
+      pendingTodoIdsRef.current.delete(id);
+      setPendingTodoIds(new Set(pendingTodoIdsRef.current));
+      if (todoVersionsRef.current.get(id) !== version) return;
       toast.error("Failed to update to-do");
-      // Reconcile with the server (like the delete/priority handlers) rather
-      // than rolling back to the stale captured `current`, which under rapid
-      // concurrent toggles could clobber a later successful toggle.
-      load();
+      setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done: current } : t)));
+      setRecentlyCompleted(id, wasRecentlyCompleted);
     }
   }
 
   async function handleDelete(id: string) {
+    if (pendingTodoIdsRef.current.has(id)) return;
+    pendingTodoIdsRef.current.add(id);
+    setPendingTodoIds(new Set(pendingTodoIdsRef.current));
     setTodos((prev) => prev.filter((t) => t.id !== id));
     try {
       await deleteTodo(id);
+      // An existing completion toast must not restore a deleted task.
+      todoVersionsRef.current.set(id, (todoVersionsRef.current.get(id) ?? 0) + 1);
+      setRecentlyCompleted(id, false);
     } catch {
       toast.error("Failed to delete to-do");
-      load();
+      await load();
+    } finally {
+      pendingTodoIdsRef.current.delete(id);
+      setPendingTodoIds(new Set(pendingTodoIdsRef.current));
     }
   }
 
@@ -132,6 +182,79 @@ export function TodoWidget() {
       load();
     }
   }
+
+  function renderTodo(todo: TodoItem) {
+    const dueLabel = formatDue(todo.due_date);
+    const overdue = !todo.done && isDuePast(todo.due_date);
+    return (
+      <li
+        key={todo.id}
+        className={`flex items-center gap-2 group rounded-md px-1 py-0.5 hover:bg-muted/50 ${todo.done ? "opacity-60" : ""}`}
+      >
+        <Checkbox
+          id={`todo-${todo.id}`}
+          checked={todo.done}
+          disabled={pendingTodoIds.has(todo.id)}
+          onCheckedChange={() => handleToggle(todo.id, todo.done)}
+          aria-label={todo.done ? `Restore "${todo.text}"` : `Mark "${todo.text}" done`}
+        />
+        <div className="flex-1 min-w-0">
+          <label
+            htmlFor={`todo-${todo.id}`}
+            className={`block text-sm cursor-pointer truncate ${todo.done ? "line-through text-muted-foreground" : ""}`}
+          >
+            {todo.text}
+          </label>
+          {dueLabel && !todo.done && (
+            <span
+              className={`text-xs ${
+                overdue ? "text-[#9a1a27] dark:text-[#e06b78] font-medium" : "text-muted-foreground"
+              }`}
+            >
+              {dueLabel}
+            </span>
+          )}
+        </div>
+
+        {!todo.done && (
+          <Select
+            value={String(todo.priority)}
+            onValueChange={(v) => handlePriorityChange(todo.id, Number(v))}
+          >
+            <SelectTrigger
+              size="sm"
+              aria-label="Priority"
+              title={PRIORITY_LABELS[todo.priority]}
+              className={`h-auto w-auto border-0 bg-transparent px-1 py-0 text-xs shadow-none gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${
+                PRIORITY_COLORS[todo.priority] ?? ""
+              }`}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">High</SelectItem>
+              <SelectItem value="2">Med</SelectItem>
+              <SelectItem value="3">Low</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled={pendingTodoIds.has(todo.id)}
+          className="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-destructive"
+          onClick={() => handleDelete(todo.id)}
+          aria-label={`Delete to-do: ${todo.text}`}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </li>
+    );
+  }
+
+  const activeTodos = todos.filter((todo) => !todo.done || recentlyCompletedIds.has(todo.id));
+  const completedTodos = todos.filter((todo) => todo.done && !recentlyCompletedIds.has(todo.id));
 
   return (
     <div className="flex flex-col gap-3 h-full min-h-0">
@@ -202,78 +325,28 @@ export function TodoWidget() {
         <p className="text-xs text-muted-foreground text-center py-4 shrink-0">
           No tasks yet. Add one above!
         </p>
-      ) : (
+      ) : activeTodos.length ? (
         <ul className="flex flex-col gap-1.5 flex-1 min-h-0 overflow-y-auto pr-1">
-            {todos.map((todo) => {
-              const dueLabel = formatDue(todo.due_date);
-              const overdue = !todo.done && isDuePast(todo.due_date);
-              return (
-                <li
-                  key={todo.id}
-                  className="flex items-center gap-2 group rounded-md px-1 py-0.5 hover:bg-muted/50"
-                >
-                  <Checkbox
-                    id={`todo-${todo.id}`}
-                    checked={todo.done}
-                    onCheckedChange={() => handleToggle(todo.id, todo.done)}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <label
-                      htmlFor={`todo-${todo.id}`}
-                      className={`block text-sm cursor-pointer truncate ${
-                        todo.done ? "line-through text-muted-foreground" : ""
-                      }`}
-                    >
-                      {todo.text}
-                    </label>
-                    {dueLabel && !todo.done && (
-                      <span
-                        className={`text-xs ${
-                          overdue ? "text-[#9a1a27] dark:text-[#e06b78] font-medium" : "text-muted-foreground"
-                        }`}
-                      >
-                        {dueLabel}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Priority picker (visible on hover) */}
-                  {!todo.done && (
-                    <Select
-                      value={String(todo.priority)}
-                      onValueChange={(v) => handlePriorityChange(todo.id, Number(v))}
-                    >
-                      <SelectTrigger
-                        size="sm"
-                        aria-label="Priority"
-                        title={PRIORITY_LABELS[todo.priority]}
-                        className={`h-auto w-auto border-0 bg-transparent px-1 py-0 text-xs shadow-none gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${
-                          PRIORITY_COLORS[todo.priority] ?? ""
-                        }`}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">High</SelectItem>
-                        <SelectItem value="2">Med</SelectItem>
-                        <SelectItem value="3">Low</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDelete(todo.id)}
-                    aria-label={`Delete to-do: ${todo.text}`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </li>
-              );
-            })}
+          {activeTodos.map(renderTodo)}
         </ul>
+      ) : null}
+
+      {completedTodos.length > 0 && (
+        <section aria-label="Completed tasks" className="shrink-0 max-h-32 overflow-y-auto">
+          <button
+            type="button"
+            aria-expanded={showCompleted}
+            onClick={() => setShowCompleted((current) => !current)}
+            className="w-full text-left text-xs text-muted-foreground hover:text-foreground"
+          >
+            {showCompleted ? "▾" : "▸"} Completed ({completedTodos.length})
+          </button>
+          {showCompleted && (
+            <ul className="flex flex-col gap-1.5 mt-2">
+              {completedTodos.map(renderTodo)}
+            </ul>
+          )}
+        </section>
       )}
 
       {todos.length > 0 && (
