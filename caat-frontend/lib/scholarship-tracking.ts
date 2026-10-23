@@ -64,8 +64,8 @@ export async function trackScholarship(scholarshipId: string, status: Scholarshi
     .upsert({ user_id: userId, scholarship_id: scholarshipId, status }, { onConflict: "user_id,scholarship_id" })
     .select("status");
   if (error) throw new Error(error.message);
-  // PROD-150: row security can turn a write into a no-op that returns no
-  // error, so only the returned row at the new status counts as saved.
+  // PROD-150: defensive. A plain update blocked by row security returns no
+  // error and no rows, so only a returned row at the new status counts as saved.
   const rows = (data ?? []) as { status: string | null }[];
   if (rows.length !== 1 || rows[0].status !== status) {
     throw new Error("Scholarship status was not saved.");
