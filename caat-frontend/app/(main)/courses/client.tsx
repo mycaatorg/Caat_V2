@@ -14,11 +14,16 @@ import type { CourseOffering } from '@/types/courses';
 import { CourseNavigation } from '@/components/courses/course-navigation';
 import { CourseSource, ProviderLink } from '@/components/courses/course-source';
 import CourseComparison from '@/components/courses/course-comparison';
+import { CourseApplicationAction } from '@/components/courses/course-application-action';
+import { startApplicationForSchool, type SchoolApplication } from '@/lib/application-for-school';
+import { loadSchoolApplications, type SchoolApplicationRow } from '@/lib/school-applications';
 
-type Props = { courses: CourseOffering[] | null; initialUserId: string; initialSavedIds: string[] | null; checkedAt: string; initialQuery?: string };
+type Props = { courses: CourseOffering[] | null; initialUserId: string; initialSavedIds: string[] | null; initialApplications?: SchoolApplicationRow[] | null; checkedAt: string; initialQuery?: string };
+type Applications = { owner: string | null; bySchool: Map<number, SchoolApplication>; error: boolean; loading: boolean };
+const bySchool = (rows: SchoolApplicationRow[]) => new Map(rows.map(r => [r.school_id, { id: r.id, status: r.status }]));
 function readQuery(query: string) { const p = new URLSearchParams(query); return { search: p.get('q') ?? '', savedOnly: p.get('saved') === '1', course: p.get('course') ?? '' }; }
 
-export default function CoursesClient({ courses, initialUserId, initialSavedIds, checkedAt, initialQuery = '' }: Props) {
+export default function CoursesClient({ courses, initialUserId, initialSavedIds, initialApplications = [], checkedAt, initialQuery = '' }: Props) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const userId = user?.id ?? null;
@@ -28,6 +33,10 @@ export default function CoursesClient({ courses, initialUserId, initialSavedIds,
   const [busy, setBusy] = useState(new Set<string>());
   const [saved, setSaved] = useState({ owner: initialUserId as string | null, ids: new Set(initialSavedIds ?? []), error: initialSavedIds === null, loading: false });
   const [reload, setReload] = useState(0);
+  // PROD-148: the owner's applications by university, guarded like the saves.
+  const firstAppsLoad = useRef(true);
+  const [apps, setApps] = useState<Applications>({ owner: initialUserId, bySchool: bySchool(initialApplications ?? []), error: initialApplications === null, loading: false });
+  const [appsReload, setAppsReload] = useState(0);
   const [query, setQuery] = useState(() => readQuery(initialQuery));
   const [selected, setSelected] = useState<string[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -44,6 +53,18 @@ export default function CoursesClient({ courses, initialUserId, initialSavedIds,
     }).catch(() => { if (alive) setSaved({ owner: userId, ids: new Set(), error: true, loading: false }); });
     return () => { alive = false; };
   }, [userId, authLoading, initialUserId, reload]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (firstAppsLoad.current && userId === initialUserId && appsReload === 0) { firstAppsLoad.current = false; return; }
+    firstAppsLoad.current = false;
+    let alive = true;
+    setApps({ owner: userId, bySchool: new Map(), error: false, loading: !!userId });
+    if (userId) loadSchoolApplications(supabase, userId).then(rows => {
+      if (alive) setApps({ owner: userId, bySchool: bySchool(rows), error: false, loading: false });
+    }).catch(() => { if (alive) setApps({ owner: userId, bySchool: new Map(), error: true, loading: false }); });
+    return () => { alive = false; };
+  }, [userId, authLoading, initialUserId, appsReload]);
 
   useEffect(() => {
     const restore = () => setQuery(readQuery(window.location.search));
@@ -79,6 +100,23 @@ export default function CoursesClient({ courses, initialUserId, initialSavedIds,
     } catch {
       changeSaved(wasSaved);
       if (currentUser.current === owner) toast.error(wasSaved ? 'Could not remove course. Please try again.' : 'Could not save course. Please try again.');
+    } finally { pending.current.delete(key); setBusy(new Set(pending.current)); }
+  }
+  const appsReady = !authLoading && !!userId && apps.owner === userId;
+  /** Only a labelled click starts tracking. One in-flight start per owner and
+   *  university, shared by every saved card at that university. */
+  async function startApplication(schoolId: number, institutionName: string) {
+    if (!appsReady || apps.loading || apps.error || !userId) return;
+    const owner = userId;
+    const key = `${owner}:apply-${schoolId}`;
+    if (pending.current.has(key)) return;
+    pending.current.add(key); setBusy(new Set(pending.current));
+    try {
+      const { application, created } = await startApplicationForSchool(schoolId);
+      setApps(cur => cur.owner === owner ? { ...cur, bySchool: new Map(cur.bySchool).set(schoolId, application) } : cur);
+      if (currentUser.current === owner) toast.success(created ? `Started tracking your application to ${institutionName}.` : `You're already tracking ${institutionName}.`);
+    } catch {
+      if (currentUser.current === owner) toast.error("Couldn't start tracking. Try again.");
     } finally { pending.current.delete(key); setBusy(new Set(pending.current)); }
   }
   function toggleCompare(id: string) { setSelected(ids => ids.includes(id) ? ids.filter(value => value !== id) : ids.length < 3 ? [...ids, id] : ids); }
@@ -117,6 +155,12 @@ export default function CoursesClient({ courses, initialUserId, initialSavedIds,
             <div><dt className="font-medium">Indicative fees</dt><dd className="text-muted-foreground">{formatCourseFee(c)}</dd></div>
           </dl>
           <CourseSource course={c} checkedAt={checkedAt} />
+          {savedIds.has(c.id) && <div className="mt-4">{!appsReady || apps.loading
+            ? <p role="status" className="text-xs text-muted-foreground">Checking your applications…</p>
+            : <CourseApplicationAction institutionName={c.institution_name} schoolId={c.school_id} application={c.school_id === null ? null : apps.bySchool.get(c.school_id) ?? null}
+                busy={busy.has(`${userId}:apply-${c.school_id}`)} unavailable={apps.error}
+                onStart={() => { if (c.school_id !== null) void startApplication(c.school_id, c.institution_name); }}
+                onRetry={() => setAppsReload(n => n + 1)} />}</div>}
           <div className="mt-5 flex flex-wrap gap-2">
             <Button variant={savedIds.has(c.id) ? 'secondary' : 'default'} disabled={savesUnavailable || busy.has(`${userId}:${c.id}`) || (!c.active && !savedIds.has(c.id))} aria-label={savedIds.has(c.id) ? `Remove ${c.name} from saved courses` : `Save ${c.name}`} onClick={() => toggleSave(c)}>{savedIds.has(c.id) ? 'Saved' : 'Save course'}</Button>
             <Button variant="outline" aria-label={`Compare ${c.name} at ${c.institution_name}`} aria-pressed={selected.includes(c.id)} disabled={selected.length >= 3 && !selected.includes(c.id)} onClick={() => toggleCompare(c.id)}>{selected.includes(c.id) ? 'Selected' : 'Compare'}</Button>

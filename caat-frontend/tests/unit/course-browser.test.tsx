@@ -5,9 +5,11 @@ import { button, change, click, deferred, mountComponent, queryButton, unmountAl
 import { loadCourseOfferings, normalizeCourse } from '@/lib/course-data';
 import { createMockSupabase } from './mock-supabase';
 
-const io = vi.hoisted(() => ({ user: { id: 'owner' } as { id: string } | null, load: vi.fn(), save: vi.fn(), refresh: vi.fn(), toast: { success: vi.fn(), error: vi.fn() } }));
+const io = vi.hoisted(() => ({ user: { id: 'owner' } as { id: string } | null, load: vi.fn(), save: vi.fn(), start: vi.fn(), loadApps: vi.fn(), refresh: vi.fn(), toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/course-bookmarks', () => ({ loadCourseBookmarks: io.load, setCourseBookmark: io.save }));
 vi.mock('@/lib/supabase/client', () => ({ supabase: {} }));
+vi.mock('@/lib/application-for-school', () => ({ startApplicationForSchool: io.start }));
+vi.mock('@/lib/school-applications', () => ({ loadSchoolApplications: io.loadApps }));
 vi.mock('@/components/providers/AuthContext', () => ({ useAuth: () => ({ user: io.user, loading: false }) }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: io.refresh }) }));
 vi.mock('next/link', () => ({ default: ({ href, children, ...rest }: React.PropsWithChildren<{ href: string }>) => <a href={href} {...rest}>{children}</a> }));
@@ -20,8 +22,8 @@ const courses = ['Alpha', 'Beta', 'Gamma', 'Delta'].map((name, i) => normalizeCo
   prerequisites: null, assumed_knowledge: 'Mathematics', fee_amount: i === 3 ? null : 8500, fee_year: i === 1 ? 2027 : 2026,
   fee_category: 'Domestic CSP', fee_basis: 'First year; tuition only',
 })!);
-const props = () => ({ courses, initialUserId: 'owner', initialSavedIds: [] as string[] | null, checkedAt: '2026-10-23T12:00:00Z' });
-beforeEach(() => { vi.clearAllMocks(); io.user = { id: 'owner' }; io.load.mockResolvedValue([]); io.save.mockResolvedValue(undefined); });
+const props = () => ({ courses, initialUserId: 'owner', initialSavedIds: [] as string[] | null, initialApplications: [] as { id: string; school_id: number; status: 'researching' | 'applying' }[] | null, checkedAt: '2026-10-23T12:00:00Z' });
+beforeEach(() => { vi.clearAllMocks(); io.user = { id: 'owner' }; io.load.mockResolvedValue([]); io.save.mockResolvedValue(undefined); io.loadApps.mockResolvedValue([]); });
 afterEach(() => { unmountAll(); window.history.replaceState({}, '', '/courses'); });
 
 describe('university course browser', () => {
@@ -121,5 +123,93 @@ describe('university course browser', () => {
     const valid = { ...courses[0], verified_at: '2026-10-23T00:00:00Z' };
     const client = createMockSupabase({ resolver: () => ({ data: [valid, { ...valid, id: 'bad', source_url: 'javascript:alert(1)' }], error: null }) });
     await expect(loadCourseOfferings(client as never)).rejects.toThrow('Could not load university courses');
+  });
+});
+
+describe('track an application from a saved course (PROD-148)', () => {
+  // Alpha and Beta are at school 7; Gamma has no linked university.
+  const linked = courses.map((c, i) => ({ ...c, school_id: i < 2 ? 7 : null }));
+  const TRACK = 'Track an application at Example University';
+  const tracks = () => [...document.querySelectorAll<HTMLButtonElement>('button')].filter(b => b.textContent === TRACK);
+  type Started = { application: { id: string; status: string }; created: boolean };
+
+  it('shows no action on unsaved cards and never starts one on mount or save', async () => {
+    await mountComponent(<CoursesClient {...props()} courses={linked} />);
+    expect(tracks()).toHaveLength(0);
+    await click(button('Save Alpha'));
+    expect(tracks()).toHaveLength(1);
+    expect(io.start).not.toHaveBeenCalled();
+    expect(io.loadApps).not.toHaveBeenCalled();
+  });
+
+  it('starts once on a double click and updates every saved card at that university', async () => {
+    const insert = deferred<Started>();
+    io.start.mockReturnValueOnce(insert.promise);
+    await mountComponent(<CoursesClient {...props()} courses={linked} initialSavedIds={['course-0', 'course-1', 'course-2']} />);
+    expect(tracks()).toHaveLength(2);
+    expect(document.body.textContent).toContain("This course isn't linked to a university in CAAT yet.");
+    await click(tracks()[0]); await click(tracks()[0]);
+    expect(tracks().every(b => b.disabled)).toBe(true);
+    await act(async () => insert.resolve({ application: { id: 'app-7', status: 'researching' }, created: true }));
+    expect(io.start).toHaveBeenCalledTimes(1);
+    expect(io.start).toHaveBeenCalledWith(7);
+    expect(tracks()).toHaveLength(0);
+    const opens = [...document.querySelectorAll('a')].filter(a => a.textContent?.includes('Open your Example University application'));
+    expect(opens.map(a => a.getAttribute('href'))).toEqual(['/applications/app-7', '/applications/app-7']);
+    expect(io.toast.success).toHaveBeenCalledWith('Started tracking your application to Example University.');
+  });
+
+  it('says the application already exists when another tab created it', async () => {
+    io.start.mockResolvedValueOnce({ application: { id: 'app-7', status: 'applying' }, created: false });
+    await mountComponent(<CoursesClient {...props()} courses={linked} initialSavedIds={['course-0']} />);
+    await click(tracks()[0]);
+    expect(io.toast.success).toHaveBeenCalledWith("You're already tracking Example University.");
+    expect(io.toast.error).not.toHaveBeenCalled();
+  });
+
+  it('opens an existing application rather than offering to create one', async () => {
+    await mountComponent(<CoursesClient {...props()} courses={linked} initialSavedIds={['course-0']} initialApplications={[{ id: 'app-7', school_id: 7, status: 'applying' }]} />);
+    expect(tracks()).toHaveLength(0);
+    expect(document.querySelector('a[href="/applications/app-7"]')?.textContent).toContain('Open your Example University application');
+  });
+
+  it('keeps the button and toasts when starting fails', async () => {
+    io.start.mockRejectedValueOnce(new Error('offline'));
+    await mountComponent(<CoursesClient {...props()} courses={linked} initialSavedIds={['course-0']} />);
+    await click(tracks()[0]);
+    expect(io.toast.error).toHaveBeenCalledWith("Couldn't start tracking. Try again.");
+    expect(tracks()[0].disabled).toBe(false);
+  });
+
+  it('shows Retry instead of a create button when the applications read failed, and retries only the read', async () => {
+    io.loadApps.mockResolvedValueOnce([{ id: 'app-7', school_id: 7, status: 'applying' }]);
+    await mountComponent(<CoursesClient {...props()} courses={linked} initialSavedIds={['course-0']} initialApplications={null} />);
+    expect(document.body.textContent).toContain("Couldn't check your applications.");
+    expect(tracks()).toHaveLength(0);
+    await click(button('Retry checking your applications'));
+    expect(io.loadApps).toHaveBeenCalledWith({}, 'owner');
+    expect(io.start).not.toHaveBeenCalled();
+    expect(document.querySelector('a[href="/applications/app-7"]')).not.toBeNull();
+  });
+
+  it("discards a previous account's in-flight start after an account switch", async () => {
+    const insert = deferred<Started>();
+    io.start.mockReturnValueOnce(insert.promise);
+    io.load.mockResolvedValue(['course-0']);
+    const peerApps = deferred<{ id: string; school_id: number; status: string }[]>();
+    io.loadApps.mockReturnValueOnce(peerApps.promise);
+    function Switcher() {
+      const [, refresh] = React.useState(0);
+      return <><button onClick={() => { io.user = { id: 'peer' }; refresh(n => n + 1); }}>Switch account</button><CoursesClient {...props()} courses={linked} initialSavedIds={['course-0']} /></>;
+    }
+    await mountComponent(<Switcher />);
+    await click(tracks()[0]);
+    await click(button('Switch account'));
+    await act(async () => insert.resolve({ application: { id: 'owner-app', status: 'researching' }, created: true }));
+    expect(document.querySelector('a[href="/applications/owner-app"]')).toBeNull();
+    await act(async () => peerApps.resolve([]));
+    expect(io.loadApps).toHaveBeenCalledWith({}, 'peer');
+    expect(tracks()).toHaveLength(1);
+    expect(tracks()[0].disabled).toBe(false);
   });
 });

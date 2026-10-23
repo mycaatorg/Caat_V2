@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { button, change, click, deferred, flush, hasText, link, mountComponent, queryButton, queryLink, unmountAll } from "./dom-helpers";
 import type { Shortlist } from "@/lib/shortlist";
 
-const io = vi.hoisted(() => ({ remove: vi.fn(), addApplication: vi.fn(), refresh: vi.fn(), toast: { error: vi.fn(), success: vi.fn() } }));
+const io = vi.hoisted(() => ({ remove: vi.fn(), start: vi.fn(), refresh: vi.fn(), toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/lib/shortlist", () => ({ removeFromShortlist: io.remove }));
-vi.mock("@/app/(main)/applications/api", () => ({ addApplication: io.addApplication }));
+vi.mock("@/lib/application-for-school", () => ({ startApplicationForSchool: io.start }));
 vi.mock("@/lib/supabase/client", () => ({ supabase: {} }));
 vi.mock("@/lib/current-user", () => ({ getClientUserId: () => Promise.resolve("student-1") }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: io.refresh }) }));
@@ -58,7 +58,7 @@ function setSearch(search: string) {
 describe("My shortlist", () => {
   it("keeps university courses separate from majors and restores a failed course removal", async () => {
     const pending = deferred(); io.remove.mockReturnValueOnce(pending.promise);
-    const initial = { ...list(), courses: [{ id: 'offering-1', name: 'Advanced Computing', institutionName: 'Example University', campus: 'Main', active: false, sourceUrl: 'https://example.edu.au/computing' }] };
+    const initial = { ...list(), courses: [{ id: 'offering-1', name: 'Advanced Computing', institutionName: 'Example University', campus: 'Main', active: false, sourceUrl: 'https://example.edu.au/computing', schoolId: null, application: null }] };
     await mountComponent(<ShortlistView initial={initial} />);
     await click(button('University courses'));
     expect(queryLink(/Civil Engineering/)).toBeNull();
@@ -74,8 +74,8 @@ describe("My shortlist", () => {
 
   it("keeps a provider link on an inactive saved course, and only safe links", async () => {
     const initial = { ...list(), courses: [
-      { id: 'offering-1', name: 'Advanced Computing', institutionName: 'Example University', campus: 'Main', active: false, sourceUrl: 'https://example.edu.au/computing' },
-      { id: 'offering-2', name: 'Applied Data', institutionName: 'Example University', campus: null, active: false, sourceUrl: 'javascript:alert(1)' },
+      { id: 'offering-1', name: 'Advanced Computing', institutionName: 'Example University', campus: 'Main', active: false, sourceUrl: 'https://example.edu.au/computing', schoolId: null, application: null },
+      { id: 'offering-2', name: 'Applied Data', institutionName: 'Example University', campus: null, active: false, sourceUrl: 'javascript:alert(1)', schoolId: null, application: null },
     ] };
     await mountComponent(<ShortlistView initial={initial} />);
     await click(button('University courses'));
@@ -236,19 +236,79 @@ describe("My shortlist", () => {
   });
 
   it("starts an application once and swaps the button for a link", async () => {
-    const insert = deferred<{ id: string; status: string }>();
-    io.addApplication.mockReturnValueOnce(insert.promise);
+    const insert = deferred<{ application: { id: string; status: string }; created: boolean }>();
+    io.start.mockReturnValueOnce(insert.promise);
     await mountComponent(<ShortlistView initial={list()} />);
     const start = button("Start application");
     await click(start);
     await click(start);
-    await act(async () => insert.resolve({ id: "app-7", status: "researching" }));
-    expect(io.addApplication).toHaveBeenCalledTimes(1);
-    expect(io.addApplication).toHaveBeenCalledWith(7);
+    await act(async () => insert.resolve({ application: { id: "app-7", status: "researching" }, created: true }));
+    expect(io.start).toHaveBeenCalledTimes(1);
+    expect(io.start).toHaveBeenCalledWith(7);
     expect(queryButton("Start application")).toBeNull();
     const hrefs = [...document.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     expect(hrefs).toContain("/applications/app-7");
     expect(hrefs).toContain("/applications/app-8");
+  });
+
+  it("treats an application that already exists as success and says so", async () => {
+    io.start.mockResolvedValueOnce({ application: { id: "app-7", status: "applying" }, created: false });
+    await mountComponent(<ShortlistView initial={list()} />);
+    await click(button("Start application"));
+    expect(io.toast.success).toHaveBeenCalledWith("You're already tracking Harbourside University.");
+    expect(io.toast.error).not.toHaveBeenCalled();
+    expect([...document.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toContain("/applications/app-7");
+  });
+
+  describe("saved course rows (PROD-148)", () => {
+    const course = (id: string, name: string, schoolId: number | null, application: { id: string; status: "applying" } | null = null) => ({
+      id, name, institutionName: "Harbourside University", campus: "Main", active: true, sourceUrl: "https://example.edu.au/c", schoolId, application,
+    });
+
+    it("never starts an application on mount or re-render, only on the labelled click", async () => {
+      const initial = { ...list(), courses: [course("c1", "Advanced Computing", 7)] };
+      await mountComponent(<ShortlistView initial={initial} />);
+      await click(button("University courses"));
+      await click(button("All"));
+      expect(io.start).not.toHaveBeenCalled();
+      expect(button("Track an application at Harbourside University")).toBeTruthy();
+    });
+
+    it("shares one in-flight start per university across course and university rows, and updates every row", async () => {
+      const insert = deferred<{ application: { id: string; status: string }; created: boolean }>();
+      io.start.mockReturnValueOnce(insert.promise);
+      const initial = { ...list(), courses: [course("c1", "Advanced Computing", 7), course("c2", "Applied Data", 7)] };
+      await mountComponent(<ShortlistView initial={initial} />);
+      const [first, second] = [...document.querySelectorAll<HTMLButtonElement>("button")].filter((b) => b.textContent === "Track an application at Harbourside University");
+      await click(first);
+      await click(first);
+      expect(second.disabled).toBe(true);
+      expect(button("Start application").disabled).toBe(true);
+      await act(async () => insert.resolve({ application: { id: "app-7", status: "researching" }, created: true }));
+      expect(io.start).toHaveBeenCalledTimes(1);
+      expect(io.start).toHaveBeenCalledWith(7);
+      expect(queryButton("Track an application at Harbourside University")).toBeNull();
+      expect(queryButton("Start application")).toBeNull();
+      const opens = [...document.querySelectorAll("a")].filter((a) => a.textContent?.includes("Open your Harbourside University application"));
+      expect(opens.map((a) => a.getAttribute("href"))).toEqual(["/applications/app-7", "/applications/app-7"]);
+    });
+
+    it("keeps the button and toasts when starting fails", async () => {
+      io.start.mockRejectedValueOnce(new Error("offline"));
+      const initial = { ...list(), courses: [course("c1", "Advanced Computing", 7)] };
+      await mountComponent(<ShortlistView initial={initial} />);
+      await click(button("Track an application at Harbourside University"));
+      expect(io.toast.error).toHaveBeenCalledWith("Couldn't start tracking. Try again.");
+      expect(button("Track an application at Harbourside University").disabled).toBe(false);
+    });
+
+    it("opens the existing application, and explains a course with no linked university", async () => {
+      const initial = { ...list(), courses: [course("c1", "Advanced Computing", 8, { id: "app-8", status: "applying" }), course("c2", "Applied Data", null)] };
+      await mountComponent(<ShortlistView initial={initial} />);
+      expect(link("Open your Harbourside University application").getAttribute("href")).toBe("/applications/app-8");
+      expect(document.body.textContent).toContain("This course isn't linked to a university in CAAT yet.");
+      expect(queryButton("Track an application at Harbourside University")).toBeNull();
+    });
   });
 
   it("restores an item when removing it fails", async () => {
