@@ -90,7 +90,7 @@ describe("loadToday", () => {
     ["user_school_applications", "id, deadline_at, status, schools(name)"],
     ["user_bookmarked_scholarships", "scholarship_id, scholarships(id, title, deadline_at)"],
     ["calendar_events", "id, title, event_date, time_start, time_end"],
-    ["user_scholarships", "id, title, deadline_at"],
+    ["user_scholarships", "id, title, deadline_at, status"],
   ];
 
   it("feeds the student's own dated scholarships into Today next to catalogue ones (PROD-146)", async () => {

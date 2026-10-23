@@ -2,7 +2,7 @@
  * Full-stack journeys for a disposable local Supabase instance only.
  * This spec is intentionally excluded from the default Playwright project.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import routeCoverage from "./route-coverage.json";
 
 const STUDENT_EMAIL = "e2e.student@caat.local.test";
@@ -837,7 +837,26 @@ async function removeCustomScholarship(page: Page, title: string) {
   await expect(card).toHaveCount(0, { timeout: 10_000 });
 }
 
-test("a custom scholarship deadline becomes a Today task and Custom deadline that survive a reload (PROD-146)", async ({ page }) => {
+/** Backstop cleanup that does not need the page: sign in as the seeded student
+ *  through local Auth with the anon key and delete their own rows by the run's
+ *  unique title. RLS keeps it owner-scoped; no service-role key is used. */
+async function deleteCustomScholarshipByTitle(request: APIRequestContext, title: string) {
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL").origin;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!anonKey) throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY must be set for isolated cleanup");
+  const auth = await request.post(`${api}/auth/v1/token?grant_type=password`, {
+    headers: { apikey: anonKey },
+    data: { email: STUDENT_EMAIL, password: process.env.E2E_TEST_PASSWORD },
+  });
+  expect(auth.ok(), "local student sign-in for cleanup").toBe(true);
+  const { access_token: token } = (await auth.json()) as { access_token: string };
+  const removed = await request.delete(`${api}/rest/v1/user_scholarships?title=eq.${encodeURIComponent(title)}`, {
+    headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
+  });
+  expect(removed.ok(), "custom scholarship cleanup").toBe(true);
+}
+
+test("a custom scholarship deadline becomes a Today task and Custom deadline that survive a reload (PROD-146)", async ({ page, request }) => {
   test.setTimeout(90_000);
   await signInToIsolatedStudent(page);
   const title = marker("E2E custom scholarship");
@@ -867,10 +886,13 @@ test("a custom scholarship deadline becomes a Today task and Custom deadline tha
       const upcoming = page.getByRole("region", { name: "Coming up" }).getByRole("link", { name: new RegExp(title) });
       await expect(upcoming).toBeVisible();
       await expect(upcoming).toContainText("Custom");
+      await expect(upcoming).toContainText("Your own scholarship");
       if (pass === 0) await page.reload();
     }
   } finally {
     if (!page.isClosed()) await removeCustomScholarship(page, title).catch(() => {});
+    // Always runs, even after a timeout closed the page.
+    await deleteCustomScholarshipByTitle(request, title);
   }
 });
 

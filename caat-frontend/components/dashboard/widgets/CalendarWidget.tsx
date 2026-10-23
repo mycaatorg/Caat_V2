@@ -14,6 +14,7 @@ import { getClientUserId } from "@/lib/current-user";
 import { toast } from "sonner";
 import { toDateKey, formatTime } from "@/lib/calendar-utils";
 import {
+  CUSTOM_SOURCE_PILL,
   fetchUnifiedDeadlines,
   type UnifiedDeadline,
 } from "@/lib/unified-deadlines";
@@ -429,9 +430,12 @@ export function CalendarWidget() {
                   </Link>
                   <div className="mt-0.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
                     {d.source === "custom" && (
-                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                        Custom
-                      </span>
+                      <>
+                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                          <span aria-hidden="true">{CUSTOM_SOURCE_PILL.visible}</span>
+                          <span className="sr-only">{CUSTOM_SOURCE_PILL.spoken}</span>
+                        </span>{" "}
+                      </>
                     )}
                     {d.source === "app" ? "Application deadline" : "Scholarship deadline"}
                   </div>

@@ -16,6 +16,9 @@ export type DeadlineSource = "app" | "scholarship" | "custom" | "event";
 /** Where students manage the scholarships they added themselves. */
 export const CUSTOM_SCHOLARSHIPS_HREF = "/scholarships?view=mine";
 
+/** Pill copy for custom rows: short visible text, and what it means for screen readers. */
+export const CUSTOM_SOURCE_PILL = { visible: "Custom", spoken: "Your own scholarship" } as const;
+
 export interface UnifiedDeadline {
   id: string;
   source: DeadlineSource;
@@ -24,6 +27,8 @@ export interface UnifiedDeadline {
   href: string;
   timeStart?: string;
   timeEnd?: string;
+  /** Tracking status of a custom scholarship ("interested", "applied", …). */
+  status?: string;
 }
 
 export interface RawAppDeadline {
@@ -36,6 +41,8 @@ export interface RawScholarshipDeadline {
   id: string;
   title: string;
   deadline_at: string;
+  /** Only custom scholarships carry their own status. */
+  status?: string;
 }
 export interface RawEventDeadline {
   id: string;
@@ -89,6 +96,7 @@ export function mergeDeadlines(
       title: s.title,
       dateISO: date,
       href: CUSTOM_SCHOLARSHIPS_HREF,
+      ...(s.status ? { status: s.status } : {}),
     });
   }
 
@@ -133,7 +141,7 @@ export async function fetchUnifiedDeadlines(
       .eq("user_id", userId),
     supabase
       .from("user_scholarships")
-      .select("id, title, deadline_at")
+      .select("id, title, deadline_at, status")
       .eq("user_id", userId)
       .not("deadline_at", "is", null),
   ]);
@@ -191,8 +199,9 @@ export async function fetchUnifiedDeadlines(
   });
 
   const custom: RawScholarshipDeadline[] = (customRes.data ?? []).flatMap((row: unknown) => {
-    const r = row as { id: string; title: string; deadline_at: string | null };
-    return r.deadline_at ? [{ id: r.id, title: r.title, deadline_at: r.deadline_at }] : [];
+    const r = row as { id: string; title: string; deadline_at: string | null; status: string | null };
+    if (!r.deadline_at) return [];
+    return [{ id: r.id, title: r.title, deadline_at: r.deadline_at, ...(r.status ? { status: r.status } : {}) }];
   });
 
   return mergeDeadlines(apps, schols, evts, todayISO, custom);

@@ -150,6 +150,19 @@ describe("custom scholarship deadlines (PROD-146)", () => {
     expect(mixed.map((t) => t.id)).toEqual(["soon-sch-s1", "soon-cus-c1"]);
     expect(mixed[1].title).toBe("Own award c1 closes in 2 days");
   });
+
+  it("drops the task once the student's own scholarship is no longer 'interested', like catalogue ones", () => {
+    const input = base({
+      deadlines: [
+        { ...cus("c1", "2026-10-09"), status: "applied" },
+        { ...cus("c2", "2026-10-10"), status: "interested" },
+        cus("c3", "2026-10-11"),
+      ],
+    });
+    expect(deriveTasks(input).map((t) => t.id)).toEqual(["soon-cus-c2", "soon-cus-c3"]);
+    // The applied one still counts as an upcoming date, as catalogue rows do.
+    expect(comingUp(input).map((d) => d.id)).toEqual(["cus-c1", "cus-c2", "cus-c3"]);
+  });
 });
 
 describe("comingUp", () => {

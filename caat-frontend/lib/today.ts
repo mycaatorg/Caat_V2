@@ -154,10 +154,12 @@ export function deriveTasks(input: TodayInput): TodayTask[] {
     });
   }
 
-  // Scholarships the student added themselves (PROD-146): same 14-day window
-  // and wording, managed from their own list rather than a catalogue page.
+  // Scholarships the student added themselves (PROD-146): same 14-day window,
+  // wording and "interested only" rule, managed from their own list rather
+  // than a catalogue page. Acted-on rows stay in the feed and calendar.
   for (const d of input.deadlines) {
     if (d.source !== "custom") continue;
+    if ((d.status ?? "interested") !== "interested") continue;
     const id = d.id.replace(/^cus-/, "");
     const days = daysBetween(input.todayISO, d.dateISO);
     if (days < 0 || days > SOON_DAYS) continue;
