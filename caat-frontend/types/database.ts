@@ -1586,6 +1586,35 @@ export type Database = {
         }
         Relationships: []
       }
+      user_scholarship_prep_checks: {
+        Row: {
+          checked_at: string
+          item_key: string
+          scholarship_id: string
+          user_id: string
+        }
+        Insert: {
+          checked_at?: string
+          item_key: string
+          scholarship_id: string
+          user_id: string
+        }
+        Update: {
+          checked_at?: string
+          item_key?: string
+          scholarship_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_scholarship_prep_checks_user_id_scholarship_id_fkey"
+            columns: ["user_id", "scholarship_id"]
+            isOneToOne: false
+            referencedRelation: "user_bookmarked_scholarships"
+            referencedColumns: ["user_id", "scholarship_id"]
+          },
+        ]
+      }
       user_scholarships: {
         Row: {
           amount_currency: string

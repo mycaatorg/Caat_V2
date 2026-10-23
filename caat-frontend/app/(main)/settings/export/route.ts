@@ -36,6 +36,7 @@ export async function GET() {
       "user_school_notes",
       "user_bookmarked_schools",
       "user_bookmarked_scholarships",
+      "user_scholarship_prep_checks",
       "user_bookmarked_majors",
       "custom_essay_prompts",
       "essay_drafts",
