@@ -21,6 +21,22 @@ afterEach(() => {
 });
 
 describe("rate-limit gate", () => {
+  it("records an allowlisted nested DNS code without the hostname, token or request key", async () => {
+    const error = new TypeError("private-provider-token", {
+      cause: { code: "ENOTFOUND", hostname: "private-host", message: "private-provider-token" },
+    });
+    await expect(gate(limiterWith(vi.fn().mockRejectedValue(error)), "auth:private-ip")).resolves.toEqual(unavailable);
+    expect(console.error).toHaveBeenCalledExactlyOnceWith("[rate-limit] Provider unavailable", { reason: "request_failed", code: "ENOTFOUND" });
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toMatch(/private-provider-token|private-host|private-ip/);
+  });
+
+  it("drops unrecognized diagnostics and stops at cyclic error causes", async () => {
+    const error: { code: string; name: string; cause?: unknown } = { code: "private-token", name: "private-host" };
+    error.cause = error;
+    await expect(gate(limiterWith(vi.fn().mockRejectedValue(error)), "private-ip")).resolves.toEqual(unavailable);
+    expect(console.error).toHaveBeenCalledExactlyOnceWith("[rate-limit] Provider unavailable", { reason: "request_failed" });
+  });
+
   it("fails closed with a retry message when the provider rejects, without logging credentials or identifiers", async () => {
     const limit = vi.fn().mockRejectedValue(new Error("fetch failed: secret-token private-host"));
 
