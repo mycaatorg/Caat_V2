@@ -160,8 +160,7 @@ describe("custom scholarship deadlines (PROD-146)", () => {
     const tasks = deriveTasks(
       base({
         applications: [app("a1", { deadlineAt: "2026-10-12" })],
-        essayDraftSchoolIds: [null],
-        documentSchoolIds: [null],
+        preparation: SHARED_READY,
         deadlines: [
           cus("c3", "2026-10-05"),
           sch("s3", "2026-10-10"),
