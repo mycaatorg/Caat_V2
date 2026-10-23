@@ -75,4 +75,4 @@ Files: extend `caat-frontend/tests/e2e/staging-journeys.spec.ts`, isolated seed 
 
 ## Execution status
 
-Design/source research is complete enough to implement. No course schema, private save table, route or course comparison has been built or deployed yet. PROD-75/142 release is independent and must not be misrepresented as delivery of this plan.
+Design/source research is complete. The catalogue schema, reviewed seeds, typed loader, owner-scoped bookmark API and isolated RLS test harness are implemented; real database CI is pending. All 814 unit tests, typecheck, lint and 13 CI safety contracts pass. The course browser/comparison and Shortlist/Today integration are not implemented yet. No course migration or feature has been deployed. PROD-75/142 release is independent and must not be misrepresented as delivery of this plan.

@@ -1,3 +1,5 @@
+import type { CourseOffering } from "./courses";
+
 export type Json =
   | string
   | number
@@ -14,6 +16,18 @@ export type Database = {
   }
   public: {
     Tables: {
+      course_offerings: {
+        Row: CourseOffering
+        Insert: CourseOffering
+        Update: Partial<CourseOffering>
+        Relationships: [{ foreignKeyName: "course_offerings_school_id_fkey"; columns: ["school_id"]; isOneToOne: false; referencedRelation: "schools"; referencedColumns: ["id"] }]
+      }
+      user_course_bookmarks: {
+        Row: { user_id: string; course_id: string; created_at: string }
+        Insert: { user_id: string; course_id: string; created_at?: string }
+        Update: { user_id?: string; course_id?: string; created_at?: string }
+        Relationships: [{ foreignKeyName: "user_course_bookmarks_course_id_fkey"; columns: ["course_id"]; isOneToOne: false; referencedRelation: "course_offerings"; referencedColumns: ["id"] }]
+      }
       calendar_events: {
         Row: {
           created_at: string
