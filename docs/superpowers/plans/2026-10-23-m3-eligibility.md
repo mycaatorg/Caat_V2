@@ -37,3 +37,9 @@ Interface: explainEligibility(profile: Pick<ProfileRow,'nationality'|'student_st
 
 ## Progress
 Pre-flight: Task 1 and Task 2 share no interfaces. Existing code verified against origin/develop; current working tree clean at start.
+
+Task 1 complete: d2c3cd8; 2 regressions failed before fix; full unit suite 758/758 passed.
+Source audit: 4,224 production rows, zero verified in last 90 days. Source re-verification tracked separately in PROD-143; no production data modified.
+
+Review rulings: use explicit AU citizenship code for a match; country-only fields remain unknown because geographic eligibility is ambiguous. Explicit NZ-only citizenship does not match a listed Australian nationality, with dual-citizenship caveat; no overall eligibility determination. Cost: fewer automated conclusions, safer manual checking. Database student_status is string|null, so evaluator accepts that boundary and treats unrecognized values conservatively.
+Independent review P2 addressed by preserving distinct free-text eligibility even beside structured requirements; regression RED→GREEN. Panel heading/region semantics corrected. Claude review medium finding addressed with country-only and stale-unmet regression cases.
