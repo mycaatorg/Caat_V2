@@ -14,6 +14,19 @@
 -- No change to public.scholarships. Additive and safe to re-run.
 BEGIN;
 
+-- 0. Detach anything the new checks would reject -------------------------
+-- A saved scholarship may only point at a university the student has an
+-- application for. Clear any that do not, so later status changes are not
+-- refused by the WITH CHECK below. Production had 0 such rows (0 bookmarks
+-- with school_id set at all) on 23 October 2026, so this is a no-op there.
+UPDATE public.user_bookmarked_scholarships b
+   SET school_id = NULL
+ WHERE b.school_id IS NOT NULL
+   AND NOT EXISTS (
+     SELECT 1 FROM public.user_school_applications a
+     WHERE a.user_id = b.user_id AND a.school_id = b.school_id
+   );
+
 -- 1. Attach only to your own application's university --------------------
 DROP POLICY IF EXISTS "users can update own scholarship bookmarks" ON public.user_bookmarked_scholarships;
 CREATE POLICY "users can update own scholarship bookmarks"
@@ -119,5 +132,27 @@ $$;
 REVOKE ALL ON public.user_scholarship_prep_checks FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_scholarship_prep_checks TO authenticated;
 GRANT ALL ON public.user_scholarship_prep_checks TO service_role;
+
+-- Guard: permissive policies are OR-ed, so an older INSERT or UPDATE policy
+-- under another name would let the unchecked school_id write through. Refuse
+-- to commit unless exactly one of each applies to signed-in students.
+DO $$
+DECLARE
+  n_insert int;
+  n_update int;
+BEGIN
+  SELECT count(*) FILTER (WHERE cmd IN ('INSERT', 'ALL')),
+         count(*) FILTER (WHERE cmd IN ('UPDATE', 'ALL'))
+    INTO n_insert, n_update
+    FROM pg_policies
+   WHERE schemaname = 'public'
+     AND tablename = 'user_bookmarked_scholarships'
+     AND permissive = 'PERMISSIVE'
+     AND roles && ARRAY['authenticated', 'public']::name[];
+  IF n_insert <> 1 OR n_update <> 1 THEN
+    RAISE EXCEPTION 'user_bookmarked_scholarships must have exactly one permissive INSERT and one UPDATE policy for authenticated (found % INSERT, % UPDATE)', n_insert, n_update;
+  END IF;
+END
+$$;
 
 COMMIT;
