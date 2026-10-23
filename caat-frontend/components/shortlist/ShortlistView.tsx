@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -8,11 +8,12 @@ import { ArrowRight, BookOpen, GraduationCap, Loader2, School, X } from "lucide-
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase/client";
 import { getClientUserId } from "@/lib/current-user";
-import { addApplication } from "@/app/(main)/applications/api";
+import { startApplicationForSchool } from "@/lib/application-for-school";
 import { SCHOLARSHIP_STATUS_LABELS } from "@/lib/scholarship-tracking";
 import { removeFromShortlist, type Shortlist, type ShortlistKind } from "@/lib/shortlist";
 import { STATUS_CONFIG } from "@/types/applications";
 import { ProviderLink } from "@/components/courses/course-source";
+import { CourseApplicationAction } from "@/components/courses/course-application-action";
 
 const MAROON = "text-[#9a1a27] dark:text-[#e06b78]";
 type Filter = "all" | ShortlistKind;
@@ -139,6 +140,7 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
   const [view, setView] = useState<ViewState>(() => readViewState(initialQuery));
   const [restored, setRestored] = useState<{ kind: ShortlistKind; id: string | number; label: string } | null>(null);
   const [busy, setBusy] = useState<Set<string>>(new Set());
+  const inFlight = useRef(new Set<string>());
   const isBusy = (key: string) => busy.has(key);
   const setBusyKey = (key: string, on: boolean) =>
     setBusy((cur) => {
@@ -243,22 +245,29 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
     }
   }
 
+  /** Only ever called from a labelled click. The busy key is per university,
+   *  so a university row and its saved course rows share one in-flight start,
+   *  and the result updates every row for that university. */
   async function startApplication(schoolId: number, name: string) {
     const key = `apply-${schoolId}`;
-    if (isBusy(key)) return;
+    // The ref, not state, guards two clicks in one tick (state updates batch).
+    if (inFlight.current.has(key)) return;
+    inFlight.current.add(key);
     setBusyKey(key, true);
     try {
-      const row = await addApplication(schoolId);
+      const { application, created } = await startApplicationForSchool(schoolId);
       setList((cur) =>
         cur && {
           ...cur,
-          schools: cur.schools.map((s) => (s.id === schoolId ? { ...s, application: { id: row.id, status: row.status } } : s)),
+          schools: cur.schools.map((s) => (s.id === schoolId ? { ...s, application } : s)),
+          courses: cur.courses.map((c) => (c.schoolId === schoolId ? { ...c, application } : c)),
         },
       );
-      toast.success(`Started tracking your application to ${name}.`);
+      toast.success(created ? `Added ${name} to My applications.` : `You're already tracking ${name}.`);
     } catch {
-      toast.error("Could not start the application. Please try again.");
+      toast.error("Couldn't start tracking. Try again.");
     } finally {
+      inFlight.current.delete(key);
       setBusyKey(key, false);
     }
   }
@@ -446,6 +455,15 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
                   {!c.active && <p className="text-xs text-muted-foreground">No longer in the active catalogue. Check current availability. <ProviderLink href={c.sourceUrl}>Check with the provider<span className="sr-only"> about {c.name}</span></ProviderLink></p>}
                 </div>
                 <Link href={`/courses?course=${encodeURIComponent(c.id)}`} className={`text-sm ${MAROON} hover:underline`}>Review course details</Link>
+                <CourseApplicationAction
+                  institutionName={c.institutionName}
+                  schoolId={c.schoolId}
+                  application={c.application}
+                  busy={c.schoolId !== null && isBusy(`apply-${c.schoolId}`)}
+                  unavailable={false}
+                  onStart={() => { if (c.schoolId !== null) void startApplication(c.schoolId, c.institutionName); }}
+                  onRetry={() => router.refresh()}
+                />
                 <RemoveButton label={c.name} busy={isBusy(`course-${c.id}`)} onRemove={() => remove("course", c.id, c.name)} />
               </li>)}
             </Section>

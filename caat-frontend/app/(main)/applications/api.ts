@@ -68,8 +68,22 @@ export async function addApplication(
     .insert({ user_id: user.id, school_id: schoolId, status: "researching", intended_majors: intended })
     .select("*, schools(id, name, country)")
     .single();
-  if (error) throw new Error(sanitizeError(error));
+  if (error) throw new ApplicationWriteError(sanitizeError(error), postgresCode(error));
   return data as unknown as ApplicationRow;
+}
+
+/** A sanitised write error that still carries the Postgres code, read before
+ *  sanitising, so a caller can tell "already exists" (23505) from a failure. */
+export class ApplicationWriteError extends Error {
+  constructor(message: string, readonly code: string | null) {
+    super(message);
+    this.name = "ApplicationWriteError";
+  }
+}
+
+function postgresCode(error: unknown): string | null {
+  const code = typeof error === "object" && error !== null ? (error as { code?: unknown }).code : null;
+  return typeof code === "string" ? code : null;
 }
 
 /** Update the per-application "applying for" majors (stored as names). */

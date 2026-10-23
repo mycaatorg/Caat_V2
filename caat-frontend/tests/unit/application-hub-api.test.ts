@@ -20,6 +20,7 @@ vi.mock("@/lib/scholarship-tracking", () => ({ fetchTrackedForSchool: io.tracked
 import {
   fetchApplicationHub,
   fetchMajorOptions,
+  fetchSavedCoursesForSchool,
   updateApplicationDeadline,
   updateApplicationStatus,
 } from "@/app/(main)/applications/[id]/api";
@@ -411,6 +412,57 @@ describe("hub status and deadline writes", () => {
     await expect(updateApplicationStatus("app-1", "submitted")).rejects.toThrow("Not authenticated");
     await expect(updateApplicationDeadline("app-1", null)).rejects.toThrow("Not authenticated");
     expect(io.client.queries).toHaveLength(0);
+  });
+});
+
+describe("hub saved courses at this university (PROD-148)", () => {
+  const saved = (id: string, patch: Record<string, unknown> = {}) => ({
+    course_id: id,
+    course_offerings: {
+      id, name: `Course ${id}`, campus: "Parkville", application_route: "Apply through VTAC.",
+      application_url: "https://vtac.edu.au", source_url: "https://unimelb.edu.au/c", verified_at: "2026-10-01T00:00:00Z",
+      active: true, school_id: 7, ...patch,
+    },
+  });
+
+  it("reads only the caller's saved courses whose offering is at this school, in the parallel batch", async () => {
+    use(hubResolver({ user_course_bookmarks: { data: [saved("c1")], error: null } }));
+    const hub = await fetchApplicationHub("app-1");
+    const read = io.client.queries.find((q) => q.table === "user_course_bookmarks")!;
+    expect(String(read.calls.find((c) => c.method === "select")!.args[0])).toContain("course_offerings!inner(");
+    expect(read.calls.filter((c) => c.method === "eq").map((c) => c.args)).toEqual([
+      ["user_id", "student-1"],
+      ["course_offerings.school_id", 7],
+    ]);
+    expect(hub.savedCoursesUnavailable).toBe(false);
+    expect(hub.savedCourses).toEqual([{
+      id: "c1", name: "Course c1", campus: "Parkville", application_route: "Apply through VTAC.",
+      application_url: "https://vtac.edu.au", source_url: "https://unimelb.edu.au/c", verified_at: "2026-10-01T00:00:00.000Z", active: true,
+    }]);
+  });
+
+  it("keeps an inactive saved course and drops unsafe links and invalid dates", async () => {
+    use(hubResolver({ user_course_bookmarks: { data: [saved("c2", { active: false, application_url: "javascript:alert(1)", verified_at: "not a date" })], error: null } }));
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.savedCourses[0]).toMatchObject({ id: "c2", active: false, application_url: null, verified_at: null });
+  });
+
+  it("marks the card unavailable on a read error instead of reporting no saved courses", async () => {
+    use(hubResolver({ user_course_bookmarks: { data: null, error: { message: "offline" } } }));
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.savedCourses).toEqual([]);
+    expect(hub.savedCoursesUnavailable).toBe(true);
+    // The rest of the hub, including the preparation score, is unaffected.
+    expect(hub.readiness).toEqual({ deadlineSet: false, essayDrafted: true, keyDocsUploaded: true, score: 2 });
+  });
+
+  it("retries the saved-courses read on its own, scoped to the caller and school", async () => {
+    use(hubResolver({ user_course_bookmarks: { data: [saved("c1")], error: null } }));
+    const courses = await fetchSavedCoursesForSchool(7);
+    expect(courses.map((c) => c.id)).toEqual(["c1"]);
+    expect(io.client.queries.map((q) => q.table)).toEqual(["user_course_bookmarks"]);
+    use(hubResolver({ user_course_bookmarks: { data: null, error: { message: "offline" } } }));
+    await expect(fetchSavedCoursesForSchool(7)).rejects.toThrow();
   });
 });
 
