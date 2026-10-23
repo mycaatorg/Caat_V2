@@ -75,4 +75,8 @@ Files: extend `caat-frontend/tests/e2e/staging-journeys.spec.ts`, isolated seed 
 
 ## Execution status
 
-Design/source research is complete. The catalogue schema, reviewed seeds, typed loader, owner-scoped bookmark API and isolated RLS test harness are implemented; real database CI is pending. All 814 unit tests, typecheck, lint and 13 CI safety contracts pass. The course browser/comparison and Shortlist/Today integration are not implemented yet. No course migration or feature has been deployed. PROD-75/142 release is independent and must not be misrepresented as delivery of this plan.
+Handoff checkpoint, 23 October 2026: design/source research, catalogue schema, reviewed seeds, typed loader, owner-scoped bookmark API and isolated RLS test harness are implemented. Foundation commit c591443 passed CI run 39915738634, including the isolated database/browser job; that result does not validate later UI changes.
+
+The course browser, up-to-three comparison, paired major navigation, account-scoped optimistic saves, Shortlist and Today integration are now implemented in draft PR187 on codex/caat-course-shortlists. The expanded suite has 828 passing unit tests. Final checkpoint typecheck/lint results and commit are recorded on PROD-76 and PR187. Task checkboxes above remain acceptance gates: implementation alone does not establish that every browser or release check is complete.
+
+Required next: inspect this checkpoint; add persisted course-specific browser journeys (save, reload, Shortlist, Today, remove, reload); verify phone/desktop and keyboard accessibility; obtain actual Claude source review; run complete CI on the final commit. Do not merge/release solely on foundation CI. Apply the additive schema before deploying dependent loaders, then verify the exact production SHA and flows. No course migration or feature has been deployed. PROD-76 remains In Progress. PROD-75/142 are already shipped independently.

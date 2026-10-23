@@ -29,7 +29,7 @@ export interface TodayInput {
   essayDraftSchoolIds: (number | null)[];
   /** school_id of each uploaded document; null means shared. */
   documentSchoolIds: (number | null)[];
-  saved: { scholarships: number; schools: number; majors: number };
+  saved: { scholarships: number; schools: number; majors: number; courses: number };
   deadlines: UnifiedDeadline[];
   /** Saved scholarship id → tracking status ("interested", "applied", …). */
   scholarshipStatuses?: Record<string, string>;
@@ -169,7 +169,7 @@ export function comingUp(input: Pick<TodayInput, "todayISO" | "deadlines">): Uni
 }
 
 export function chooseNextStep(input: TodayInput, tasks: TodayTask[] = deriveTasks(input)): NextStep {
-  const savedTotal = input.saved.scholarships + input.saved.schools + input.saved.majors;
+  const savedTotal = input.saved.scholarships + input.saved.schools + input.saved.majors + input.saved.courses;
   const { onboarding } = input;
 
   if (!onboarding.completed && !onboarding.dismissed && !onboarding.hasBasics && savedTotal === 0) {

@@ -7,7 +7,7 @@ const base = (patch: Partial<TodayInput> = {}): TodayInput => ({
   applications: [],
   essayDraftSchoolIds: [],
   documentSchoolIds: [],
-  saved: { scholarships: 0, schools: 0, majors: 0 },
+  saved: { scholarships: 0, schools: 0, majors: 0, courses: 0 },
   deadlines: [],
   ...patch,
 });
@@ -134,8 +134,8 @@ describe("chooseNextStep", () => {
   });
 
   it("moves from saving to applying to the most urgent task", () => {
-    expect(chooseNextStep(base({ saved: { scholarships: 1, schools: 0, majors: 0 } })).kind).toBe("save-university");
-    expect(chooseNextStep(base({ saved: { scholarships: 1, schools: 1, majors: 0 } })).kind).toBe("start-application");
+    expect(chooseNextStep(base({ saved: { scholarships: 1, schools: 0, majors: 0, courses: 0 } })).kind).toBe("save-university");
+    expect(chooseNextStep(base({ saved: { scholarships: 1, schools: 1, majors: 0, courses: 0 } })).kind).toBe("start-application");
     const step = chooseNextStep(base({ applications: [app("a1", { deadlineAt: null, status: "researching" })] }));
     expect(step).toMatchObject({ kind: "task", title: "Add the deadline for University a1", href: "/applications/a1" });
   });

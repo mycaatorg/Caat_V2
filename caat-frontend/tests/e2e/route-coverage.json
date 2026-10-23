@@ -262,6 +262,13 @@
       "kind": "static",
       "coverage": "authenticated-content",
       "expected": "Settings"
+    },
+    {
+      "route": "/courses",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Find the degree behind your interests"
     }
   ],
   "writeJourneys": [

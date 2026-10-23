@@ -19,6 +19,7 @@ vi.mock("next/link", () => ({
 import { ShortlistView } from "@/components/shortlist/ShortlistView";
 
 const list = (): Shortlist => ({
+  courses: [],
   scholarships: [{ id: "s1", title: "Regional Engineering Scholarship", provider: "Harbourside University", amount: "AUD $5,000", deadlineAt: "2026-11-30T13:00:00Z", status: "interested" }],
   schools: [
     { id: 7, name: "Harbourside University", country: "Australia", application: null },
@@ -37,6 +38,7 @@ afterEach(() => {
 });
 
 const manySaved = (count: number): Shortlist => ({
+  courses: [],
   scholarships: Array.from({ length: count }, (_, i) => ({
     id: `sch-${i + 1}`,
     title: `Scholarship ${i + 1}`,
@@ -54,6 +56,22 @@ function setSearch(search: string) {
 }
 
 describe("My shortlist", () => {
+  it("keeps university courses separate from majors and restores a failed course removal", async () => {
+    const pending = deferred(); io.remove.mockReturnValueOnce(pending.promise);
+    const initial = { ...list(), courses: [{ id: 'offering-1', name: 'Advanced Computing', institutionName: 'Example University', campus: 'Main', active: false }] };
+    await mountComponent(<ShortlistView initial={initial} />);
+    await click(button('University courses'));
+    expect(queryLink(/Civil Engineering/)).toBeNull();
+    expect(link(/Advanced Computing/).getAttribute('href')).toBe('/courses?course=offering-1');
+    expect(document.body.textContent).toContain('No longer in the active catalogue');
+    await click(button('Remove Advanced Computing from shortlist'));
+    await act(async () => pending.reject(new Error('offline')));
+    expect(queryLink(/Advanced Computing/)).not.toBeNull();
+    expect(io.remove).toHaveBeenCalledWith({}, 'student-1', 'course', 'offering-1');
+    await click(button('Majors'));
+    expect(queryLink(/Civil Engineering/)).not.toBeNull();
+  });
+
   it("locates the restored item using current order after another removal succeeds", async () => {
     const removal = deferred(); io.remove.mockReturnValueOnce(removal.promise).mockResolvedValueOnce(undefined);
     setSearch("?tab=school&page=2");
@@ -80,9 +98,9 @@ describe("My shortlist", () => {
     setSearch("?tab=school&page=2");
     await mountComponent(<ShortlistView initial={manySaved(21)} />);
     await click(button("Remove University 21 from shortlist"));
-    await click(button("Courses"));
+    await click(button("Majors"));
     await act(async () => removal.reject(new Error("offline")));
-    expect(button("Courses").getAttribute("aria-pressed")).toBe("true");
+    expect(button("Majors").getAttribute("aria-pressed")).toBe("true");
     await click(button("Show restored item"));
     expect(button("Universities").getAttribute("aria-pressed")).toBe("true");
     expect(queryLink(/University 21/)).not.toBeNull();
@@ -99,10 +117,10 @@ describe("My shortlist", () => {
 
   it("filters by kind", async () => {
     await mountComponent(<ShortlistView initial={list()} />);
-    await click(button("Courses"));
+    await click(button("Majors"));
     expect(queryLink(/Regional Engineering Scholarship/)).toBeNull();
     expect(queryLink(/Civil Engineering/)).not.toBeNull();
-    expect(button("Courses").getAttribute("aria-pressed")).toBe("true");
+    expect(button("Majors").getAttribute("aria-pressed")).toBe("true");
   });
 
   it("limits the all view to five items per category and opens all scholarships in the category view", async () => {
@@ -111,7 +129,7 @@ describe("My shortlist", () => {
 
     expect(document.querySelectorAll('[aria-label="Scholarships"] li')).toHaveLength(5);
     expect(document.querySelectorAll('[aria-label="Universities"] li')).toHaveLength(5);
-    expect(document.querySelectorAll('[aria-label="Courses"] li')).toHaveLength(5);
+    expect(document.querySelectorAll('[aria-label="Majors"] li')).toHaveLength(5);
     await click(button("View all scholarships (100)"));
     expect(document.querySelectorAll('[aria-label="Scholarships"] li')).toHaveLength(20);
     expect(queryLink(/Scholarship 20/)).not.toBeNull();
@@ -122,8 +140,8 @@ describe("My shortlist", () => {
     expect(document.querySelectorAll('[aria-label="Universities"] li')).toHaveLength(20);
     expect(new URLSearchParams(window.location.search).get("tab")).toBe("school");
     await click(button("All"));
-    await click(button("View all courses (100)"));
-    expect(document.querySelectorAll('[aria-label="Courses"] li')).toHaveLength(20);
+    await click(button("View all majors (100)"));
+    expect(document.querySelectorAll('[aria-label="Majors"] li')).toHaveLength(20);
     expect(new URLSearchParams(window.location.search).get("tab")).toBe("major");
   });
 
@@ -174,7 +192,7 @@ describe("My shortlist", () => {
     expect(button("All").getAttribute("aria-pressed")).toBe("true");
     expect(document.querySelectorAll('[aria-label="Scholarships"] li')).toHaveLength(5);
     expect(document.querySelectorAll('[aria-label="Universities"] li')).toHaveLength(5);
-    expect(document.querySelectorAll('[aria-label="Courses"] li')).toHaveLength(5);
+    expect(document.querySelectorAll('[aria-label="Majors"] li')).toHaveLength(5);
   });
 
   it("clamps to the last available page after removing the only item on that page", async () => {
@@ -252,7 +270,7 @@ describe("My shortlist", () => {
   });
 
   it("explains an empty shortlist and a failed load", async () => {
-    await mountComponent(<ShortlistView initial={{ scholarships: [], schools: [], majors: [] }} />);
+    await mountComponent(<ShortlistView initial={{ scholarships: [], schools: [], majors: [], courses: [] }} />);
     expect(hasText("Nothing saved yet")).toBe(true);
     unmountAll();
     await mountComponent(<ShortlistView initial={null} />);

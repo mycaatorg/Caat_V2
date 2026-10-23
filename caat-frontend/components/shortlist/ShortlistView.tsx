@@ -20,7 +20,7 @@ type ViewState = { filter: Filter; page: number; search: string; status: Scholar
 
 const PAGE_SIZE = 20;
 const OVERVIEW_LIMIT = 5;
-const VALID_FILTERS = new Set<Filter>(["all", "scholarship", "school", "major"]);
+const VALID_FILTERS = new Set<Filter>(["all", "scholarship", "school", "major", "course"]);
 const VALID_STATUSES = new Set<ScholarshipStatus>(["all", "interested", "applied", "awarded", "not_selected"]);
 
 function readViewState(query: string): ViewState {
@@ -49,11 +49,14 @@ function writeViewState(state: ViewState) {
   window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
+const FIELDS = { scholarship: "scholarships", school: "schools", major: "majors", course: "courses" } as const;
+
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "scholarship", label: "Scholarships" },
   { key: "school", label: "Universities" },
-  { key: "major", label: "Courses" },
+  { key: "major", label: "Majors" },
+  { key: "course", label: "University courses" },
 ];
 
 function closes(deadlineAt: string | null) {
@@ -105,7 +108,7 @@ function Section({
 
 function Pagination({ kind, page, pages, onPage }: { kind: ShortlistKind; page: number; pages: number; onPage: (page: number) => void }) {
   if (pages < 2) return null;
-  const name = kind === "scholarship" ? "Scholarship" : kind === "school" ? "University" : "Course";
+  const name = kind === "scholarship" ? "Scholarship" : kind === "school" ? "University" : kind === "major" ? "Major" : "University course";
   return (
     <nav aria-label={`${name} pages`} className="flex items-center justify-between gap-3 pt-3">
       <Button variant="outline" className="rounded-none" disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous page</Button>
@@ -165,7 +168,9 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
       ? list.scholarships.filter((s) => (view.status === "all" || s.status === view.status) && `${s.title} ${s.provider ?? ""} ${s.amount ?? ""}`.toLowerCase().includes(term)).length
       : view.filter === "school"
         ? list.schools.filter((s) => `${s.name} ${s.country ?? ""}`.toLowerCase().includes(term)).length
-        : list.majors.filter((m) => `${m.name} ${m.category ?? ""}`.toLowerCase().includes(term)).length;
+        : view.filter === "course"
+          ? list.courses.filter(c => `${c.name} ${c.institutionName} ${c.campus ?? ""}`.toLowerCase().includes(term)).length
+          : list.majors.filter((m) => `${m.name} ${m.category ?? ""}`.toLowerCase().includes(term)).length;
     const page = Math.min(view.page, Math.max(1, Math.ceil(count / PAGE_SIZE)));
     if (page !== view.page) updateView({ ...view, page });
   }, [list, view]);
@@ -183,9 +188,9 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
     );
   }
 
-  const restoredItems = restored?.kind === "scholarship" ? list.scholarships : restored?.kind === "school" ? list.schools : list.majors;
+  const restoredItems = restored ? list[FIELDS[restored.kind]] : [];
   const restoredIndex = restored ? restoredItems.findIndex(item => item.id === restored.id) : -1;
-  const total = list.scholarships.length + list.schools.length + list.majors.length;
+  const total = list.scholarships.length + list.schools.length + list.majors.length + list.courses.length;
   const show = (kind: ShortlistKind) => view.filter === "all" || view.filter === kind;
   const filteredScholarships = list.scholarships.filter((s) =>
     (view.status === "all" || s.status === view.status) &&
@@ -193,6 +198,7 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
   );
   const filteredSchools = list.schools.filter((s) => `${s.name} ${s.country ?? ""}`.toLowerCase().includes(view.search.toLowerCase()));
   const filteredMajors = list.majors.filter((m) => `${m.name} ${m.category ?? ""}`.toLowerCase().includes(view.search.toLowerCase()));
+  const filteredCourses = list.courses.filter(c => `${c.name} ${c.institutionName} ${c.campus ?? ""}`.toLowerCase().includes(view.search.toLowerCase()));
   const paged = <T,>(items: T[], matching: T[]) => {
     const pageCount = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
     const page = Math.min(view.page, pageCount);
@@ -201,15 +207,16 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
   };
   const scholarshipPage = paged(list.scholarships, filteredScholarships);
   const schoolPage = paged(list.schools, filteredSchools);
+  const coursePage = paged(list.courses, filteredCourses);
   const majorPage = paged(list.majors, filteredMajors);
-  const searchLabel = view.filter === "scholarship" ? "Search scholarships" : view.filter === "school" ? "Search universities" : "Search courses";
+  const searchLabel = view.filter === "scholarship" ? "Search scholarships" : view.filter === "school" ? "Search universities" : view.filter === "major" ? "Search majors" : "Search university courses";
 
   /** Remove one item optimistically; on failure put back only that item, at
    *  its old position, so other removals that succeeded stay removed. */
   async function remove(kind: ShortlistKind, id: string | number, label: string) {
     const key = `${kind}-${id}`;
     if (isBusy(key)) return;
-    const field = kind === "scholarship" ? "scholarships" : kind === "school" ? "schools" : "majors";
+    const field = FIELDS[kind];
     const before = list![field] as { id: string | number }[];
     const index = before.findIndex((item) => item.id === id);
     const item = before[index];
@@ -263,7 +270,7 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
           Everything you have <span className={`italic ${MAROON}`}>saved</span>
         </h1>
         <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
-          Scholarships, universities and courses you are considering, each with what to do next.
+          Scholarships, universities, majors and courses you are considering, each with what to do next.
         </p>
       </header>
 
@@ -285,7 +292,8 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
             {[
               ["/scholarships", "Browse scholarships"],
               ["/schools", "Browse universities"],
-              ["/majors", "Browse courses"],
+              ["/majors", "Browse majors"],
+              ["/courses", "Browse university courses"],
             ].map(([href, label]) => (
               <Button key={href} asChild variant="outline" className="rounded-none">
                 <Link href={href}>{label}</Link>
@@ -314,7 +322,7 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
           {view.filter !== "all" ? (
             <div className="flex flex-col sm:flex-row gap-3 sm:items-end max-w-2xl">
               <label className="flex-1 text-sm font-medium">
-                Search {view.filter === "scholarship" ? "scholarships" : view.filter === "school" ? "universities" : "courses"}
+                Search {view.filter === "scholarship" ? "scholarships" : view.filter === "school" ? "universities" : view.filter === "major" ? "majors" : "university courses"}
                 <input
                   type="search"
                   aria-label={searchLabel}
@@ -425,20 +433,38 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
           ) : null}
           {view.filter === "school" && schoolPage.matchingCount > 0 ? <Pagination kind="school" page={schoolPage.page} pages={schoolPage.pageCount} onPage={(page) => updateView({ ...view, page })} /> : null}
 
+          {show("course") ? (
+            <Section title="University courses" count={list.courses.length} icon={BookOpen}
+              empty={<>{view.filter === "all" ? "No saved university courses." : "No university courses match your search."} <Link href="/courses" className={`${MAROON} hover:underline`}>Browse university courses</Link></>}
+              hasItems={coursePage.visible.length > 0}
+              viewAll={view.filter === "all" && list.courses.length > OVERVIEW_LIMIT ? { label: `View all university courses (${list.courses.length})`, onClick: () => updateView({ filter: "course", page: 1, search: "", status: "all" }) } : undefined}>
+              {coursePage.visible.map(c => <li key={c.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+                <div className="flex-1 min-w-[14rem]">
+                  <Link href={`/courses?course=${encodeURIComponent(c.id)}`} className="font-medium text-sm hover:underline">{c.name}</Link>
+                  <p className="text-xs text-muted-foreground">{c.institutionName}{c.campus ? ` · ${c.campus}` : ''}</p>
+                  {!c.active && <p className="text-xs text-muted-foreground">No longer in the active catalogue. Check current availability.</p>}
+                </div>
+                <Link href={`/courses?course=${encodeURIComponent(c.id)}`} className={`text-sm ${MAROON} hover:underline`}>Review course details</Link>
+                <RemoveButton label={c.name} busy={isBusy(`course-${c.id}`)} onRemove={() => remove("course", c.id, c.name)} />
+              </li>)}
+            </Section>
+          ) : null}
+          {view.filter === "course" && coursePage.matchingCount > 0 ? <Pagination kind="course" page={coursePage.page} pages={coursePage.pageCount} onPage={(page) => updateView({ ...view, page })} /> : null}
+
           {show("major") ? (
             <Section
-              title="Courses"
+              title="Majors"
               count={list.majors.length}
               icon={BookOpen}
               empty={
                 <>
-                  {view.filter === "all" ? "No saved courses." : "No courses match your search."}{" "}
-                  <Link href="/majors" className={`${MAROON} hover:underline`}>Browse courses</Link>
+                  {view.filter === "all" ? "No saved majors." : "No majors match your search."}{" "}
+                  <Link href="/majors" className={`${MAROON} hover:underline`}>Browse majors</Link>
                 </>
               }
               hasItems={majorPage.visible.length > 0}
               viewAll={view.filter === "all" && list.majors.length > OVERVIEW_LIMIT ? {
-                label: `View all courses (${list.majors.length})`,
+                label: `View all majors (${list.majors.length})`,
                 onClick: () => updateView({ filter: "major", page: 1, search: "", status: "all" }),
               } : undefined}
             >

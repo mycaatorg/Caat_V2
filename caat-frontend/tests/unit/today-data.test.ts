@@ -49,6 +49,17 @@ describe("loadToday", () => {
   };
   const resolver = (ctx: QueryContext): QueryResult => ({ data: rows[ctx.table] ?? [], error: null });
 
+  it("includes newly saved courses in counts and the recent saved preview", async () => {
+    const client = createMockSupabase({ resolver: ctx => ctx.table === 'user_course_bookmarks' ? { data: [{ course_id: 'course-1', created_at: '2026-10-23T00:00:00Z', course_offerings: { id: 'course-1', name: 'Advanced Computing', institution_name: 'Example University' } }], error: null } : resolver(ctx) });
+    const data = await loadToday(client as never, 'student-1');
+    expect(data.input.saved.courses).toBe(1);
+    expect(data.savedPreview[0]).toMatchObject({ kind: 'course', title: 'Advanced Computing — Example University', href: '/courses?course=course-1' });
+  });
+  it("refuses an incomplete Today view when course saves fail to load", async () => {
+    const client = createMockSupabase({ resolver: ctx => ctx.table === 'user_course_bookmarks' ? { data: null, error: { message: 'offline' } } : resolver(ctx) });
+    await expect(loadToday(client as never, 'student-1')).rejects.toThrow('Could not load Today');
+  });
+
   it("maps the student's data into Today's input, most recent work first", async () => {
     const client = createMockSupabase({ resolver });
     const data = await loadToday(client as never, "student-1", new Date("2026-10-07T01:00:00Z"));
@@ -58,7 +69,7 @@ describe("loadToday", () => {
     expect(data.input.applications).toEqual([{ id: "a1", schoolId: 7, schoolName: "Harbourside University", status: "applying", deadlineAt: null, updatedAt: "2026-10-05T00:00:00Z" }]);
     expect(data.input.essayDraftSchoolIds).toEqual([null]);
     expect(data.input.documentSchoolIds).toEqual([7]);
-    expect(data.input.saved).toEqual({ scholarships: 1, schools: 0, majors: 1 });
+    expect(data.input.saved).toEqual({ scholarships: 1, schools: 0, majors: 1, courses: 0 });
     expect(data.recent.map((r) => r.kind)).toEqual(["essay", "application", "resume"]);
     expect(data.recent[0]).toMatchObject({ title: "Why this course", detail: "Essay", href: "/essays?prompt=p1" });
     expect(data.todos).toEqual([{ id: "t1", text: "Book open day", dueDate: null, priority: 2 }]);

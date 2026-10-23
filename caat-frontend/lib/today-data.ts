@@ -51,7 +51,7 @@ export interface TodayTodo {
 }
 
 export interface SavedPreview {
-  kind: "scholarship" | "school" | "major";
+  kind: "scholarship" | "school" | "major" | "course";
   id: string;
   title: string;
   href: string;
@@ -94,7 +94,7 @@ export async function loadToday(
   timeZone: string = DEFAULT_TIME_ZONE,
 ): Promise<TodayData> {
   const todayISO = zonedTodayISO(timeZone, now);
-  const [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, todos, resumesRes, promptsRes, customRes, deadlines] =
+  const [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, savedCourseRes, todos, resumesRes, promptsRes, customRes, deadlines] =
     await Promise.all([
       supabase
         .from("profiles")
@@ -122,6 +122,7 @@ export async function loadToday(
         .select("major_id, created_at, majors(id, name)")
         .eq("user_id", userId)
         .order("created_at", { ascending: false }),
+      supabase.from("user_course_bookmarks").select("course_id, created_at, course_offerings(id, name, institution_name)").eq("user_id", userId).order("created_at", { ascending: false }),
       loadOpenTodos(supabase, userId),
       supabase
         .from("resumes")
@@ -136,7 +137,7 @@ export async function loadToday(
 
   // A failed read must not look like an empty account (that would tell a
   // student with applications to "save your first scholarship").
-  for (const res of [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes]) {
+  for (const res of [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, savedCourseRes]) {
     if (res.error) throw new Error("Could not load Today");
   }
 
@@ -159,6 +160,7 @@ export async function loadToday(
   const drafts = (draftsRes.data ?? []) as Row[];
   const savedSch = (savedSchRes.data ?? []) as Row[];
   const savedSchools = (savedSchoolRes.data ?? []) as Row[];
+  const savedCourses = (savedCourseRes.data ?? []) as Row[];
   const savedMajors = (savedMajorRes.data ?? []) as Row[];
 
   const promptTitles = new Map<string, string>();
@@ -203,17 +205,21 @@ export async function loadToday(
   const savedPreview: SavedPreview[] = [
     ...savedSch.flatMap((r) => {
       const s = r.scholarships as { id: string; title: string } | null;
-      return s ? [{ kind: "scholarship" as const, id: s.id, title: s.title, href: `/scholarships/${s.id}` }] : [];
+      return s ? [{ kind: "scholarship" as const, id: s.id, title: s.title, savedAt: String(r.created_at ?? ""), href: `/scholarships/${s.id}` }] : [];
     }),
     ...savedSchools.flatMap((r) => {
       const s = r.schools as { id: number; name: string } | null;
-      return s ? [{ kind: "school" as const, id: String(s.id), title: s.name, href: `/schools/${s.id}` }] : [];
+      return s ? [{ kind: "school" as const, id: String(s.id), title: s.name, savedAt: String(r.created_at ?? ""), href: `/schools/${s.id}` }] : [];
     }),
     ...savedMajors.flatMap((r) => {
       const m = r.majors as { id: string; name: string } | null;
-      return m ? [{ kind: "major" as const, id: m.id, title: m.name, href: `/majors/${m.id}` }] : [];
+      return m ? [{ kind: "major" as const, id: m.id, title: m.name, savedAt: String(r.created_at ?? ""), href: `/majors/${m.id}` }] : [];
     }),
-  ].slice(0, 3);
+    ...savedCourses.flatMap(r => {
+      const c = r.course_offerings as { id: string; name: string; institution_name: string } | null;
+      return c ? [{ kind: "course" as const, id: c.id, title: `${c.name} — ${c.institution_name}`, savedAt: String(r.created_at ?? ""), href: `/courses?course=${encodeURIComponent(c.id)}` }] : [];
+    }),
+  ].sort((a, b) => b.savedAt.localeCompare(a.savedAt)).slice(0, 3).map(({ kind, id, title, href }) => ({ kind, id, title, href }));
 
   return {
     firstName: (profile?.first_name as string | null) ?? null,
@@ -227,7 +233,7 @@ export async function loadToday(
       applications,
       essayDraftSchoolIds: drafts.map((d) => (d.school_id as number | null) ?? null),
       documentSchoolIds: ((docsRes.data ?? []) as Row[]).map((d) => (d.school_id as number | null) ?? null),
-      saved: { scholarships: savedSch.length, schools: savedSchools.length, majors: savedMajors.length },
+      saved: { scholarships: savedSch.length, schools: savedSchools.length, majors: savedMajors.length, courses: savedCourses.length },
       deadlines,
       scholarshipStatuses: Object.fromEntries(savedSch.map((r) => [r.scholarship_id as string, (r.status as string | null) ?? "interested"])),
     },

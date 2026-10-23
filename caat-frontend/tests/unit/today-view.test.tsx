@@ -35,7 +35,7 @@ const props = (patch: Partial<TodayViewProps> = {}): TodayViewProps => ({
     { id: "t1", text: "Ask Ms Lee for a reference", dueDate: "2026-10-05", priority: 1 },
     { id: "t2", text: "Book open day", dueDate: null, priority: 2 },
   ],
-  saved: { scholarships: 2, schools: 1, majors: 0 },
+  saved: { scholarships: 2, schools: 1, majors: 0, courses: 0 },
   savedPreview: [{ kind: "scholarship", id: "s1", title: "Regional Engineering Scholarship", href: "/scholarships/s1" }],
   showOnboardingNudge: false,
   ...patch,
@@ -81,7 +81,7 @@ describe("Today", () => {
   });
 
   it("explains empty sections instead of showing blank boxes", async () => {
-    await mountComponent(<TodayView {...props({ tasks: [], comingUp: [], recent: [], todos: [], savedPreview: [], saved: { scholarships: 0, schools: 0, majors: 0 } })} />);
+    await mountComponent(<TodayView {...props({ tasks: [], comingUp: [], recent: [], todos: [], savedPreview: [], saved: { scholarships: 0, schools: 0, majors: 0, courses: 0 } })} />);
     expect(document.body.textContent).toContain("Nothing needs you right now.");
     expect(document.body.textContent).toContain("No deadlines in the next 60 days.");
     expect(document.body.textContent).toContain("No open to-dos.");
