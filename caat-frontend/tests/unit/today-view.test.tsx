@@ -77,7 +77,7 @@ describe("Today", () => {
     expect(link(/Regional Engineering Scholarship/).getAttribute("href")).toBe("/scholarships/s1");
     expect(document.body.textContent).toContain("2Scholarships");
     expect(document.body.textContent).toContain("1Universities");
-    expect(document.body.textContent).toContain("0Courses");
+    expect(document.body.textContent).toContain("0University courses");
   });
 
   it("explains empty sections instead of showing blank boxes", async () => {

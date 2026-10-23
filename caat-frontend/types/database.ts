@@ -18,7 +18,7 @@ export type Database = {
     Tables: {
       course_offerings: {
         Row: CourseOffering
-        Insert: CourseOffering
+        Insert: Partial<CourseOffering> & Pick<CourseOffering, "id" | "institution_key" | "institution_name" | "program_code" | "name" | "source_url">
         Update: Partial<CourseOffering>
         Relationships: [{ foreignKeyName: "course_offerings_school_id_fkey"; columns: ["school_id"]; isOneToOne: false; referencedRelation: "schools"; referencedColumns: ["id"] }]
       }

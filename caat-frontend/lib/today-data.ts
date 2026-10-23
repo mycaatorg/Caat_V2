@@ -202,24 +202,27 @@ export async function loadToday(
   }
   recent.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
+  // The newest course save (query is newest first) takes one slot; legacy kinds
+  // keep their previous scholarships, universities, majors order.
+  const newestCourse = savedCourses.flatMap(r => {
+    const c = r.course_offerings as { id: string; name: string; institution_name: string } | null;
+    return c ? [{ kind: "course" as const, id: c.id, title: `${c.name} — ${c.institution_name}`, href: `/courses?course=${encodeURIComponent(c.id)}` }] : [];
+  }).slice(0, 1);
   const savedPreview: SavedPreview[] = [
+    ...newestCourse,
     ...savedSch.flatMap((r) => {
       const s = r.scholarships as { id: string; title: string } | null;
-      return s ? [{ kind: "scholarship" as const, id: s.id, title: s.title, savedAt: String(r.created_at ?? ""), href: `/scholarships/${s.id}` }] : [];
+      return s ? [{ kind: "scholarship" as const, id: s.id, title: s.title, href: `/scholarships/${s.id}` }] : [];
     }),
     ...savedSchools.flatMap((r) => {
       const s = r.schools as { id: number; name: string } | null;
-      return s ? [{ kind: "school" as const, id: String(s.id), title: s.name, savedAt: String(r.created_at ?? ""), href: `/schools/${s.id}` }] : [];
+      return s ? [{ kind: "school" as const, id: String(s.id), title: s.name, href: `/schools/${s.id}` }] : [];
     }),
     ...savedMajors.flatMap((r) => {
       const m = r.majors as { id: string; name: string } | null;
-      return m ? [{ kind: "major" as const, id: m.id, title: m.name, savedAt: String(r.created_at ?? ""), href: `/majors/${m.id}` }] : [];
+      return m ? [{ kind: "major" as const, id: m.id, title: m.name, href: `/majors/${m.id}` }] : [];
     }),
-    ...savedCourses.flatMap(r => {
-      const c = r.course_offerings as { id: string; name: string; institution_name: string } | null;
-      return c ? [{ kind: "course" as const, id: c.id, title: `${c.name} — ${c.institution_name}`, savedAt: String(r.created_at ?? ""), href: `/courses?course=${encodeURIComponent(c.id)}` }] : [];
-    }),
-  ].sort((a, b) => b.savedAt.localeCompare(a.savedAt)).slice(0, 3).map(({ kind, id, title, href }) => ({ kind, id, title, href }));
+  ].slice(0, 3);
 
   return {
     firstName: (profile?.first_name as string | null) ?? null,

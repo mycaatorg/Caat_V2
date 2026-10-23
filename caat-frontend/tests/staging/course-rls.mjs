@@ -22,6 +22,8 @@ const owner = await login('e2e.student@caat.local.test');
 const peer = await login('e2e.peer@caat.local.test');
 const key = `rls-course-${randomUUID()}`;
 const ids = [`${key}-one`, `${key}-two`];
+const sharedUac = ['unsw-3778-kensington', 'unsw-3789-kensington'];
+const priorShared = ok(await admin.from('user_course_bookmarks').select('user_id,course_id,created_at').eq('user_id', owner.id).in('course_id', sharedUac));
 const fixture = { institution_key: key, institution_name: 'Synthetic RLS university', name: 'Synthetic RLS course', source_url: 'https://example.invalid/course', uac_code: 'shared-test-code', active: true };
 try {
   ok(await admin.from('course_offerings').insert(ids.map((id, i) => ({ ...fixture, id, program_code: String(i) }))));
@@ -45,8 +47,16 @@ try {
   ok(await peer.client.from('user_course_bookmarks').insert({ user_id: peer.id, course_id: ids[0] }));
   assert.equal(ok(await owner.client.from('user_course_bookmarks').delete().eq('user_id', owner.id).eq('course_id', ids[0]).select('course_id')).length, 1, 'owner can remove own save');
   assert.equal(ok(await peer.client.from('user_course_bookmarks').select('course_id').eq('course_id', ids[0])).length, 1, 'owner removal leaves peer save intact');
+  // Seeded real offerings share UAC 425800 but are distinct degrees.
+  ok(await admin.from('user_course_bookmarks').delete().eq('user_id', owner.id).in('course_id', sharedUac));
+  ok(await owner.client.from('user_course_bookmarks').insert(sharedUac.map(course_id => ({ user_id: owner.id, course_id }))));
+  assert.equal(ok(await owner.client.from('user_course_bookmarks').select('course_id').in('course_id', sharedUac)).length, 2, 'owner saves both shared-UAC seeded offerings');
+  assert.equal(ok(await owner.client.from('user_course_bookmarks').delete().eq('user_id', owner.id).eq('course_id', sharedUac[0]).select('course_id')).length, 1, 'owner removes one shared-UAC save');
+  assert.deepEqual(ok(await owner.client.from('user_course_bookmarks').select('course_id').in('course_id', sharedUac)).map(r => r.course_id), [sharedUac[1]], 'removing one shared-UAC save leaves the other');
   console.log('Course RLS passed: read-only catalogue, distinct shared-UAC offerings, owner saves, denied cross-user access, inactive retention and restricted deletion.');
 } finally {
+  ok(await admin.from('user_course_bookmarks').delete().eq('user_id', owner.id).in('course_id', sharedUac));
+  if (priorShared.length) ok(await admin.from('user_course_bookmarks').insert(priorShared));
   ok(await admin.from('user_course_bookmarks').delete().in('course_id', ids));
   ok(await admin.from('course_offerings').delete().in('id', ids));
 }

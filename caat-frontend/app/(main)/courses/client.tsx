@@ -54,7 +54,8 @@ export default function CoursesClient({ courses, initialUserId, initialSavedIds,
     setQuery(next);
     const p = new URLSearchParams();
     if (next.search) p.set('q', next.search); if (next.savedOnly) p.set('saved', '1'); if (next.course) p.set('course', next.course);
-    window.history.replaceState(null, '', `/courses${p.size ? `?${p}` : ''}`);
+    const search = p.toString();
+    window.history.replaceState(null, '', `/courses${search ? `?${search}` : ''}`);
   }
   const savedIds = saved.owner === userId ? saved.ids : new Set<string>();
   const savesUnavailable = authLoading || !userId || saved.owner !== userId || saved.loading || saved.error;
@@ -82,7 +83,7 @@ export default function CoursesClient({ courses, initialUserId, initialSavedIds,
   }
   function toggleCompare(id: string) { setSelected(ids => ids.includes(id) ? ids.filter(value => value !== id) : ids.length < 3 ? [...ids, id] : ids); }
   const chosen = selected.flatMap(id => courses?.find(c => c.id === id) ?? []);
-  const filtered = courses?.filter(c => (c.active || savedIds.has(c.id)) && (!query.savedOnly || savedIds.has(c.id)) && (!query.course || c.id === query.course) && `${c.name} ${c.institution_name} ${c.campus ?? ''} ${c.program_code}`.toLowerCase().includes(query.search.toLowerCase())) ?? [];
+  const filtered = courses?.filter(c => (c.active || savedIds.has(c.id) || query.course === c.id) && (!query.savedOnly || savedIds.has(c.id)) && (!query.course || c.id === query.course) && `${c.name} ${c.institution_name} ${c.campus ?? ''} ${c.program_code}`.toLowerCase().includes(query.search.toLowerCase())) ?? [];
 
   return <div className="mx-auto w-full max-w-6xl p-4 sm:p-6 min-w-0">
     <CourseNavigation current="courses" />

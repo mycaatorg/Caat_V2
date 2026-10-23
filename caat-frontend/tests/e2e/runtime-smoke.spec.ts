@@ -36,5 +36,11 @@ for (const { route, expected, expectedRole } of ROUTES) {
     if (route === "/communities") {
       await expect(content.getByRole("textbox", { name: "Search posts…" })).toBeVisible();
     }
+    if (route === "/courses") {
+      // The heading renders even when the catalogue fails; only a loaded,
+      // non-empty catalogue produces a positive course count.
+      await expect(content.getByRole("status").filter({ hasText: /^[1-9]\d* courses?$/ })).toBeVisible();
+      await expect(content.getByText("Could not load university courses")).toHaveCount(0);
+    }
   });
 }

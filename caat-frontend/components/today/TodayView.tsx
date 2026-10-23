@@ -570,7 +570,7 @@ export function TodayView(props: TodayViewProps) {
                   ["Scholarships", saved.scholarships],
                   ["Universities", saved.schools],
                   ["Majors", saved.majors],
-                  ["Courses", saved.courses],
+                  ["University courses", saved.courses],
                 ].map(([label, count]) => (
                   <div key={label as string} className="flex-1 px-2 py-3 text-center">
                     <span className="block font-display text-2xl leading-none">{count}</span>

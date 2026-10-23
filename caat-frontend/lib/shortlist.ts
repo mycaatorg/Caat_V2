@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ApplicationStatus } from "@/types/applications";
 import type { ScholarshipStatus } from "@/lib/scholarship-tracking";
+import { removeCourseBookmark } from "@/lib/course-bookmarks";
 
 export interface ShortlistScholarship {
   id: string;
@@ -34,6 +35,7 @@ export interface ShortlistCourse {
   institutionName: string;
   campus: string | null;
   active: boolean;
+  sourceUrl: string | null;
 }
 
 export interface Shortlist {
@@ -63,7 +65,7 @@ export async function loadShortlist(supabase: SupabaseClient, userId: string): P
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
     supabase.from("user_school_applications").select("id, school_id, status").eq("user_id", userId),
-    supabase.from("user_course_bookmarks").select("course_id, created_at, course_offerings(id, name, institution_name, campus, active)").eq("user_id", userId).order("created_at", { ascending: false }),
+    supabase.from("user_course_bookmarks").select("course_id, created_at, course_offerings(id, name, institution_name, campus, active, source_url)").eq("user_id", userId).order("created_at", { ascending: false }),
   ]);
   for (const res of [schRes, schoolRes, majorRes, appRes, courseRes]) {
     if (res.error) throw new Error("Could not load your shortlist");
@@ -77,7 +79,7 @@ export async function loadShortlist(supabase: SupabaseClient, userId: string): P
   return {
     courses: ((courseRes.data ?? []) as Row[]).flatMap(r => {
       const c = r.course_offerings as Row | null;
-      return c ? [{ id: c.id as string, name: c.name as string, institutionName: c.institution_name as string, campus: (c.campus as string | null) ?? null, active: c.active === true }] : [];
+      return c ? [{ id: c.id as string, name: c.name as string, institutionName: c.institution_name as string, campus: (c.campus as string | null) ?? null, active: c.active === true, sourceUrl: (c.source_url as string | null) ?? null }] : [];
     }),
     scholarships: ((schRes.data ?? []) as Row[]).flatMap((r) => {
       const s = r.scholarships as Row | null;
@@ -114,13 +116,18 @@ const TABLE: Record<ShortlistKind, { table: string; column: string }> = {
   major: { table: "user_bookmarked_majors", column: "major_id" },
 };
 
-/** Remove a saved item. Idempotent: already removed counts as removed. */
+/** Remove a saved item. Legacy kinds are idempotent: already removed counts as
+ *  removed. Courses must prove the owner's row was actually deleted. */
 export async function removeFromShortlist(
   supabase: SupabaseClient,
   userId: string,
   kind: ShortlistKind,
   id: string | number,
 ): Promise<void> {
+  if (kind === "course") {
+    try { return await removeCourseBookmark(supabase, userId, String(id)); }
+    catch (cause) { throw new Error("Could not remove it. Please try again.", { cause }); }
+  }
   const { table, column } = TABLE[kind];
   const { error } = await supabase.from(table).delete().eq("user_id", userId).eq(column, id);
   if (error) throw new Error("Could not remove it. Please try again.");

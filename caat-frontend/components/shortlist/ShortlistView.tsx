@@ -12,6 +12,7 @@ import { addApplication } from "@/app/(main)/applications/api";
 import { SCHOLARSHIP_STATUS_LABELS } from "@/lib/scholarship-tracking";
 import { removeFromShortlist, type Shortlist, type ShortlistKind } from "@/lib/shortlist";
 import { STATUS_CONFIG } from "@/types/applications";
+import { ProviderLink } from "@/components/courses/course-source";
 
 const MAROON = "text-[#9a1a27] dark:text-[#e06b78]";
 type Filter = "all" | ShortlistKind;
@@ -442,7 +443,7 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
                 <div className="flex-1 min-w-[14rem]">
                   <Link href={`/courses?course=${encodeURIComponent(c.id)}`} className="font-medium text-sm hover:underline">{c.name}</Link>
                   <p className="text-xs text-muted-foreground">{c.institutionName}{c.campus ? ` · ${c.campus}` : ''}</p>
-                  {!c.active && <p className="text-xs text-muted-foreground">No longer in the active catalogue. Check current availability.</p>}
+                  {!c.active && <p className="text-xs text-muted-foreground">No longer in the active catalogue. Check current availability. <ProviderLink href={c.sourceUrl}>Check with the provider<span className="sr-only"> about {c.name}</span></ProviderLink></p>}
                 </div>
                 <Link href={`/courses?course=${encodeURIComponent(c.id)}`} className={`text-sm ${MAROON} hover:underline`}>Review course details</Link>
                 <RemoveButton label={c.name} busy={isBusy(`course-${c.id}`)} onRemove={() => remove("course", c.id, c.name)} />

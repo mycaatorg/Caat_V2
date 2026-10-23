@@ -2,7 +2,8 @@
 import React, { act } from 'react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { button, change, click, deferred, mountComponent, queryButton, unmountAll } from './dom-helpers';
-import { normalizeCourse } from '@/lib/course-data';
+import { loadCourseOfferings, normalizeCourse } from '@/lib/course-data';
+import { createMockSupabase } from './mock-supabase';
 
 const io = vi.hoisted(() => ({ user: { id: 'owner' } as { id: string } | null, load: vi.fn(), save: vi.fn(), refresh: vi.fn(), toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/course-bookmarks', () => ({ loadCourseBookmarks: io.load, setCourseBookmark: io.save }));
@@ -41,6 +42,7 @@ describe('university course browser', () => {
     expect(dialog.textContent).toContain('Alpha'); expect(dialog.textContent).toContain('Beta'); expect(dialog.textContent).toContain('Gamma');
     expect(dialog.textContent).toContain('different years');
     expect(dialog.querySelectorAll('thead th[scope="col"]')).toHaveLength(4);
+    expect(dialog.querySelector('[role="region"][aria-label="Scroll course comparison horizontally"] table')).not.toBeNull();
     await click(button('Close comparison'));
     await click(button('Remove Alpha from comparison'));
     expect(button('Compare Delta at Example University').disabled).toBe(false);
@@ -98,5 +100,26 @@ describe('university course browser', () => {
     await mountComponent(<CoursesClient {...props()} courses={null} />);
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not load university courses');
     await click(button('Try again')); expect(io.refresh).toHaveBeenCalled();
+  });
+  it('deep links to one course and clears back to the full list', async () => {
+    await mountComponent(<CoursesClient {...props()} initialQuery="course=course-1" />);
+    expect(document.querySelectorAll('article')).toHaveLength(1);
+    expect(document.querySelector('article')?.getAttribute('aria-label')).toBe('Beta at Example University');
+    await click(button('Show all courses'));
+    expect(document.querySelectorAll('article')).toHaveLength(4);
+    expect(window.location.search).toBe('');
+  });
+  it('shows a deep-linked inactive course while saved courses are unavailable', async () => {
+    io.load.mockReturnValue(new Promise(() => {}));
+    const archived = courses.map((course, i) => ({ ...course, active: i !== 0 }));
+    await mountComponent(<CoursesClient {...props()} courses={archived} initialSavedIds={null} initialQuery="course=course-0" />);
+    expect(document.body.textContent).not.toContain('No courses match');
+    expect(document.querySelector('article')?.getAttribute('aria-label')).toBe('Alpha at Example University');
+    expect(document.body.textContent).toContain('No longer in the active catalogue');
+  });
+  it('fails the whole catalogue load when any row is invalid rather than dropping it', async () => {
+    const valid = { ...courses[0], verified_at: '2026-10-23T00:00:00Z' };
+    const client = createMockSupabase({ resolver: () => ({ data: [valid, { ...valid, id: 'bad', source_url: 'javascript:alert(1)' }], error: null }) });
+    await expect(loadCourseOfferings(client as never)).rejects.toThrow('Could not load university courses');
   });
 });

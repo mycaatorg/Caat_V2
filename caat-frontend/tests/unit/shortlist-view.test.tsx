@@ -58,7 +58,7 @@ function setSearch(search: string) {
 describe("My shortlist", () => {
   it("keeps university courses separate from majors and restores a failed course removal", async () => {
     const pending = deferred(); io.remove.mockReturnValueOnce(pending.promise);
-    const initial = { ...list(), courses: [{ id: 'offering-1', name: 'Advanced Computing', institutionName: 'Example University', campus: 'Main', active: false }] };
+    const initial = { ...list(), courses: [{ id: 'offering-1', name: 'Advanced Computing', institutionName: 'Example University', campus: 'Main', active: false, sourceUrl: 'https://example.edu.au/computing' }] };
     await mountComponent(<ShortlistView initial={initial} />);
     await click(button('University courses'));
     expect(queryLink(/Civil Engineering/)).toBeNull();
@@ -70,6 +70,19 @@ describe("My shortlist", () => {
     expect(io.remove).toHaveBeenCalledWith({}, 'student-1', 'course', 'offering-1');
     await click(button('Majors'));
     expect(queryLink(/Civil Engineering/)).not.toBeNull();
+  });
+
+  it("keeps a provider link on an inactive saved course, and only safe links", async () => {
+    const initial = { ...list(), courses: [
+      { id: 'offering-1', name: 'Advanced Computing', institutionName: 'Example University', campus: 'Main', active: false, sourceUrl: 'https://example.edu.au/computing' },
+      { id: 'offering-2', name: 'Applied Data', institutionName: 'Example University', campus: null, active: false, sourceUrl: 'javascript:alert(1)' },
+    ] };
+    await mountComponent(<ShortlistView initial={initial} />);
+    await click(button('University courses'));
+    const provider = link(/^Check with the provider about Advanced Computing/);
+    expect(provider.getAttribute('href')).toBe('https://example.edu.au/computing');
+    expect(provider.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(queryLink(/^Check with the provider about Applied Data/)).toBeNull();
   });
 
   it("locates the restored item using current order after another removal succeeds", async () => {

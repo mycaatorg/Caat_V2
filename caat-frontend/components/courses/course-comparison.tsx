@@ -16,7 +16,7 @@ export default function CourseComparison({ courses, checkedAt }: { courses: Cour
   ];
   return <>
     {years.size > 1 && <p className="mb-4 rounded-md border p-3 text-sm">These fees cover different years. Compare the year, student category and study load before using the amounts.</p>}
-    <div className="overflow-x-auto rounded-md border" tabIndex={0} aria-label="Scroll course comparison horizontally">
+    <div role="region" className="overflow-x-auto rounded-md border" tabIndex={0} aria-label="Scroll course comparison horizontally">
       <table className="w-full border-collapse text-sm">
         <caption className="sr-only">Side-by-side comparison of selected university courses</caption>
         <thead><tr><th scope="col" className="p-4 text-left min-w-36 bg-muted">Attribute</th>{courses.map(c => <th scope="col" key={c.id} className="min-w-64 max-w-80 p-4 text-left align-top border-l bg-muted">
