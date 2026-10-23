@@ -74,6 +74,7 @@ const SAVED_ICON: Record<SavedPreview["kind"], typeof School> = {
   scholarship: GraduationCap,
   school: School,
   major: BookOpen,
+  course: BookOpen,
 };
 
 const RECENT_ICON: Record<RecentWork["kind"], typeof FileText> = {
@@ -277,7 +278,7 @@ export interface TodayViewProps {
   comingUp: UnifiedDeadline[];
   recent: RecentWork[];
   todos: TodayTodo[];
-  saved: { scholarships: number; schools: number; majors: number };
+  saved: { scholarships: number; schools: number; majors: number; courses: number };
   savedPreview: SavedPreview[];
   showOnboardingNudge: boolean;
   /** Zone the server used for dates; refreshed once if the browser's differs. */
@@ -568,7 +569,8 @@ export function TodayView(props: TodayViewProps) {
                 {[
                   ["Scholarships", saved.scholarships],
                   ["Universities", saved.schools],
-                  ["Courses", saved.majors],
+                  ["Majors", saved.majors],
+                  ["University courses", saved.courses],
                 ].map(([label, count]) => (
                   <div key={label as string} className="flex-1 px-2 py-3 text-center">
                     <span className="block font-display text-2xl leading-none">{count}</span>
