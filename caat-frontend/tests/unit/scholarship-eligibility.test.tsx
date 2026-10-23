@@ -22,6 +22,16 @@ describe('conservative scholarship criteria', () => {
     expect(citizenship().status).toBe('matched');
     expect(citizenship().reason).toContain('Australian');
   });
+  it.each(['Australia and New Zealand', 'Aust.', 'New Zealand'])('keeps exclusions unconfirmed even with explicit AU citizenship: %s', exclusion => {
+    const criterion = citizenship({ excluded_countries: [exclusion] });
+    expect(criterion.status).toBe('unknown');
+    expect(criterion.reason).toContain(exclusion);
+  });
+  it('retains recorded rules beside a positive result and a profile conflict', () => {
+    expect(citizenship({ eligible_countries: ['Australia'] }).reason).toContain('Included countries: Australia.');
+    const criterion = explainEligibility({ ...profile, student_status: 'international' }, row({ excluded_countries: ['New Zealand'] }), now).criteria.find(c => c.id === 'citizenship')!;
+    expect(criterion.reason).toContain('Excluded countries: New Zealand.');
+  });
   it('shows an explicit exclusion as unmet without declaring overall eligibility', () => {
     expect(citizenship({ citizenships: ['NZ'] }).status).toBe('unmet');
   });

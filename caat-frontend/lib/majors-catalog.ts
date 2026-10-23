@@ -3,6 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import type { Major } from "@/types/majors";
 
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+}
+
 // C13: the majors list is small (~90 rows) and global (changes rarely), but the
 // page fetched `select("*")` uncached on every view. Select only the columns the
 // list renders and cache the result (revalidate 1h). Uses a plain anon client
@@ -17,8 +21,12 @@ export const getMajorsList = unstable_cache(
       .from("majors")
       .select("id, name, category, description, career_paths, typical_coursework, qs_ranking_url, created_at")
       .order("name", { ascending: true });
-    return (data ?? []) as Major[];
+    return (data ?? []).map(row => ({
+      ...row,
+      career_paths: stringList(row.career_paths),
+      typical_coursework: stringList(row.typical_coursework),
+    })) as Major[];
   },
-  ["majors-list-with-comparison-v2"],
+  ["majors-list-with-comparison-v3"],
   { revalidate: 3600, tags: ["majors-catalog"] },
 );
