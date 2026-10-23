@@ -67,6 +67,7 @@ const TASK_ICON: Record<TaskKind, typeof CalendarClock> = {
 const SOURCE_LABEL: Record<UnifiedDeadline["source"], string> = {
   app: "Application",
   scholarship: "Scholarship",
+  custom: "Custom",
   event: "Calendar",
 };
 

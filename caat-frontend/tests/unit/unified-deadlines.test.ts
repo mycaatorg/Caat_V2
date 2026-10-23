@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { createMockSupabase, type QueryContext, type QueryResult } from "./mock-supabase";
 import {
+  fetchUnifiedDeadlines,
   mergeDeadlines,
   type RawAppDeadline,
   type RawScholarshipDeadline,
@@ -95,5 +97,68 @@ describe("mergeDeadlines()", () => {
     ];
     const result = mergeDeadlines([], schols, [], "2026-05-21");
     expect(result[0].dateISO).toBe("2026-06-15");
+  });
+});
+
+describe("custom scholarship deadlines (PROD-146)", () => {
+  const custom: RawScholarshipDeadline[] = [
+    { id: "c1", title: "Rotary Club Bursary", deadline_at: "2026-06-02T00:00:00+00:00" },
+    { id: "c2", title: "Expired Local Award", deadline_at: "2026-05-01T00:00:00+00:00" },
+  ];
+
+  it("merges the student's own scholarships with catalogue ones as a Custom source", () => {
+    const result = mergeDeadlines(
+      [{ id: "a1", school_name: "Uni", deadline_at: "2026-06-03", status: "applying" }],
+      [{ id: "s1", title: "Catalogue Award", deadline_at: "2026-06-02T23:59:59+00:00" }],
+      [{ id: "e1", title: "Open day", event_date: "2026-06-01" }],
+      "2026-05-21",
+      custom,
+    );
+    expect(result.map((r) => [r.id, r.source, r.dateISO])).toEqual([
+      ["evt-e1", "event", "2026-06-01"],
+      // Same day: catalogue first, then custom (stable merge order).
+      ["sch-s1", "scholarship", "2026-06-02"],
+      ["cus-c1", "custom", "2026-06-02"],
+      ["app-a1", "app", "2026-06-03"],
+    ]);
+    expect(result.find((r) => r.source === "custom")).toEqual({
+      id: "cus-c1",
+      source: "custom",
+      title: "Rotary Club Bursary",
+      dateISO: "2026-06-02",
+      href: "/scholarships?view=mine",
+    });
+  });
+
+  it("keeps the existing behaviour when there are no custom scholarships", () => {
+    const schols: RawScholarshipDeadline[] = [{ id: "s1", title: "S", deadline_at: "2026-06-15" }];
+    expect(mergeDeadlines([], schols, [], "2026-05-21")).toEqual(mergeDeadlines([], schols, [], "2026-05-21", []));
+  });
+});
+
+describe("fetchUnifiedDeadlines() custom scholarships", () => {
+  const ok = (ctx: QueryContext): QueryResult => {
+    if (ctx.table === "user_scholarships") {
+      return { data: [{ id: "c1", title: "Rotary Club Bursary", deadline_at: "2099-06-02T00:00:00+00:00" }, { id: "c2", title: "No date", deadline_at: null }], error: null };
+    }
+    if (ctx.table === "user_bookmarked_scholarships") {
+      return { data: [{ scholarship_id: "s1", scholarships: { id: "s1", title: "Catalogue Award", deadline_at: "2099-06-01T00:00:00+00:00" } }], error: null };
+    }
+    return { data: [], error: null };
+  };
+
+  it("reads only the student's own dated custom scholarships", async () => {
+    const client = createMockSupabase({ resolver: ok });
+    const result = await fetchUnifiedDeadlines(client as never, "student-1");
+    expect(result.map((r) => r.id)).toEqual(["sch-s1", "cus-c1"]);
+    const q = client.queries.find((q) => q.table === "user_scholarships");
+    expect(q?.calls).toContainEqual({ method: "select", args: ["id, title, deadline_at"] });
+    expect(q?.calls).toContainEqual({ method: "eq", args: ["user_id", "student-1"] });
+    expect(q?.calls).toContainEqual({ method: "not", args: ["deadline_at", "is", null] });
+  });
+
+  it("treats a failed custom scholarship read as a load failure, not an empty list", async () => {
+    const client = createMockSupabase({ resolver: (ctx) => (ctx.table === "user_scholarships" ? { data: null, error: { message: "timeout" } } : ok(ctx)) });
+    await expect(fetchUnifiedDeadlines(client as never, "student-1")).rejects.toThrow("Could not load deadlines");
   });
 });

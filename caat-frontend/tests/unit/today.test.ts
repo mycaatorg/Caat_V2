@@ -110,6 +110,48 @@ describe("scholarship deadlines", () => {
   });
 });
 
+describe("custom scholarship deadlines (PROD-146)", () => {
+  const sch = (id: string, dateISO: string) => ({ id: `sch-${id}`, source: "scholarship" as const, title: `Award ${id}`, dateISO, href: `/scholarships/${id}` });
+  const cus = (id: string, dateISO: string) => ({ id: `cus-${id}`, source: "custom" as const, title: `Own award ${id}`, dateISO, href: "/scholarships?view=mine" });
+
+  it("turns the student's own scholarship closing within 14 days into a task alongside catalogue ones", () => {
+    const tasks = deriveTasks(
+      base({
+        applications: [app("a1", { deadlineAt: "2026-10-12" })],
+        essayDraftSchoolIds: [null],
+        documentSchoolIds: [null],
+        deadlines: [
+          cus("c3", "2026-10-05"),
+          sch("s3", "2026-10-10"),
+          sch("s1", "2026-10-16"),
+          cus("c1", "2026-10-16"),
+          cus("c4", "2026-10-21"),
+          cus("c2", "2026-10-22"),
+        ],
+        scholarshipStatuses: { s1: "interested", s3: "applied" },
+      }),
+    );
+    expect(tasks.map((t) => t.id)).toEqual(["soon-a1", "soon-sch-s1", "soon-cus-c1", "soon-cus-c4"]);
+    expect(tasks[2]).toEqual({
+      id: "soon-cus-c1",
+      kind: "deadline-soon",
+      title: "Own award c1 closes in 9 days",
+      detail: "Decide whether to apply, then check what it asks for.",
+      href: "/scholarships?view=mine",
+      dueISO: "2026-10-16",
+    });
+    expect(tasks[3].title).toBe("Own award c4 closes in 14 days");
+  });
+
+  it("leaves catalogue scholarship tasks unchanged when custom ones are present", () => {
+    const catalogueOnly = deriveTasks(base({ deadlines: [sch("s1", "2026-10-08")], scholarshipStatuses: { s1: "interested" } }));
+    const mixed = deriveTasks(base({ deadlines: [sch("s1", "2026-10-08"), cus("c1", "2026-10-09")], scholarshipStatuses: { s1: "interested" } }));
+    expect(mixed[0]).toEqual(catalogueOnly[0]);
+    expect(mixed.map((t) => t.id)).toEqual(["soon-sch-s1", "soon-cus-c1"]);
+    expect(mixed[1].title).toBe("Own award c1 closes in 2 days");
+  });
+});
+
 describe("comingUp", () => {
   it("keeps today through 60 days ahead, nearest first", () => {
     const d = (id: string, dateISO: string) => ({ id, source: "event" as const, title: id, dateISO, href: "/x" });

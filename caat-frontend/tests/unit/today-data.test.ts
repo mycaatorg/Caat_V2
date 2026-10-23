@@ -68,7 +68,7 @@ describe("loadToday", () => {
   it("scopes every personal read to the student and never selects essay or document contents", async () => {
     const client = createMockSupabase({ resolver });
     await loadToday(client as never, "student-1");
-    const personal = ["profiles", "user_school_applications", "essay_drafts", "documents", "user_bookmarked_scholarships", "user_bookmarked_schools", "user_bookmarked_majors", "user_todos", "resumes", "custom_essay_prompts"];
+    const personal = ["profiles", "user_school_applications", "essay_drafts", "documents", "user_bookmarked_scholarships", "user_bookmarked_schools", "user_bookmarked_majors", "user_todos", "resumes", "custom_essay_prompts", "user_scholarships"];
     for (const q of client.queries.filter((q) => personal.includes(q.table))) {
       const scope = q.calls.filter((c) => c.method === "eq").map((c) => c.args);
       expect(scope, q.table).toContainEqual([q.table === "profiles" ? "id" : "user_id", "student-1"]);
@@ -90,7 +90,28 @@ describe("loadToday", () => {
     ["user_school_applications", "id, deadline_at, status, schools(name)"],
     ["user_bookmarked_scholarships", "scholarship_id, scholarships(id, title, deadline_at)"],
     ["calendar_events", "id, title, event_date, time_start, time_end"],
+    ["user_scholarships", "id, title, deadline_at"],
   ];
+
+  it("feeds the student's own dated scholarships into Today next to catalogue ones (PROD-146)", async () => {
+    const client = createMockSupabase({ resolver: (ctx) => {
+      if (ctx.table === "user_bookmarked_scholarships" && ctx.calls.some((c) => c.method === "select" && String(c.args[0]).includes("deadline_at"))) {
+        return { data: [{ scholarship_id: "s1", scholarships: { id: "s1", title: "Regional Engineering Scholarship", deadline_at: "2099-10-12T00:00:00+00:00" } }], error: null };
+      }
+      if (ctx.table === "user_scholarships") {
+        return { data: [{ id: "c1", title: "Rotary Club Bursary", deadline_at: "2099-10-12T00:00:00+00:00" }], error: null };
+      }
+      return resolver(ctx);
+    } });
+    // The unified feed filters on the real local day, so use far-future dates.
+    const data = await loadToday(client as never, "student-1");
+    expect(data.input.deadlines.map((d) => [d.id, d.source, d.href])).toEqual([
+      ["sch-s1", "scholarship", "/scholarships/s1"],
+      ["cus-c1", "custom", "/scholarships?view=mine"],
+    ]);
+    const custom = client.queries.find((q) => q.table === "user_scholarships");
+    expect(custom?.calls).toContainEqual({ method: "eq", args: ["user_id", "student-1"] });
+  });
   const event = { id: "event-1", title: "University open day", event_date: "2099-10-25", time_start: null, time_end: null };
 
   it.each(sources)("rejects a result error from the %s deadline read and recovers on retry", async (table, selection) => {

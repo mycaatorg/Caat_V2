@@ -48,6 +48,10 @@ const SOURCE_STYLES: Record<UnifiedDeadline["source"], { label: string; classNam
     label: "Schol",
     className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
   },
+  custom: {
+    label: "Custom",
+    className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  },
   event: {
     label: "Event",
     className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
