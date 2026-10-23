@@ -6,7 +6,13 @@ import { loadShortlist } from "@/lib/shortlist";
 
 export const metadata = { title: "My shortlist" };
 
-export default async function ShortlistPage() {
+export default async function ShortlistPage({ searchParams = Promise.resolve({}) }: { searchParams?: Promise<Record<string, string | string[] | undefined>> } = {}) {
+  const params = await searchParams;
+  const query = new URLSearchParams();
+  for (const key of ["tab", "page", "q", "status"]) {
+    const value = params[key];
+    if (typeof value === "string") query.set(key, value);
+  }
   const supabase = await createServerClient();
   const {
     data: { user },
@@ -23,7 +29,7 @@ export default async function ShortlistPage() {
   return (
     <>
       <PageHeader title="My shortlist" />
-      <ShortlistView initial={shortlist} />
+      <ShortlistView initial={shortlist} initialQuery={query.toString()} />
     </>
   );
 }

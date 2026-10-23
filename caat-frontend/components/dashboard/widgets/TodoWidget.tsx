@@ -94,7 +94,7 @@ export function TodoWidget() {
         priority,
       });
       // Insert and re-sort client-side to match DB ordering
-      setTodos((prev) => sortTodos([...prev, newTodo]));
+      setTodos((prev) => sortTodos([...prev, newTodo], recentlyCompletedIdsRef.current));
       setInput("");
       setDueDate("");
       setPriority(2);
@@ -173,7 +173,7 @@ export function TodoWidget() {
 
   async function handlePriorityChange(id: string, newPriority: number) {
     setTodos((prev) =>
-      sortTodos(prev.map((t) => (t.id === id ? { ...t, priority: newPriority } : t)))
+      sortTodos(prev.map((t) => (t.id === id ? { ...t, priority: newPriority } : t)), recentlyCompletedIdsRef.current)
     );
     try {
       await updateTodo(id, { priority: newPriority });
@@ -280,6 +280,7 @@ export function TodoWidget() {
         <Button
           size="sm"
           onClick={handleAdd}
+          aria-label="Add to-do"
           disabled={adding || !input.trim()}
           className="h-8 px-2"
         >
@@ -358,8 +359,10 @@ export function TodoWidget() {
   );
 }
 
-function sortTodos(todos: TodoItem[]): TodoItem[] {
-  return [...todos].sort((a, b) => {
+function sortTodos(todos: TodoItem[], pinned: Set<string>): TodoItem[] {
+  // Completed during this visit stays in its current slot so Undo remains easy.
+  const slots = todos.flatMap((todo, index) => pinned.has(todo.id) ? [{ todo, index }] : []);
+  const sorted = todos.filter(todo => !pinned.has(todo.id)).sort((a, b) => {
     // Done items go to the bottom
     if (a.done !== b.done) return a.done ? 1 : -1;
     // Sort by due date ascending, nulls last
@@ -372,4 +375,6 @@ function sortTodos(todos: TodoItem[]): TodoItem[] {
     if (a.priority !== b.priority) return a.priority - b.priority;
     return a.created_at < b.created_at ? -1 : 1;
   });
+  for (const { todo, index } of slots) sorted.splice(Math.min(index, sorted.length), 0, todo);
+  return sorted;
 }

@@ -10,7 +10,13 @@ export const metadata = { title: "Today" };
 
 // PROD-74: the student's home. Everything is resolved on the server in one
 // parallel round so the page paints complete, with no client waterfall.
-export default async function TodayPage() {
+export default async function TodayPage({ searchParams = Promise.resolve({}) }: { searchParams?: Promise<Record<string, string | string[] | undefined>> } = {}) {
+  const params = await searchParams;
+  const query = new URLSearchParams();
+  for (const key of ["view", "page"]) {
+    const value = params[key];
+    if (typeof value === "string") query.set(key, value);
+  }
   const supabase = await createServerClient();
   const {
     data: { user },
@@ -40,6 +46,7 @@ export default async function TodayPage() {
     <>
       <PageHeader title="Today" />
       <TodayView
+        initialQuery={query.toString()}
         name={name}
         hour={zonedHour(timeZone)}
         timeZone={timeZone}

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import React, { act } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { button, change, click, deferred, flush, hasText, link, mountComponent, queryButton, queryLink, unmountAll } from "./dom-helpers";
 import type { Shortlist } from "@/lib/shortlist";
@@ -53,6 +54,40 @@ function setSearch(search: string) {
 }
 
 describe("My shortlist", () => {
+  it("locates the restored item using current order after another removal succeeds", async () => {
+    const removal = deferred(); io.remove.mockReturnValueOnce(removal.promise).mockResolvedValueOnce(undefined);
+    setSearch("?tab=school&page=2");
+    await mountComponent(<ShortlistView initial={manySaved(21)} />);
+    await click(button("Remove University 21 from shortlist"));
+    await click(button("Remove University 1 from shortlist"));
+    await act(async () => removal.reject(new Error("offline")));
+    await click(button("Show restored item"));
+    expect(queryLink(/University 21/)).not.toBeNull();
+    expect(queryLink(/^University 1$/)).toBeNull();
+    expect(new URLSearchParams(window.location.search).get("page")).toBeNull();
+  });
+
+  it("renders the URL-selected category and page before hydration", () => {
+    const html = renderToStaticMarkup(<ShortlistView initial={manySaved(21)} initialQuery="tab=school&page=2" />);
+    const content = document.createElement("div"); content.innerHTML = html;
+    expect(content.querySelector('[aria-label="Universities"]')?.textContent).toContain("University 21");
+    expect(content.querySelector('[aria-label="Scholarships"]')).toBeNull();
+    expect(content.querySelectorAll('[aria-label="Universities"] li')).toHaveLength(1);
+  });
+
+  it("does not hijack navigation after failure and can locate the restored item", async () => {
+    const removal = deferred(); io.remove.mockReturnValueOnce(removal.promise);
+    setSearch("?tab=school&page=2");
+    await mountComponent(<ShortlistView initial={manySaved(21)} />);
+    await click(button("Remove University 21 from shortlist"));
+    await click(button("Courses"));
+    await act(async () => removal.reject(new Error("offline")));
+    expect(button("Courses").getAttribute("aria-pressed")).toBe("true");
+    await click(button("Show restored item"));
+    expect(button("Universities").getAttribute("aria-pressed")).toBe("true");
+    expect(queryLink(/University 21/)).not.toBeNull();
+  });
+
   it("shows each saved item with its next action", async () => {
     await mountComponent(<ShortlistView initial={list()} />);
     expect(link(/Check eligibility/).getAttribute("href")).toBe("/scholarships/s1");
@@ -165,7 +200,7 @@ describe("My shortlist", () => {
     await act(async () => removal.reject(new Error("offline")));
     await flush();
     expect(document.body.textContent).toContain("21 saved");
-    await click(button("Next page"));
+    await click(button("Show restored item"));
     expect(queryLink(/University 21/)).not.toBeNull();
   });
 

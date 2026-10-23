@@ -1,0 +1,29 @@
+name: Production auth-provider health
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Genuine provider readiness monitoring; not a free-tier retention workaround.
+    - cron: '47 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-auth-provider-health
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    if: github.repository == 'mycaatorg/Caat_V2'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify deployed auth-provider readiness
+        env:
+          AUTH_HEALTH_CHECK_TOKEN: ${{ secrets.AUTH_HEALTH_CHECK_TOKEN }}
+        run: node .github/scripts/auth-health-check.js

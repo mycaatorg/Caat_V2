@@ -23,9 +23,8 @@ const OVERVIEW_LIMIT = 5;
 const VALID_FILTERS = new Set<Filter>(["all", "scholarship", "school", "major"]);
 const VALID_STATUSES = new Set<ScholarshipStatus>(["all", "interested", "applied", "awarded", "not_selected"]);
 
-function readViewState(): ViewState {
-  if (typeof window === "undefined") return { filter: "all", page: 1, search: "", status: "all" };
-  const params = new URLSearchParams(window.location.search);
+function readViewState(query: string): ViewState {
+  const params = new URLSearchParams(query);
   const rawFilter = params.get("tab") as Filter | null;
   const rawStatus = params.get("status") as ScholarshipStatus | null;
   const rawPage = Number(params.get("page"));
@@ -130,10 +129,11 @@ function RemoveButton({ label, onRemove, busy }: { label: string; onRemove: () =
   );
 }
 
-export function ShortlistView({ initial }: { initial: Shortlist | null }) {
+export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortlist | null; initialQuery?: string }) {
   const router = useRouter();
   const [list, setList] = useState<Shortlist | null>(initial);
-  const [view, setView] = useState<ViewState>({ filter: "all", page: 1, search: "", status: "all" });
+  const [view, setView] = useState<ViewState>(() => readViewState(initialQuery));
+  const [restored, setRestored] = useState<{ kind: ShortlistKind; id: string | number; label: string } | null>(null);
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const isBusy = (key: string) => busy.has(key);
   const setBusyKey = (key: string, on: boolean) =>
@@ -150,8 +150,8 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
   }
 
   useEffect(() => {
-    const restore = () => setView(readViewState());
-    const initialView = readViewState();
+    const restore = () => setView(readViewState(window.location.search));
+    const initialView = readViewState(window.location.search);
     setView(initialView);
     writeViewState(initialView);
     window.addEventListener("popstate", restore);
@@ -183,6 +183,8 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
     );
   }
 
+  const restoredItems = restored?.kind === "scholarship" ? list.scholarships : restored?.kind === "school" ? list.schools : list.majors;
+  const restoredIndex = restored ? restoredItems.findIndex(item => item.id === restored.id) : -1;
   const total = list.scholarships.length + list.schools.length + list.majors.length;
   const show = (kind: ShortlistKind) => view.filter === "all" || view.filter === kind;
   const filteredScholarships = list.scholarships.filter((s) =>
@@ -226,6 +228,7 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
         const at = Math.min(index, items.length);
         return { ...cur, [field]: [...items.slice(0, at), item, ...items.slice(at)] } as Shortlist;
       });
+      setRestored({ kind, id, label });
       toast.error(`Could not remove ${label}. Please try again.`);
     } finally {
       setBusyKey(key, false);
@@ -263,6 +266,16 @@ export function ShortlistView({ initial }: { initial: Shortlist | null }) {
           Scholarships, universities and courses you are considering, each with what to do next.
         </p>
       </header>
+
+      {restored && restoredIndex >= 0 ? (
+        <div role="alert" className="flex flex-col items-start gap-3 border border-[#9a1a27]/30 bg-muted/40 px-4 py-3 text-sm sm:flex-row sm:items-center">
+          <p className="min-w-0 flex-1 break-words">Could not remove {restored.label}. It is still saved.</p>
+          <Button variant="outline" className="rounded-none" onClick={() => {
+            updateView({ filter: restored.kind, page: Math.floor(restoredIndex / PAGE_SIZE) + 1, search: "", status: "all" });
+            setRestored(null);
+          }}>Show restored item</Button>
+        </div>
+      ) : null}
 
       {total === 0 ? (
         <div className="border px-6 py-12 text-center">
