@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { createMockSupabase, type QueryContext, type QueryResult } from "./mock-supabase";
 import {
   fetchUnifiedDeadlines,
@@ -7,6 +7,15 @@ import {
   type RawScholarshipDeadline,
   type RawEventDeadline,
 } from "@/lib/unified-deadlines";
+import { zonedTodayISO } from "@/lib/today-data";
+
+// Simulates the server's UTC day (todayKey is the server clock) without
+// depending on the machine's own time zone.
+const serverClock = vi.hoisted(() => ({ day: null as string | null }));
+vi.mock("@/lib/local-date", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/local-date")>();
+  return { ...actual, todayKey: (now?: Date) => serverClock.day ?? actual.todayKey(now) };
+});
 
 describe("mergeDeadlines()", () => {
   it("returns empty array when all sources are empty", () => {
@@ -169,7 +178,7 @@ describe("fetchUnifiedDeadlines() custom scholarships", () => {
 
   it("reads only the student's own dated custom scholarships", async () => {
     const client = createMockSupabase({ resolver: ok });
-    const result = await fetchUnifiedDeadlines(client as never, "student-1");
+    const result = await fetchUnifiedDeadlines(client as never, "student-1", "2026-05-21");
     expect(result.map((r) => r.id)).toEqual(["sch-s1", "cus-c1"]);
     // An applied custom scholarship stays in the feed (and calendar), carrying its status.
     expect(result[1].status).toBe("applied");
@@ -181,7 +190,7 @@ describe("fetchUnifiedDeadlines() custom scholarships", () => {
 
   it("treats a failed custom scholarship read as a load failure, not an empty list", async () => {
     const client = createMockSupabase({ resolver: (ctx) => (ctx.table === "user_scholarships" ? { data: null, error: { message: "timeout" } } : ok(ctx)) });
-    await expect(fetchUnifiedDeadlines(client as never, "student-1")).rejects.toThrow("Could not load deadlines");
+    await expect(fetchUnifiedDeadlines(client as never, "student-1", "2026-05-21")).rejects.toThrow("Could not load deadlines");
   });
 
   it("keeps the existing feed when the student has no custom scholarships", async () => {
@@ -195,11 +204,34 @@ describe("fetchUnifiedDeadlines() custom scholarships", () => {
       }
       return ok(ctx);
     } });
-    const result = await fetchUnifiedDeadlines(client as never, "student-1");
+    const result = await fetchUnifiedDeadlines(client as never, "student-1", "2026-05-21");
     expect(result.map((r) => [r.id, r.source, r.dateISO, r.href])).toEqual([
       ["sch-s1", "scholarship", "2099-06-01", "/scholarships/s1"],
       ["evt-e1", "event", "2099-06-01", "/dashboard"],
       ["app-a1", "app", "2099-06-03", "/applications/a1"],
     ]);
+  });
+});
+
+describe("fetchUnifiedDeadlines() calendar day (PROD-152)", () => {
+  // 7am on 23 Oct in Sydney is still 22 Oct in UTC, where the server runs.
+  const now = new Date("2026-10-22T20:00:00Z");
+  beforeEach(() => { serverClock.day = "2026-10-22"; });
+  afterEach(() => { serverClock.day = null; });
+
+  it("filters on the student's day, not the server's UTC day", async () => {
+    const client = createMockSupabase({ resolver: (ctx) => {
+      if (ctx.table === "user_scholarships") {
+        return { data: [
+          { id: "past", title: "Closed yesterday", deadline_at: "2026-10-22T00:00:00+00:00", status: "interested" },
+          { id: "today", title: "Closes today", deadline_at: "2026-10-23T00:00:00+00:00", status: "interested" },
+        ], error: null };
+      }
+      return { data: [], error: null };
+    } });
+    const todayISO = zonedTodayISO("Australia/Sydney", now);
+    expect(todayISO).toBe("2026-10-23");
+    const result = await fetchUnifiedDeadlines(client as never, "student-1", todayISO);
+    expect(result.map((r) => [r.id, r.dateISO])).toEqual([["cus-today", "2026-10-23"]]);
   });
 });
