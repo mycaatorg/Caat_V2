@@ -1,3 +1,4 @@
+import { evidencePages } from "@/lib/evidence-pagination";
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -90,6 +91,11 @@ export async function GET() {
     // Everything keyed by user_id.
     for (const table of byUserId) {
       data[table] = await checkedQuery(supabase.from(table).select("*").eq("user_id", uid)) ?? [];
+    }
+
+    // New library data must not be truncated by the API's per-request cap.
+    for (const table of ["evidence_items", "requirement_evidence_links"] as const) {
+      data[table] = await evidencePages((from, to) => supabase.from(table).select("*").eq("user_id", uid).order("id").range(from, to), "Could not export supporting work");
     }
 
     const payload = {

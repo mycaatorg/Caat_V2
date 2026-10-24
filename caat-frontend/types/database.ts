@@ -28,6 +28,12 @@ export type Database = {
         Update: { user_id?: string; course_id?: string; created_at?: string }
         Relationships: [{ foreignKeyName: "user_course_bookmarks_course_id_fkey"; columns: ["course_id"]; isOneToOne: false; referencedRelation: "course_offerings"; referencedColumns: ["id"] }]
       }
+      requirement_evidence_links: {
+        Row: { id: string; user_id: string; application_id: string; school_id: number; scholarship_id: string; item_key: string; requirement_label: string; evidence_link_id: string | null; essay_draft_id: string | null; created_at: string }
+        Insert: { user_id: string; application_id: string; school_id: number; scholarship_id: string; item_key: string; requirement_label: string; evidence_link_id?: string | null; essay_draft_id?: string | null }
+        Update: never
+        Relationships: []
+      }
       evidence_items: {
         Row: { id: string; user_id: string; kind: string; title: string; organisation: string | null; role: string | null; start_date: string | null; end_date: string | null; is_current: boolean; description: string; origin_key: string | null; revision: string; created_at: string }
         Insert: { user_id: string; kind: string; title: string; organisation?: string | null; role?: string | null; start_date?: string | null; end_date?: string | null; is_current?: boolean; description?: string; origin_key?: string | null }

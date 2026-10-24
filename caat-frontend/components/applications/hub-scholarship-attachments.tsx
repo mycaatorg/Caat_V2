@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
+import { notifyRequirementWorkChanged } from "@/lib/requirement-work-events";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { requirementsChecklist, type ChecklistItem } from "@/lib/requirements-checklist";
@@ -15,6 +16,12 @@ import {
 } from "@/lib/scholarship-tracking";
 import { ScholarshipRequirementsCard } from "@/components/applications/scholarship-requirements-card";
 import { AttachScholarshipDialog, attachCopy } from "@/components/applications/attach-scholarship-dialog";
+
+import { RequirementWorkProvider } from "@/components/applications/requirement-supporting-work";
+
+function SupportingWorkScope({ applicationId, schoolId, children }: { applicationId?: string; schoolId: number; children: React.ReactNode }) {
+  return applicationId ? <RequirementWorkProvider applicationId={applicationId} schoolId={schoolId}>{children}</RequirementWorkProvider> : <>{children}</>;
+}
 
 function GroupHeading({ children }: { children: React.ReactNode }) {
   return (
@@ -35,6 +42,7 @@ function GroupHeading({ children }: { children: React.ReactNode }) {
  * this touches the application's status or its 3-step preparation score.
  */
 export function HubScholarshipAttachments({
+  applicationId,
   schoolId,
   schoolName,
   saved,
@@ -46,6 +54,7 @@ export function HubScholarshipAttachments({
   retrying,
   now,
 }: {
+  applicationId?: string;
   schoolId: number;
   schoolName: string;
   saved: SavedScholarshipForHub[];
@@ -82,6 +91,7 @@ export function HubScholarshipAttachments({
       onSavedChange(
         saved.map((row) => (row.id === s.id ? { ...row, schoolId: to, attachedSchoolName: to === null ? null : schoolName } : row)),
       );
+      notifyRequirementWorkChanged();
       if (to !== null) setDialogOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : to === null ? "Couldn't detach this scholarship. Try again." : "Couldn't attach. Try again.");
@@ -158,6 +168,7 @@ export function HubScholarshipAttachments({
             You haven&apos;t attached a scholarship to this application.
           </p>
         ) : (
+          <SupportingWorkScope applicationId={applicationId} schoolId={schoolId}>
           <ul className="space-y-3">
             {attached.map((s) => {
               const pendingKeys = new Set([...pending].filter((p) => p.startsWith(`${s.id}:`)).map((p) => p.slice(s.id.length + 1)));
@@ -177,6 +188,7 @@ export function HubScholarshipAttachments({
               );
             })}
           </ul>
+          </SupportingWorkScope>
         )}
         <Button
           variant="outline"

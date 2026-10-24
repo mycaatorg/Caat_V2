@@ -194,7 +194,7 @@ describe("HubLinkedDocuments (PROD-78)", () => {
     io.unlinkDocument.mockReturnValue(pending.promise);
     await mountComponent(<Harness initial={[lnk("link-1", "doc-1")]} />);
     await click(button("Unlink doc-1.pdf"));
-    expect(group().textContent).toContain("Removes it from this application only. The file stays in Documents.");
+    expect(group().textContent).toContain("Removes it and its scholarship requirement links from this application. The file stays in Documents.");
     await click(button("Confirm unlink"));
     expect(io.unlinkDocument).toHaveBeenCalledWith("link-1");
     expect(link("doc-1.pdf", group())).toBeTruthy();
