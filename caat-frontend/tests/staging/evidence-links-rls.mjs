@@ -71,8 +71,8 @@ try {
   assert.equal((await owner.client.from(LINKS).insert({ user_id: owner.id, application_id: appA.id, kind: 'document', document_id: peerDoc.id })).error?.code, '23503', "owner cannot link the peer's document");
   assert.equal((await owner.client.from(LINKS).insert({ user_id: owner.id, application_id: peerApp.id, kind: 'document', document_id: otherDoc.id })).error?.code, '23503', "owner cannot link to the peer's application");
   assert.equal((await owner.client.from(LINKS).insert({ user_id: owner.id, application_id: appA.id, kind: 'document', document_id: null })).error?.code, '23514', 'a link needs exactly one source');
-  assert.equal((await owner.client.from(LINKS).insert({ user_id: owner.id, application_id: appA.id, kind: 'activity', document_id: otherDoc.id })).error?.code, '23514', 'only document links exist in this slice');
-  assert.equal((await owner.client.from(LINKS).insert({ user_id: owner.id, application_id: appA.id, kind: 'document', evidence_item_id: randomUUID() })).error?.code, '42501', 'evidence items cannot be linked yet');
+  assert.equal((await owner.client.from(LINKS).insert({ user_id: owner.id, application_id: appA.id, kind: 'activity', document_id: otherDoc.id })).error?.code, '23514', 'unknown link kind is rejected');
+  assert.equal((await owner.client.from(LINKS).insert({ user_id: owner.id, application_id: appA.id, kind: 'document', evidence_item_id: randomUUID() })).error?.code, '23514', 'document kind cannot point at an item');
 
   // Tailoring writes only the link's tailored_* columns.
   const tailoredAt = new Date().toISOString();
@@ -113,7 +113,7 @@ try {
     WHERE attrelid = 'public.${LINKS}'::regclass AND attnum > 0 AND NOT attisdropped
       AND has_column_privilege('authenticated', 'public.${LINKS}', attname, p)
     GROUP BY p ORDER BY p`]);
-  assert.equal(columns, 'INSERT:application_id,document_id,kind,user_id\nUPDATE:source_uploaded_at,tailored_at,tailored_body,tailored_title', 'clients insert the link and update only its tailored_* columns');
+  assert.equal(columns, 'INSERT:application_id,document_id,evidence_item_id,kind,user_id\nUPDATE:source_revision,source_uploaded_at,tailored_at,tailored_body,tailored_title', 'clients insert the link and update only its tailored_* columns');
 
   // A still-linked document cannot be deleted; unlinking never deletes it.
   assert.equal((await owner.client.from(DOCS).delete().eq('id', doc.id).eq('user_id', owner.id)).error?.code, '23503', 'deleting a still-linked document is refused');
