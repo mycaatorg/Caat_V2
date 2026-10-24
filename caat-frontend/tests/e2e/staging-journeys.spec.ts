@@ -1793,7 +1793,8 @@ test('requirement supporting work persists with tailored previews, manual ticks 
   }
   await page.reload();await expect(essay.locator('[data-requirement-link]')).toHaveCount(3);
   await expect(essay.getByRole('checkbox')).not.toBeChecked();
-  await essay.getByRole('checkbox').check();await page.reload();await expect(essay.getByRole('checkbox')).toBeChecked();
+  const tickSaved=page.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/rest/v1/user_scholarship_prep_checks')&&r.request().method()==='POST'&&r.ok());
+  await essay.getByRole('checkbox').check();await tickSaved;await page.reload();await expect(essay.getByRole('checkbox')).toBeChecked();
   const row=essay.locator('[data-requirement-link]').filter({hasText:title});await row.locator('summary').click();
   await expect(row.getByText('Application-specific award statement',{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);

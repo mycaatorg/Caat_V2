@@ -81,7 +81,7 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
   const disabled = loading || busy || !work;
 
   return <WorkContext.Provider value={{ work, disabled, open, remove }}>
-    <div ref={supportRegion} tabIndex={-1} aria-label="Supporting work" className="mb-3 space-y-2">
+    <div ref={supportRegion} role="group" tabIndex={-1} aria-label="Supporting work" className="mb-3 space-y-2">
       <p className="text-xs text-muted-foreground">Connect supporting work to each requirement. Links follow your current work; you decide when to tick preparation.</p>
       <p className="text-xs text-muted-foreground">Moving or detaching a scholarship clears its requirement links. Your saved work and preparation ticks stay.</p>
       <Button size="sm" variant="ghost" disabled={loading || busy} onClick={() => void load()}>Refresh supporting work</Button>
