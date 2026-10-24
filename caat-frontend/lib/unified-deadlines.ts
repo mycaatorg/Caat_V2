@@ -8,7 +8,6 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { todayKey } from "@/lib/local-date";
 
 /** "custom" is a scholarship the student added themselves (user_scholarships). */
 export type DeadlineSource = "app" | "scholarship" | "custom" | "event";
@@ -76,6 +75,9 @@ export function mergeDeadlines(
     });
   }
 
+  // Scholarship deadline_at is a timestamptz, but production stores every one
+  // at 00:00 UTC, so its first ten characters are the intended calendar date.
+  // Compare that date to the student's day; do not shift it into a time zone.
   for (const s of scholarships) {
     const date = s.deadline_at.slice(0, 10);
     if (date < todayISO) continue;
@@ -118,13 +120,16 @@ export function mergeDeadlines(
   return merged;
 }
 
+/**
+ * @param todayISO The student's calendar day (YYYY-MM-DD), e.g. from
+ *   zonedTodayISO(timeZone). Never the server clock: the server runs in UTC,
+ *   which is still "yesterday" for Australian students until 11am AEDT.
+ */
 export async function fetchUnifiedDeadlines(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  todayISO: string
 ): Promise<UnifiedDeadline[]> {
-  // Local calendar day, not UTC — otherwise users west of UTC drop or keep
-  // deadlines a day early/late when comparing against date-only strings.
-  const todayISO = todayKey();
 
   const [appRes, schRes, evtRes, customRes] = await Promise.all([
     supabase

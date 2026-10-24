@@ -26,16 +26,35 @@ function timestamp(value: string | null | undefined, now: Date): string | null {
   return date.toISOString();
 }
 
+export type SourceFreshness = EligibilityReport['freshness'];
+export interface ScholarshipSourceState {
+  sourceUrl: string | null;
+  verifiedAt: string | null;
+  syncedAt: string | null;
+  freshness: SourceFreshness;
+}
+
+/** PROD-75 source rule, shared with the PROD-77 requirements checklist:
+ *  last_verified_at only; more than 90 days old is stale; missing, future or
+ *  invalid is unverified. Synced is reported separately, never as verified. */
+export function scholarshipSourceState(
+  scholarship: Pick<ScholarshipRow, 'external_url' | 'last_verified_at' | 'source_last_synced_at'>,
+  now: Date,
+): ScholarshipSourceState {
+  const sourceUrl = safeHref(scholarship.external_url);
+  const verifiedAt = timestamp(scholarship.last_verified_at, now);
+  const syncedAt = timestamp(scholarship.source_last_synced_at, now);
+  const freshness: SourceFreshness = !verifiedAt ? 'unverified' : now.getTime() - Date.parse(verifiedAt) > FRESH_DAYS * DAY ? 'stale' : 'recent';
+  return { sourceUrl, verifiedAt, syncedAt, freshness };
+}
+
 /** Compare only evidence the current schema can establish. Preferences are not qualifications. */
 export function explainEligibility(
   profile: { nationality: string | null; student_status?: string | null } | null,
   scholarship: ScholarshipRow,
   now: Date,
 ): EligibilityReport {
-  const sourceUrl = safeHref(scholarship.external_url);
-  const verifiedAt = timestamp(scholarship.last_verified_at, now);
-  const syncedAt = timestamp(scholarship.source_last_synced_at, now);
-  const freshness = !verifiedAt ? 'unverified' : now.getTime() - Date.parse(verifiedAt) > FRESH_DAYS * DAY ? 'stale' : 'recent';
+  const { sourceUrl, verifiedAt, syncedAt, freshness } = scholarshipSourceState(scholarship, now);
   const criteria: EligibilityCriterion[] = [];
   const add = (id: string, label: string, reason: string, status: CriterionStatus = 'unknown') => criteria.push({ id, label, reason, status });
 

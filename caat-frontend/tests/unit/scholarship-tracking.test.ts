@@ -86,15 +86,29 @@ describe("trackScholarship", () => {
     await expect(trackScholarship("s1", "applied")).rejects.toThrow("Not authenticated");
   });
 
-  it("resolves when the upsert succeeds", async () => {
+  it("resolves when the upsert returns the saved row at the new status", async () => {
     let captured: { table: string; op: string } | null = null;
     state.resolver = (ctx) => {
       captured = ctx;
-      return { data: null, error: null };
+      return { data: [{ status: "awarded" }], error: null };
     };
     await expect(trackScholarship("s1", "awarded")).resolves.toBeUndefined();
     expect(captured!.op).toBe("upsert");
     expect(captured!.table).toBe("user_bookmarked_scholarships");
+  });
+
+  // PROD-150: a write that touches no row (an UPDATE that RLS filtered out)
+  // comes back with no error, so it must not be reported as saved.
+  it("throws when the write affected no row", async () => {
+    state.resolver = () => ({ data: [], error: null });
+    await expect(trackScholarship("s1", "applied")).rejects.toThrow("not saved");
+    state.resolver = () => ({ data: null, error: null });
+    await expect(trackScholarship("s1", "applied")).rejects.toThrow("not saved");
+  });
+
+  it("throws when the returned row does not hold the requested status", async () => {
+    state.resolver = () => ({ data: [{ status: "interested" }], error: null });
+    await expect(trackScholarship("s1", "applied")).rejects.toThrow("not saved");
   });
 
   it("throws the DB error message on failure (drives the rollback + toast)", async () => {
@@ -104,7 +118,7 @@ describe("trackScholarship", () => {
 
   it("accepts every declared status", async () => {
     for (const s of SCHOLARSHIP_STATUSES) {
-      state.resolver = () => ({ data: null, error: null });
+      state.resolver = () => ({ data: [{ status: s }], error: null });
       await expect(trackScholarship("s1", s)).resolves.toBeUndefined();
     }
   });

@@ -29,6 +29,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { fetchDocumentUsage } from "@/lib/evidence-links";
 import {
   Sheet,
   SheetContent,
@@ -207,15 +208,23 @@ function CategoryPill({ label }: { label: string }) {
 
 // ---------------------------------------------------------------------------
 // Delete confirmation modal
+/** PROD-78: "Used in 1 application" / "Used in N applications". */
+function usedInLabel(n: number) {
+  return `Used in ${n} application${n === 1 ? "" : "s"}`;
+}
+
 // ---------------------------------------------------------------------------
 // M16 — a real Radix Dialog: role="dialog", focus trap, Escape + backdrop close.
 function DeleteModal({
   doc,
+  usedIn,
   onConfirm,
   onCancel,
   isDeleting,
 }: {
   doc: DocumentRow | null;
+  /** PROD-78: applications this document is linked to (0 when unknown) */
+  usedIn: number;
   onConfirm: () => void;
   onCancel: () => void;
   isDeleting: boolean;
@@ -237,6 +246,11 @@ function DeleteModal({
             Are you sure you want to delete{" "}
             <span className="font-medium text-foreground">{doc?.file_name}</span>?
             This action cannot be undone.
+            {usedIn > 0 ? (
+              <span className="mt-2 block text-amber-700 dark:text-amber-400">
+                It is linked to {usedInLabel(usedIn).replace(/^Used in /, "")}. Unlink it from them first; deleting is refused while it is linked.
+              </span>
+            ) : null}
           </Dialog.Description>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onCancel} disabled={isDeleting}>
@@ -384,6 +398,10 @@ export default function DocumentVaultClient({
   const [deleteTarget, setDeleteTarget] = useState<DocumentRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // PROD-78: documentId -> applications it is linked to. Unknown (read failed)
+  // stays empty, so no badge claims a count it could not read.
+  const [usage, setUsage] = useState<Record<string, number>>({});
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reuploadInputRef = useRef<HTMLInputElement>(null);
 
@@ -394,6 +412,7 @@ export default function DocumentVaultClient({
       loadDocs();
     }
     fetchMySchools().then(setMySchools).catch(() => {});
+    fetchDocumentUsage().then(setUsage).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -688,6 +707,11 @@ export default function DocumentVaultClient({
                   {doc.file_size && (
                     <span className="text-xs text-muted-foreground">
                       {formatFileSize(doc.file_size)}
+                    </span>
+                  )}
+                  {(usage[doc.id] ?? 0) > 0 && (
+                    <span className="mt-0.5 block text-xs text-muted-foreground" data-used-in>
+                      {usedInLabel(usage[doc.id])}
                     </span>
                   )}
                   {doc.review_notes && (
@@ -1001,6 +1025,7 @@ export default function DocumentVaultClient({
       {/* ------------------------------------------------------------------ */}
       <DeleteModal
         doc={deleteTarget}
+        usedIn={deleteTarget ? usage[deleteTarget.id] ?? 0 : 0}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
         isDeleting={isDeleting}

@@ -11,6 +11,7 @@ const io = vi.hoisted(() => ({
   fetchMajorOptions: vi.fn(),
   fetchSavedCoursesForSchool: vi.fn(),
   updateApplicationMajors: vi.fn(),
+  fetchEvidenceLinksForApplication: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
@@ -24,6 +25,12 @@ vi.mock("@/app/(main)/applications/[id]/api", () => ({
 vi.mock("@/app/(main)/applications/api", () => ({ updateApplicationMajors: io.updateApplicationMajors }));
 vi.mock("@/lib/scholarship-tracking", () => ({
   SCHOLARSHIP_STATUS_LABELS: { interested: "Interested", applied: "Applied", awarded: "Awarded", rejected: "Rejected" },
+  mentionsSchool: (a: string | null, b: string) => !!a && a.toLowerCase() === b.toLowerCase(),
+}));
+vi.mock("@/lib/supabase/client", () => ({ supabase: {} }));
+vi.mock("@/lib/evidence-links", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/evidence-links")>()),
+  fetchEvidenceLinksForApplication: io.fetchEvidenceLinksForApplication,
 }));
 vi.mock("sonner", () => ({ toast: io.toast }));
 vi.mock("next/link", () => ({
@@ -68,7 +75,10 @@ function hub(
     schoolCountry: "Australia",
     targetMajor: "Law",
     intendedMajors: application.intended_majors ?? [],
-    trackedScholarships: [],
+    savedScholarships: [],
+    savedScholarshipsUnavailable: false,
+    prepChecks: {},
+    prepChecksUnavailable: false,
     readiness: { deadlineSet: !!application.deadline_at, essayDrafted: true, keyDocsUploaded: false, score: 1, ...readiness },
     essaysForSchool: [],
     essaysShared: [],
@@ -78,6 +88,8 @@ function hub(
     scholarshipsUnavailable: false,
     savedCourses: [],
     savedCoursesUnavailable: false,
+    evidenceLinks: [],
+    evidenceLinksUnavailable: false,
     ...extra,
   };
 }
@@ -432,5 +444,73 @@ describe("courses you saved at this university (PROD-148)", () => {
     await flush();
     expect(savedCard()!.textContent).toContain("Couldn't load your saved courses.");
     expect(button("Retry loading saved courses").disabled).toBe(false);
+  });
+});
+
+describe("attached scholarships (PROD-77)", () => {
+  const attached = {
+    id: "s-1", title: "Alpha Merit", provider: "Alpha", amount: null, status: "applied" as const,
+    schoolId: 7, attachedSchoolName: "Alpha University", scholarshipSchoolName: "Alpha University",
+    checklist: {
+      id: "s-1", requires_essay: true, deadline_at: null, external_url: null, application_requirements: null,
+      eligibility_summary: null, last_verified_at: null, source_last_synced_at: null, school_name: "Alpha University", is_active: true,
+    },
+  };
+
+  it("shows the attached checklist with persisted ticks and leaves the 3-step score alone", async () => {
+    await mount(hub({}, {}, { savedScholarships: [attached], prepChecks: { "s-1": ["essay", "deadline"] } }));
+    const group = document.querySelector('[aria-label="Attached to this application"]') as HTMLElement;
+    expect(group.textContent).toContain("Alpha Merit");
+    expect(group.textContent).toContain("An essay is required (recorded)");
+    expect(group.querySelectorAll('input[type="checkbox"]:checked')).toHaveLength(2);
+    expect(score()).toBe("1");
+    expect(document.querySelectorAll("li[data-state]")).toHaveLength(3);
+  });
+
+  it("keeps the rest of the scholarships card when only the saved-scholarship read failed", async () => {
+    await mount(hub({}, {}, { savedScholarshipsUnavailable: true }));
+    expect(hasText("Couldn't load your saved scholarships.")).toBe(true);
+    expect(hasText("No scholarships recorded for this university yet")).toBe(true);
+    expect(score()).toBe("1");
+  });
+});
+
+describe("linked library documents (PROD-78)", () => {
+  const linked = {
+    id: "link-1", applicationId: "app-1", documentId: "doc-1", tailoredTitle: "Arts portfolio", tailoredBody: null,
+    tailoredAt: "2026-10-21T00:00:00.000Z", createdAt: "2026-10-20T00:00:00.000Z",
+    document: { id: "doc-1", fileName: "portfolio.pdf", category: "transcripts", status: "verified", uploadedAt: "2026-10-01T00:00:00.000Z" },
+  };
+  const group = () => document.querySelector('[aria-label="Linked from your documents"]') as HTMLElement | null;
+
+  it("lists linked documents on the Documents card without changing the 3-step score", async () => {
+    await mount(hub({}, {}, { evidenceLinks: [linked] }));
+    expect(group()!.textContent).toContain("Arts portfolio");
+    expect(group()!.textContent).toContain("Tailored for Alpha University. Library file: portfolio.pdf");
+    expect(isDone(DOCS_STEP)).toBe(false);
+    expect(score()).toBe("1");
+    expect(document.querySelectorAll("li[data-state]")).toHaveLength(3);
+  });
+
+  it("retries only the links read when it failed, and the score never moves", async () => {
+    io.fetchEvidenceLinksForApplication.mockResolvedValueOnce([linked]);
+    await mount(hub({}, {}, { evidenceLinksUnavailable: true }));
+    expect(group()!.textContent).toContain("Couldn't load your linked documents.");
+    expect(score()).toBe("1");
+    await click(button("Retry loading linked documents"));
+    await flush();
+    expect(io.fetchEvidenceLinksForApplication).toHaveBeenCalledWith("app-1");
+    expect(io.fetchApplicationHub).toHaveBeenCalledTimes(1);
+    expect(group()!.textContent).toContain("Arts portfolio");
+    expect(score()).toBe("1");
+  });
+
+  it("stays unavailable when the retry also fails", async () => {
+    io.fetchEvidenceLinksForApplication.mockRejectedValueOnce(new Error("offline"));
+    await mount(hub({}, {}, { evidenceLinksUnavailable: true }));
+    await click(button("Retry loading linked documents"));
+    await flush();
+    expect(group()!.textContent).toContain("Couldn't load your linked documents.");
+    expect(score()).toBe("1");
   });
 });

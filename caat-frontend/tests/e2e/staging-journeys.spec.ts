@@ -510,6 +510,72 @@ test("scholarship status persists on detail and tracked-list views after reload"
   }
 });
 
+async function chooseScholarshipStatus(page: Page, label: string) {
+  const statusButton = page.getByRole("button", { name: /^(Save|Interested|Applied|Awarded|Not selected)$/ });
+  await expect(statusButton).toBeVisible({ timeout: 15_000 });
+  const saved = page.waitForResponse(
+    (r) => r.url().includes("/rest/v1/user_bookmarked_scholarships") && r.request().method() === "POST",
+  );
+  await statusButton.click();
+  await page.getByRole("menuitem", { name: label, exact: true }).click();
+  await saved;
+}
+
+async function expectTrackedScholarshipStatus(page: Page, label: string) {
+  // The scholarships list, filtered to the status, shows the seeded card with its label.
+  await page.goto(`/scholarships?status=${label.toLowerCase()}`);
+  const card = page.locator('[data-slot="card"]:visible').filter({
+    has: page.getByRole("heading", { name: "E2E Test Scholarship", exact: true }),
+  });
+  await expect(card).toHaveCount(1, { timeout: 15_000 });
+  await expect(card.getByText(label, { exact: true })).toBeVisible();
+  // The shortlist's scholarship row carries the same status pill.
+  await page.goto(`/shortlist?tab=scholarship&status=${label.toLowerCase()}`);
+  const row = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: "E2E Test Scholarship", exact: true }) });
+  await expect(row).toHaveCount(1, { timeout: 15_000 });
+  await expect(row.getByText(label, { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(row).toHaveCount(1, { timeout: 15_000 });
+  await expect(row.getByText(label, { exact: true })).toBeVisible();
+}
+
+// PROD-150: changing an already-saved scholarship's status is an UPDATE of the
+// existing row, which needs its own owner policy. Saving a new scholarship is an
+// INSERT, so the journey above (straight to Applied) never exercised it.
+test("an already-saved scholarship moves from Interested to Applied and stays Applied after reloads (PROD-150)", async ({ page }) => {
+  await signInToIsolatedStudent(page);
+  const detailPath = `/scholarships/${SCHOLARSHIP_ID}`;
+  try {
+    await page.goto(detailPath);
+    await expect(page.getByRole("heading", { name: "E2E Test Scholarship" })).toBeVisible({ timeout: 15_000 });
+    // A reused isolated database may still hold this save from an interrupted run.
+    await expect(page.getByRole("button", { name: /^(Save|Interested|Applied|Awarded|Not selected)$/ })).toBeVisible({ timeout: 15_000 });
+    await untrackSeedScholarship(page);
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible({ timeout: 15_000 });
+
+    await chooseScholarshipStatus(page, "Interested");
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Interested", exact: true })).toBeVisible({ timeout: 15_000 });
+    await expectTrackedScholarshipStatus(page, "Interested");
+
+    await page.goto(detailPath);
+    await chooseScholarshipStatus(page, "Applied");
+    await expect(page.getByRole("button", { name: "Applied", exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Applied", exact: true })).toBeVisible({ timeout: 15_000 });
+    await expectTrackedScholarshipStatus(page, "Applied");
+  } finally {
+    if (!page.isClosed()) {
+      try {
+        await page.goto(detailPath);
+        await untrackSeedScholarship(page);
+      } catch {
+        // Cleanup must not mask the assertion that failed above.
+      }
+    }
+  }
+});
+
 test("school notes and application status/checklist persist across list and detail reloads", { tag: "@phone" }, async ({ page }) => {
   await signInToIsolatedStudent(page);
   const schoolNote = marker("School note");
@@ -1294,4 +1360,263 @@ test("a saved course tracks its university application on a click, and the hub l
   expect(await e2eApplicationCount(page)).toBe(0);
   await openCourses(page, `/courses?course=${E2E_COURSE.id}`);
   await expect(courseCard(page, E2E_COURSE).getByRole("button", { name: `Save ${E2E_COURSE.name}`, exact: true })).toBeEnabled({ timeout: 15_000 });
+});
+
+// PROD-77: a scholarship with recorded requirements (seed-opportunities.sql).
+const REQ_SCHOLARSHIP = { id: "e2000000-0000-4000-8000-0000000000a1", title: "E2E Requirements Scholarship" };
+const BOOKMARK_WRITES = "/rest/v1/user_bookmarked_scholarships";
+
+/** Read the student's own saved row for a scholarship straight from the local
+ *  REST API with their own token (RLS keeps it owner-scoped; no service key). */
+async function ownBookmarkRow(request: APIRequestContext, scholarshipId: string) {
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL").origin;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!anonKey) throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY must be set for the isolated direct read");
+  const auth = await request.post(`${api}/auth/v1/token?grant_type=password`, {
+    headers: { apikey: anonKey },
+    data: { email: STUDENT_EMAIL, password: process.env.E2E_TEST_PASSWORD },
+  });
+  expect(auth.ok(), "local student sign-in for the direct read").toBe(true);
+  const { access_token: token } = (await auth.json()) as { access_token: string };
+  const res = await request.get(`${api}${BOOKMARK_WRITES}?scholarship_id=eq.${scholarshipId}&select=status,school_id`, {
+    headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
+  });
+  expect(res.ok(), "direct read of the saved scholarship").toBe(true);
+  return (await res.json()) as { status: string; school_id: number | null }[];
+}
+
+test("a saved scholarship attaches to an application with a recorded checklist, ticks persist, and deleting the application detaches it (PROD-77)", { tag: "@phone" }, async ({ page, request }) => {
+  test.setTimeout(120_000);
+  await signInToIsolatedStudent(page);
+  const detailPath = `/scholarships/${REQ_SCHOLARSHIP.id}`;
+  const attachedGroup = page.getByRole("main").getByRole("region", { name: "Attached to this application", exact: true });
+  try {
+    // Clean slate: no application at 900001 and this scholarship not saved.
+    await removeSeededApplication(page);
+    await page.goto(detailPath);
+    await expect(page.getByRole("heading", { name: REQ_SCHOLARSHIP.title })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: /^(Save|Interested|Applied|Awarded|Not selected)$/ })).toBeVisible({ timeout: 15_000 });
+    await untrackSeedScholarship(page);
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible({ timeout: 15_000 });
+
+    // Save as Interested, then change it to Applied (the PROD-150 update path).
+    await chooseScholarshipStatus(page, "Interested");
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Interested", exact: true })).toBeVisible({ timeout: 15_000 });
+    await chooseScholarshipStatus(page, "Applied");
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Applied", exact: true })).toBeVisible({ timeout: 15_000 });
+
+    // Create the application at 900001 and open its hub.
+    await page.goto(`/schools/${SCHOOL_ID}`);
+    await page.getByRole("button", { name: "Track Application" }).click();
+    await expect(page.getByRole("link", { name: "Researching" })).toBeVisible({ timeout: 15_000 });
+    await page.goto("/applications");
+    const href = await seededApplicationCard(page).card.getByRole("link", { name: /open/i }).getAttribute("href");
+    expect(href).toMatch(/^\/applications\/[0-9a-f-]+$/i);
+    await page.goto(href!);
+    await expect(page.getByRole("heading", { name: "E2E Test University", exact: true, level: 1 })).toBeVisible({ timeout: 15_000 });
+    await expect(attachedGroup.getByText("You haven't attached a scholarship to this application.")).toBeVisible({ timeout: 15_000 });
+
+    // Attach from the dialog.
+    await page.getByRole("button", { name: "Attach a saved scholarship", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Attach a saved scholarship" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("It does not mean you are eligible, and it does not apply for you.", { exact: false })).toBeVisible();
+    const attachWrite = page.waitForResponse((r) => r.url().includes(BOOKMARK_WRITES) && r.request().method() === "PATCH" && r.ok());
+    await dialog.getByRole("button", { name: `Attach ${REQ_SCHOLARSHIP.title}`, exact: true }).click();
+    await attachWrite;
+    await expect(dialog).toHaveCount(0);
+
+    const officialTick = attachedGroup.getByRole("checkbox", { name: "I've prepared this: Read the official scholarship page", exact: true });
+    const checkChecklist = async () => {
+      await expect(attachedGroup.getByRole("link", { name: REQ_SCHOLARSHIP.title, exact: true })).toBeVisible({ timeout: 15_000 });
+      await expect(attachedGroup.getByText("A separate scholarship application is required (recorded)", { exact: true })).toBeVisible();
+      await expect(attachedGroup.getByText("Recorded application mode: online form", { exact: true })).toBeVisible();
+      await expect(attachedGroup.getByText("An essay is required (recorded)", { exact: true })).toBeVisible();
+      await expect(attachedGroup.getByText("Recorded rule: E2E rule one", { exact: true })).toBeVisible();
+      await expect(attachedGroup.getByText("Recorded rule: E2E rule two", { exact: true })).toBeVisible();
+      await expect(attachedGroup.getByText("Check with the provider", { exact: true }).first()).toBeVisible();
+      // The seeded source was last verified 200 days ago, so it carries the stale label.
+      await expect(attachedGroup.locator("[data-source-note]")).toHaveText(/^Last checked \d{1,2} \w{3,4} \d{4}\. Details may have changed\.$/);
+      await expect(attachedGroup.getByText("Completing this checklist is not submitting an application.", { exact: false })).toBeVisible();
+      await expect(attachedGroup.getByRole("link", { name: "Read the official scholarship page" })).toHaveAttribute("href", "https://scholarship.example.test/e2e-requirements");
+      // Not a preparation step: the application checklist keeps its three steps.
+      await expect(page.locator("li[data-state]")).toHaveCount(3);
+    };
+    await checkChecklist();
+
+    // Tick one item; it persists across a reload.
+    await expect(officialTick).not.toBeChecked();
+    const tickWrite = page.waitForResponse((r) => r.url().includes("/rest/v1/user_scholarship_prep_checks") && r.request().method() === "POST" && r.ok());
+    await officialTick.check();
+    await tickWrite;
+    await page.reload();
+    await checkChecklist();
+    await expect(officialTick).toBeChecked();
+
+    // Shortlist names the application it is attached to.
+    await page.goto("/shortlist?tab=scholarship");
+    const shortlistRow = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: REQ_SCHOLARSHIP.title, exact: true }) });
+    await expect(shortlistRow.getByRole("link", { name: "For E2E Test University", exact: true })).toHaveAttribute("href", href!, { timeout: 15_000 });
+
+    // Detach: the checklist goes, the save stays (and Shortlist drops "For ...").
+    await page.goto(href!);
+    const detachWrite = page.waitForResponse((r) => r.url().includes(BOOKMARK_WRITES) && r.request().method() === "PATCH" && r.ok());
+    await attachedGroup.getByRole("button", { name: `Detach ${REQ_SCHOLARSHIP.title}`, exact: true }).click({ timeout: 15_000 });
+    await detachWrite;
+    await page.reload();
+    await expect(attachedGroup.getByText("You haven't attached a scholarship to this application.")).toBeVisible({ timeout: 15_000 });
+    await expect(attachedGroup.getByRole("link", { name: REQ_SCHOLARSHIP.title })).toHaveCount(0);
+    await page.goto("/shortlist?tab=scholarship");
+    await expect(shortlistRow).toHaveCount(1, { timeout: 15_000 });
+    await expect(shortlistRow.getByText(/^For /)).toHaveCount(0);
+
+    // Attach again from the name-match suggestion, then delete the application:
+    // the database detaches it and keeps the save.
+    await page.goto(href!);
+    const suggestions = page.getByRole("main").getByRole("region", { name: "Saved scholarships that mention E2E Test University", exact: true });
+    const reattach = page.waitForResponse((r) => r.url().includes(BOOKMARK_WRITES) && r.request().method() === "PATCH" && r.ok());
+    await suggestions.getByRole("button", { name: `Attach ${REQ_SCHOLARSHIP.title}`, exact: true }).click({ timeout: 15_000 });
+    await reattach;
+    expect(await ownBookmarkRow(request, REQ_SCHOLARSHIP.id)).toEqual([{ status: "applied", school_id: SCHOOL_ID }]);
+    await removeSeededApplication(page);
+    expect(await e2eApplicationCount(page)).toBe(0);
+    expect(await ownBookmarkRow(request, REQ_SCHOLARSHIP.id)).toEqual([{ status: "applied", school_id: null }]);
+  } finally {
+    if (!page.isClosed()) {
+      await removeSeededApplication(page).catch(() => {});
+      try {
+        await page.goto(detailPath);
+        await expect(page.getByRole("button", { name: /^(Save|Interested|Applied|Awarded|Not selected)$/ })).toBeVisible({ timeout: 15_000 });
+        await untrackSeedScholarship(page);
+        await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible({ timeout: 15_000 });
+      } catch {
+        // Cleanup must not mask the assertion that failed above.
+      }
+    }
+  }
+  // Cleanup persisted: the save is gone (its ticks cascade with it).
+  expect(await ownBookmarkRow(request, REQ_SCHOLARSHIP.id)).toEqual([]);
+});
+
+// PROD-78: a library document linked to an application, tailored there only.
+const LINK_WRITES = "/rest/v1/application_evidence_links";
+const linkWrite = (page: Page, method: "POST" | "PATCH" | "DELETE") =>
+  page.waitForResponse((r) => new URL(r.url()).pathname.endsWith(LINK_WRITES) && r.request().method() === method && r.ok(), { timeout: 15_000 });
+const pdfBytes = (note: string) => Buffer.from(`%PDF-1.4\n% ${note}\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n`);
+
+test("a library document links to an application, keeps its tailoring when the file is replaced, and unlinking keeps the document (PROD-78)", { tag: "@phone" }, async ({ page }) => {
+  test.setTimeout(150_000);
+  await signInToIsolatedStudent(page);
+  const fileName = `${marker("portfolio")}.pdf`;
+  const tailoredTitle = `Arts portfolio ${RUN_ID}`;
+  const docRow = () => page.getByText(fileName, { exact: true }).locator("xpath=../../..");
+  const linked = page.getByRole("main").getByRole("region", { name: "Linked from your documents", exact: true });
+  const prep = page.locator("[data-prep-checklist]");
+  try {
+    await removeSeededApplication(page);
+
+    // A document in the library.
+    await page.goto("/documents");
+    await expect(page.getByRole("heading", { name: "Document Vault" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: "Upload New" }).click();
+    await page.locator('input[type="file"]').last().setInputFiles({ name: fileName, mimeType: "application/pdf", buffer: pdfBytes("original") });
+    const inserted = page.waitForResponse((r) => new URL(r.url()).pathname.endsWith("/rest/v1/documents") && r.request().method() === "POST" && r.ok(), { timeout: 20_000 });
+    await page.getByRole("button", { name: "Upload", exact: true }).click();
+    await inserted;
+    // The sheet also shows the chosen file's name: wait for the row itself.
+    await expect(docRow().getByText("In Review", { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(docRow().getByText(/^Used in /)).toHaveCount(0);
+
+    // The 900001 application and its hub.
+    await page.goto(`/schools/${SCHOOL_ID}`);
+    await page.getByRole("button", { name: "Track Application" }).click();
+    await expect(page.getByRole("link", { name: "Researching" })).toBeVisible({ timeout: 15_000 });
+    await page.goto("/applications");
+    const href = await seededApplicationCard(page).card.getByRole("link", { name: /open/i }).getAttribute("href");
+    expect(href).toMatch(/^\/applications\/[0-9a-f-]+$/i);
+    await page.goto(href!);
+    await expect(linked.getByText("You haven't linked a document from your library to this application.")).toBeVisible({ timeout: 15_000 });
+    const scoreBefore = await prep.locator("text=/\\d of 3 steps/").textContent();
+
+    // Link it from the dialog.
+    await linked.getByRole("button", { name: "Link a document", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Link a document" });
+    await expect(dialog.getByText("It doesn't upload anything new or send anything to the university.", { exact: false })).toBeVisible();
+    const created = linkWrite(page, "POST");
+    await dialog.getByRole("button", { name: `Link ${fileName}`, exact: true }).click({ timeout: 15_000 });
+    await created;
+    await expect(dialog).toHaveCount(0);
+    await expect(linked.getByRole("link", { name: fileName, exact: true })).toBeVisible();
+    // Not a preparation step: the score and the three steps do not move.
+    await expect(prep.locator("text=/\\d of 3 steps/")).toHaveText(scoreBefore!);
+    await expect(page.locator("li[data-state]")).toHaveCount(3);
+
+    // Tailor the title for this application; it survives a reload.
+    await linked.getByRole("button", { name: `Tailor ${fileName}`, exact: true }).click();
+    await linked.locator('input[name="tailored-title"]').fill(tailoredTitle);
+    const tailored = linkWrite(page, "PATCH");
+    await linked.getByRole("button", { name: "Save tailoring", exact: true }).click();
+    await tailored;
+    await page.reload();
+    await expect(linked.getByRole("link", { name: tailoredTitle, exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(linked.getByText(`Tailored for E2E Test University. Library file: ${fileName}`, { exact: true })).toBeVisible();
+    await expect(linked.getByText("Library version updated since you tailored this.")).toHaveCount(0);
+
+    // Documents shows where it is used; replacing the file moves uploaded_at.
+    await page.goto("/documents");
+    await expect(docRow().getByText("Used in 1 application", { exact: true })).toBeVisible({ timeout: 15_000 });
+    await docRow().getByRole("button", { name: "More options" }).click();
+    await page.getByRole("menuitem", { name: "Re-upload", exact: true }).click();
+    await page.locator('input[type="file"]').last().setInputFiles({ name: fileName, mimeType: "application/pdf", buffer: pdfBytes("replacement") });
+    const replaced = page.waitForResponse((r) => new URL(r.url()).pathname.endsWith("/rest/v1/documents") && r.request().method() === "PATCH" && r.ok(), { timeout: 20_000 });
+    await page.getByRole("button", { name: "Replace", exact: true }).click();
+    await replaced;
+
+    // The tailored link flags the newer file; Keep mine keeps the tailoring.
+    await page.goto(href!);
+    const notice = linked.getByText("Library version updated since you tailored this.");
+    await expect(notice).toBeVisible({ timeout: 15_000 });
+    await expect(linked.getByRole("link", { name: tailoredTitle, exact: true })).toBeVisible();
+    const kept = linkWrite(page, "PATCH");
+    await linked.getByRole("button", { name: "Keep mine", exact: true }).click();
+    await kept;
+    await expect(notice).toHaveCount(0);
+    await page.reload();
+    await expect(linked.getByRole("link", { name: tailoredTitle, exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(notice).toHaveCount(0);
+
+    // Unlink: the link goes, the document stays.
+    await linked.getByRole("button", { name: `Unlink ${tailoredTitle}`, exact: true }).click();
+    await expect(linked.getByText("Removes it from this application only. The file stays in Documents.")).toBeVisible();
+    const unlinked = linkWrite(page, "DELETE");
+    await linked.getByRole("button", { name: "Confirm unlink", exact: true }).click();
+    await unlinked;
+    await page.reload();
+    await expect(linked.getByText("You haven't linked a document from your library to this application.")).toBeVisible({ timeout: 15_000 });
+    await page.goto("/documents");
+    await expect(page.getByText(fileName, { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(docRow().getByText(/^Used in /)).toHaveCount(0);
+
+    // Delete the application.
+    await removeSeededApplication(page);
+    expect(await e2eApplicationCount(page)).toBe(0);
+  } finally {
+    if (!page.isClosed()) {
+      // Application first: its links cascade, so the document can then be deleted.
+      await removeSeededApplication(page).catch(() => {});
+      try {
+        await page.goto("/documents");
+        await expect(page.getByRole("heading", { name: "Document Vault" })).toBeVisible({ timeout: 15_000 });
+        await removeDocument(page, fileName);
+      } catch {
+        // Cleanup must not mask the assertion that failed above.
+      }
+    }
+  }
+  // Cleanup persisted: the document is gone after a reload.
+  await page.goto("/documents");
+  await expect(page.getByRole("heading", { name: "Document Vault" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(fileName, { exact: true })).toHaveCount(0);
 });

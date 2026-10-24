@@ -1,7 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockSupabase, type QueryContext, type QueryResult } from "./mock-supabase";
 
+import { deriveTasks } from "@/lib/today";
 import { loadToday, resolveTimeZone, sydneyHour, sydneyTodayISO, zonedHour, zonedTodayISO } from "@/lib/today-data";
+
+// Simulates the server's UTC day (todayKey is the server clock) without
+// depending on the machine's own time zone.
+const serverClock = vi.hoisted(() => ({ day: null as string | null }));
+vi.mock("@/lib/local-date", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/local-date")>();
+  return { ...actual, todayKey: (now?: Date) => serverClock.day ?? actual.todayKey(now) };
+});
 
 describe("Sydney time", () => {
   it("uses the Australian date, not the server's UTC date", () => {
@@ -221,5 +230,37 @@ describe("loadToday", () => {
         : { data: null, error: { message: "page unavailable" } };
     } });
     await expect(loadToday(client as never, "student-1")).rejects.toThrow();
+  });
+});
+
+describe("loadToday deadlines on the student's calendar day (PROD-152)", () => {
+  // 7am on 23 Oct in Sydney is still 22 Oct in UTC, where the server runs.
+  const now = new Date("2026-10-22T20:00:00Z");
+  beforeEach(() => { serverClock.day = "2026-10-22"; });
+  afterEach(() => { serverClock.day = null; });
+
+  const withCustom = (rows: { id: string; title: string; deadline_at: string }[]) =>
+    createMockSupabase({ resolver: (ctx) => ({ data: ctx.table === "user_scholarships" ? rows.map((r) => ({ ...r, status: "interested" })) : ctx.table === "profiles" ? null : [], error: null }) });
+
+  it("labels a deadline on the student's today as today while server UTC is still yesterday", async () => {
+    const client = withCustom([
+      { id: "past", title: "Old Bursary", deadline_at: "2026-10-22T00:00:00+00:00" },
+      { id: "today", title: "Rotary Bursary", deadline_at: "2026-10-23T00:00:00+00:00" },
+    ]);
+    const data = await loadToday(client as never, "student-1", now, "Australia/Sydney");
+    expect(data.input.todayISO).toBe("2026-10-23");
+    expect(data.input.deadlines.map((d) => d.id)).toEqual(["cus-today"]);
+    expect(deriveTasks(data.input).map((t) => t.title)).toContain("Rotary Bursary closes today");
+  });
+
+  it("keeps the 14-day window on the student's day: day 14 is in, day 15 is out", async () => {
+    const client = withCustom([
+      { id: "d14", title: "Day Fourteen Award", deadline_at: "2026-11-06T00:00:00+00:00" },
+      { id: "d15", title: "Day Fifteen Award", deadline_at: "2026-11-07T00:00:00+00:00" },
+    ]);
+    const data = await loadToday(client as never, "student-1", now, "Australia/Sydney");
+    const titles = deriveTasks(data.input).map((t) => t.title);
+    expect(titles).toContain("Day Fourteen Award closes in 14 days");
+    expect(titles.some((t) => t.startsWith("Day Fifteen Award"))).toBe(false);
   });
 });

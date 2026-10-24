@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type QueryResult = {
   data?: unknown;
-  error?: { message: string; name?: string; status?: number } | null;
+  error?: { message: string; name?: string; status?: number; code?: string } | null;
   count?: number | null;
 };
 type QueryCall = {
@@ -401,6 +401,12 @@ describe("upload validation and failures", () => {
 });
 
 describe("delete failures", () => {
+  it("explains that a document still linked to an application cannot be deleted (PROD-78)", async () => {
+    io.queryResults.push({ data: null, error: { message: "update or delete on table violates foreign key constraint", code: "23503" } });
+    await expect(deleteDocument(documentRow())).rejects.toThrow("This document is linked to an application. Unlink it from the application first, then delete it.");
+    expect(io.remove).not.toHaveBeenCalled();
+  });
+
   it("keeps the stored file when the row delete fails", async () => {
     io.queryResults.push({ data: null, error: { message: "delete failed" } });
     await expect(deleteDocument(documentRow())).rejects.toThrow("Something went wrong");
