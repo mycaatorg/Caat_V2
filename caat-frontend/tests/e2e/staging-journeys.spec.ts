@@ -1835,3 +1835,82 @@ test('requirement supporting work persists with tailored previews, manual ticks 
   if(!existing&&appId)await del('user_school_applications',`${own}&id=eq.${appId}`);
  }
 });
+
+// PROD-162: download through the actual UI and server, beyond one database page.
+test("account download includes all pages, saved courses and only own community actions (PROD-162)", { tag: "@phone" }, async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL").origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  async function session(email: string) {
+    const response = await request.post(`${api}/auth/v1/token?grant_type=password`, {
+      headers: { apikey: key }, data: { email, password: process.env.E2E_TEST_PASSWORD },
+    });
+    expect(response.ok()).toBe(true);
+    const value = await response.json() as { access_token: string; user: { id: string } };
+    return { id: value.user.id, headers: { apikey: key, Authorization: `Bearer ${value.access_token}` } };
+  }
+  const student = await session(STUDENT_EMAIL);
+  const peer = await session("e2e.peer@caat.local.test");
+  const title = marker(`Export-${testInfo.project.name}`);
+  const ids = Array.from({ length: 201 }, () => crypto.randomUUID());
+  const peerTodo = crypto.randomUUID();
+  const courseQuery = `user_id=eq.${student.id}&course_id=eq.${E2E_COURSE.id}`;
+  const courseBefore = await request.get(`${api}/rest/v1/user_course_bookmarks?${courseQuery}`, { headers: student.headers });
+  expect(courseBefore.ok()).toBe(true);
+  const hasCourse = (await courseBefore.json()).length > 0;
+  const addedFollows: Array<{ headers: Record<string,string>; query: string }> = [];
+  try {
+    const todos = await request.post(`${api}/rest/v1/user_todos`, { headers: student.headers,
+      data: ids.map((id, i) => ({ id, user_id: student.id, text: `${title}-${i}` })) });
+    expect(todos.ok()).toBe(true);
+    expect((await request.post(`${api}/rest/v1/user_todos`, { headers: peer.headers,
+      data: { id: peerTodo, user_id: peer.id, text: `${title}-peer-private` } })).ok()).toBe(true);
+    if (!hasCourse) {
+      expect((await request.post(`${api}/rest/v1/user_course_bookmarks`, { headers: student.headers,
+        data: { user_id: student.id, course_id: E2E_COURSE.id } })).ok()).toBe(true);
+    }
+    // Both directions are publicly readable; the export must include only the caller's action.
+    for (const [from, to] of [[student, peer], [peer, student]]) {
+      const query = `follower_id=eq.${from.id}&followee_id=eq.${to.id}`;
+      const existing = await request.get(`${api}/rest/v1/community_follows?${query}`, { headers: from.headers });
+      expect(existing.ok()).toBe(true);
+      if (!(await existing.json()).length) {
+        expect((await request.post(`${api}/rest/v1/community_follows`, { headers: from.headers,
+          data: { follower_id: from.id, followee_id: to.id } })).ok()).toBe(true);
+        addedFollows.push({ headers: from.headers, query });
+      }
+    }
+    await signInToIsolatedStudent(page);
+    await page.goto("/settings");
+    await expect(page.getByText(/Includes document details, but not/)).toBeVisible();
+    const downloadPromise = page.waitForEvent("download");
+    const responsePromise = page.waitForResponse(r => new URL(r.url()).pathname === "/settings/export");
+    await page.getByRole("button", { name: "Export my data", exact: true }).click();
+    const download = await downloadPromise;
+    const response = await responsePromise;
+    expect(response.status()).toBe(200);
+    expect(response.headers()["cache-control"]).toBe("no-store");
+    expect(download.suggestedFilename()).toMatch(/^caat-data-export-.*\.json$/);
+    const { readFile } = await import("node:fs/promises");
+    const payload = JSON.parse(await readFile((await download.path())!, "utf8"));
+    expect(payload.account.id).toBe(student.id);
+    const exported = payload.data.user_todos as Array<{ id: string; user_id: string }>;
+    expect(exported.filter(row => ids.includes(row.id))).toHaveLength(201);
+    expect(exported.every(row => row.user_id === student.id)).toBe(true);
+    expect(exported.some(row => row.id === peerTodo)).toBe(false);
+    expect(payload.data.user_course_bookmarks).toContainEqual(expect.objectContaining({ user_id: student.id, course_id: E2E_COURSE.id }));
+    expect(payload.data.community_follows).toContainEqual(expect.objectContaining({ follower_id: student.id, followee_id: peer.id }));
+    expect(payload.data.community_follows.every((row: { follower_id: string }) => row.follower_id === student.id)).toBe(true);
+    expect(payload.scope.excludes).toContain("uploaded_file_contents");
+    await expect(page.getByRole("button", { name: "Export my data", exact: true })).toBeEnabled();
+    await testInfo.attach("account-download-settings", { body: await page.screenshot(), contentType: "image/png" });
+  } finally {
+    // Delete only IDs created by this run; never remove existing account data.
+    for (let start = 0; start < ids.length; start += 100) {
+      expect((await request.delete(`${api}/rest/v1/user_todos?user_id=eq.${student.id}&id=in.(${ids.slice(start,start+100).join(",")})`, { headers: student.headers })).ok()).toBe(true);
+    }
+    expect((await request.delete(`${api}/rest/v1/user_todos?user_id=eq.${peer.id}&id=eq.${peerTodo}`, { headers: peer.headers })).ok()).toBe(true);
+    if (!hasCourse) expect((await request.delete(`${api}/rest/v1/user_course_bookmarks?${courseQuery}`, { headers: student.headers })).ok()).toBe(true);
+    for (const follow of addedFollows) expect((await request.delete(`${api}/rest/v1/community_follows?${follow.query}`, { headers: follow.headers })).ok()).toBe(true);
+  }
+});
