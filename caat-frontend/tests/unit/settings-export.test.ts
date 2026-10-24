@@ -28,7 +28,7 @@ vi.mock("@/lib/supabase/server", () => ({
       const query: Query = { table, filters: [] };
       state.queries.push(query);
       const builder: Record<string, unknown> = {};
-      for (const method of ["select", "eq", "in"]) {
+      for (const method of ["select", "eq", "in", "order", "range"]) {
         builder[method] = (...args: unknown[]) => {
           if (method !== "select") query.filters.push({ method, args });
           return builder;
@@ -72,6 +72,8 @@ describe("settings data export route", () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
+    expect(payload.data).toHaveProperty("evidence_items");
+    expect(payload.data).toHaveProperty("requirement_evidence_links");
     expect(payload.account).toEqual({ id: "user-1", email: "ada@example.test" });
     expect(state.queries.find((query) => query.table === "profiles")?.filters).toEqual([
       { method: "eq", args: ["id", "user-1"] },
@@ -110,6 +112,8 @@ describe("settings data export route", () => {
     "user_bookmarked_scholarships",
     "user_scholarship_prep_checks",
     "application_evidence_links",
+    "evidence_items",
+    "requirement_evidence_links",
     "user_bookmarked_majors",
     "custom_essay_prompts",
     "essay_drafts",
@@ -136,3 +140,10 @@ describe("settings data export route", () => {
     expect(JSON.stringify(body)).not.toContain("sensitive database details");
   });
 });
+
+ it.each(["evidence_items", "requirement_evidence_links"])("exports every page of %s", async (table) => {
+   state.resolve = q => ({data:q.table===table?(q.filters.some(f=>f.method==="range"&&f.args[0]===200)?[{id:"last"}]:Array.from({length:200},(_,i)=>({id:`item-${i}`}))):[],error:null});
+   const response=await GET();
+   expect(response.status).toBe(200);
+   expect((await response.json()).data[table]).toHaveLength(201);
+ });

@@ -1,3 +1,4 @@
+import { notifyRequirementWorkChanged } from "@/lib/requirement-work-events";
 import { supabase } from "@/lib/supabase/client";
 import { getClientUserId } from "@/lib/current-user";
 
@@ -135,6 +136,7 @@ export async function fetchDocumentUsage(): Promise<Record<string, number>> {
 function oneRow(data: unknown, failure: string): EvidenceLink {
   const rows = (data ?? []) as LinkRowShape[];
   if (rows.length !== 1) throw new Error(failure);
+  notifyRequirementWorkChanged();
   return toLink(rows[0]);
 }
 
@@ -165,6 +167,7 @@ export async function unlinkDocument(linkId: string): Promise<void> {
   const userId = await requireUserId();
   const { data, error } = await supabase.from(LINKS).delete().eq("id", linkId).eq("user_id", userId).select("id");
   if (error || (data ?? []).length !== 1) throw new Error(UNLINK_FAILED);
+  notifyRequirementWorkChanged();
 }
 
 /** Update the tailored_* columns of a link the caller saw at `seen.tailoredAt`.

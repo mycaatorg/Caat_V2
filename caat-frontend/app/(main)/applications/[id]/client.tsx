@@ -460,6 +460,8 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
               <CardContent>
                 {/* PROD-77: attached checklists, then name-matched suggestions */}
                 <HubScholarshipAttachments
+                  key={application.id}
+                  applicationId={application.id}
                   schoolId={schoolId}
                   schoolName={schoolName}
                   saved={savedScholarships}

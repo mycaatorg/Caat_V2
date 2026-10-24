@@ -85,6 +85,8 @@ async function main() {
   run('tests/staging/scholarship-attachment-race.mjs', localOnlyEnv);
   run('tests/staging/evidence-links-rls.mjs', localOnlyEnv);
   run('tests/staging/evidence-items-rls.mjs', localOnlyEnv);
+  run('tests/staging/requirement-evidence-rls.mjs', localOnlyEnv);
+  run('tests/staging/requirement-evidence-race.mjs', localOnlyEnv);
   run('tests/staging/scholarship-source-checks.mjs', localOnlyEnv);
   const githubEnv = githubPublicEnv(local);
   const { appendFile } = await import('node:fs/promises');
