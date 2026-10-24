@@ -59,7 +59,7 @@ export function HubLinkedDocuments({
   unavailable: boolean;
   retrying: boolean;
   onRetry: () => void;
-  onLinksChange: (next: EvidenceLink[]) => void;
+  onLinksChange: React.Dispatch<React.SetStateAction<EvidenceLink[]>>;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -80,7 +80,7 @@ export function HubLinkedDocuments({
     }
   };
 
-  const replace = (next: EvidenceLink) => onLinksChange(links.map((l) => (l.id === next.id ? next : l)));
+  const replace = (next: EvidenceLink) => onLinksChange(current => current.map((l) => (l.id === next.id ? next : l)));
 
   const run = async (id: string, work: () => Promise<void>, fallback: string) => {
     if (busyId) return;
@@ -116,7 +116,7 @@ export function HubLinkedDocuments({
   };
 
   const onLinked = (created: EvidenceLink) => {
-    onLinksChange(links.some((l) => l.id === created.id) ? links : [...links, created]);
+    onLinksChange(current => current.some((l) => l.id === created.id) ? current : [...current, created]);
     setDialogOpen(false);
   };
 
@@ -228,7 +228,7 @@ export function HubLinkedDocuments({
                           async () => {
                             if (action === "unlink") {
                               await unlinkDocument(l.id);
-                              onLinksChange(links.filter((x) => x.id !== l.id));
+                              onLinksChange(current => current.filter((x) => x.id !== l.id));
                             } else {
                               replace(await resetToLibrary(l));
                             }

@@ -82,6 +82,7 @@ async function main() {
   run('tests/staging/course-rls.mjs', localOnlyEnv);
   run('tests/staging/scholarship-bookmark-rls.mjs', localOnlyEnv);
   run('tests/staging/scholarship-attachments-rls.mjs', localOnlyEnv);
+  run('tests/staging/scholarship-attachment-race.mjs', localOnlyEnv);
   run('tests/staging/evidence-links-rls.mjs', localOnlyEnv);
   run('tests/staging/scholarship-source-checks.mjs', localOnlyEnv);
   const githubEnv = githubPublicEnv(local);

@@ -78,7 +78,9 @@ try {
   const tailoredAt = new Date().toISOString();
   const tailored = ok(await owner.client.from(LINKS).update({ tailored_title: 'Supplementary portfolio', tailored_body: 'Submit with the arts form', tailored_at: tailoredAt }).eq('id', link.id).eq('user_id', owner.id).select('tailored_title, tailored_body'));
   assert.deepEqual(tailored, [{ tailored_title: 'Supplementary portfolio', tailored_body: 'Submit with the arts form' }], 'owner tailors the link');
-  assert.equal((await owner.client.from(LINKS).update({ tailored_at: null }).eq('id', link.id).select('id')).error?.code, '23514', 'tailored text always carries its tailored_at');
+  const skewed = ok(await owner.client.from(LINKS).update({ tailored_at: '1900-01-01T00:00:00.000Z' }).eq('id', link.id).select('tailored_at').single());
+  assert.ok(Date.parse(skewed.tailored_at) > Date.parse('2020-01-01'), 'tailoring uses a server revision even when the client clock is wrong');
+  assert.ok(ok(await owner.client.from(LINKS).update({ tailored_at: null }).eq('id', link.id).select('tailored_at').single()).tailored_at, 'server retains a revision while tailored text exists');
   assert.equal((await owner.client.from(LINKS).update({ tailored_title: ' ' }).eq('id', link.id).select('id')).error?.code, '23514', 'a blank tailored title is refused');
   assert.equal((await owner.client.from(LINKS).update({ application_id: appB.id }).eq('id', link.id).select('id')).error?.code, '42501', 'a link cannot be re-pointed to another application');
   assert.equal((await owner.client.from(LINKS).update({ document_id: otherDoc.id }).eq('id', link.id).select('id')).error?.code, '42501', 'a link cannot be re-pointed to another document');
@@ -111,7 +113,7 @@ try {
     WHERE attrelid = 'public.${LINKS}'::regclass AND attnum > 0 AND NOT attisdropped
       AND has_column_privilege('authenticated', 'public.${LINKS}', attname, p)
     GROUP BY p ORDER BY p`]);
-  assert.equal(columns, 'INSERT:application_id,document_id,kind,user_id\nUPDATE:tailored_at,tailored_body,tailored_title', 'clients insert the link and update only its tailored_* columns');
+  assert.equal(columns, 'INSERT:application_id,document_id,kind,user_id\nUPDATE:source_uploaded_at,tailored_at,tailored_body,tailored_title', 'clients insert the link and update only its tailored_* columns');
 
   // A still-linked document cannot be deleted; unlinking never deletes it.
   assert.equal((await owner.client.from(DOCS).delete().eq('id', doc.id).eq('user_id', owner.id)).error?.code, '23503', 'deleting a still-linked document is refused');

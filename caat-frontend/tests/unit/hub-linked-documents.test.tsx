@@ -34,7 +34,7 @@ const doc = (id: string, patch: Partial<LibraryDocument> = {}): LibraryDocument 
   id, fileName: `${id}.pdf`, category: "letters", status: "pending_review", uploadedAt: "2026-10-01T00:00:00.000Z", ...patch,
 });
 const lnk = (id: string, documentId: string, patch: Partial<EvidenceLink> = {}): EvidenceLink => ({
-  id, applicationId: "app-1", documentId, tailoredTitle: null, tailoredBody: null, tailoredAt: null,
+  id, applicationId: "app-1", documentId, tailoredTitle: null, tailoredBody: null, tailoredAt: null, sourceUploadedAt: "2026-10-01T00:00:00.000Z",
   createdAt: "2026-10-20T00:00:00.000Z", document: doc(documentId), ...patch,
 });
 
@@ -95,6 +95,34 @@ describe("HubLinkedDocuments (PROD-78)", () => {
     expect(link("doc-2.pdf", group()).getAttribute("href")).toBe("/documents");
   });
 
+  it.each(["link-first", "unlink-first"])("keeps overlapping link/unlink results accurate (%s)", async (order) => {
+    const adding = deferred<EvidenceLink>();
+    const removing = deferred();
+    io.fetchLibraryDocuments.mockResolvedValue([doc("doc-1"), doc("doc-2")]);
+    io.linkDocument.mockReturnValue(adding.promise);
+    io.unlinkDocument.mockReturnValue(removing.promise);
+    await mountComponent(<Harness initial={[lnk("link-1", "doc-1")]} />);
+    await click(button("Link a document"));
+    await flush();
+    await click(button("Link doc-2.pdf", dialog()!));
+    await click(button("Close", dialog()!));
+    await click(button("Unlink doc-1.pdf"));
+    await click(button("Confirm unlink"));
+    if (order === "link-first") {
+      adding.resolve(lnk("link-2", "doc-2"));
+      await flush();
+      removing.resolve();
+    } else {
+      removing.resolve();
+      await flush();
+      adding.resolve(lnk("link-2", "doc-2"));
+    }
+    await flush();
+    expect(group().querySelectorAll("[data-evidence-link]")).toHaveLength(1);
+    expect(group().querySelector('[data-evidence-link="link-2"]')).not.toBeNull();
+    expect(group().querySelector('[data-evidence-link="link-1"]')).toBeNull();
+  });
+
   it("shows a failed library read in the dialog with Retry, not 'no documents'", async () => {
     io.fetchLibraryDocuments.mockRejectedValueOnce(new Error("down")).mockResolvedValueOnce([doc("doc-9")]);
     await mountComponent(<Harness initial={[]} />);
@@ -134,7 +162,7 @@ describe("HubLinkedDocuments (PROD-78)", () => {
 
   it("flags a newer library file on a tailored link; Keep mine keeps the tailoring", async () => {
     const tailored = lnk("link-1", "doc-1", { tailoredTitle: "Mine", tailoredAt: "2026-10-21T00:00:00.000Z", document: doc("doc-1", { uploadedAt: "2026-10-22T00:00:00.000Z" }) });
-    io.keepTailoring.mockResolvedValue({ ...tailored, tailoredAt: "2026-10-23T00:00:00.000Z" });
+    io.keepTailoring.mockResolvedValue({ ...tailored, tailoredAt: "2026-10-23T00:00:00.000Z", sourceUploadedAt: tailored.document!.uploadedAt });
     await mountComponent(<Harness initial={[tailored]} />);
     expect(group().textContent).toContain("Library version updated since you tailored this.");
     await click(button("Keep mine"));

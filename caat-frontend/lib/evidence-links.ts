@@ -13,7 +13,7 @@ import { getClientUserId } from "@/lib/current-user";
 
 const LINKS = "application_evidence_links";
 const LINK_COLUMNS =
-  "id, application_id, document_id, tailored_title, tailored_body, tailored_at, created_at, documents(id, file_name, category, status, uploaded_at)";
+  "id, application_id, document_id, tailored_title, tailored_body, tailored_at, source_uploaded_at, created_at, documents(id, file_name, category, status, uploaded_at)";
 
 export const TAILORED_TITLE_MAX = 200;
 export const TAILORED_BODY_MAX = 10_000;
@@ -34,6 +34,8 @@ export interface EvidenceLink {
   tailoredBody: string | null;
   /** null: the link follows the library */
   tailoredAt: string | null;
+  /** Exact file version the student saw when tailoring or choosing Keep mine. */
+  sourceUploadedAt?: string | null;
   createdAt: string;
   /** null when the document row could not be read with the link */
   document: LibraryDocument | null;
@@ -47,6 +49,7 @@ type LinkRowShape = {
   tailored_title: string | null;
   tailored_body: string | null;
   tailored_at: string | null;
+  source_uploaded_at?: string | null;
   created_at: string;
   documents: DocumentRowShape | null;
 };
@@ -68,6 +71,7 @@ function toLink(r: LinkRowShape): EvidenceLink {
     tailoredTitle: r.tailored_title ?? null,
     tailoredBody: r.tailored_body ?? null,
     tailoredAt: r.tailored_at ?? null,
+    sourceUploadedAt: r.source_uploaded_at ?? null,
     createdAt: r.created_at,
     document: r.documents ? toDocument(r.documents) : null,
   };
@@ -186,28 +190,28 @@ export function saveTailoring(seen: EvidenceLink, input: { title: string; body: 
   if (body && body.length > TAILORED_BODY_MAX) {
     return Promise.reject(new Error("Keep the note to 10,000 characters."));
   }
-  return writeTailoring(seen, { tailored_title: title, tailored_body: body, tailored_at: new Date().toISOString() });
+  return writeTailoring(seen, { tailored_title: title, tailored_body: body, tailored_at: new Date().toISOString(), source_uploaded_at: seen.document?.uploadedAt ?? null });
 }
 
 /** "Keep mine": keep the tailoring and acknowledge the newer library file. */
 export function keepTailoring(seen: EvidenceLink): Promise<EvidenceLink> {
   if (seen.tailoredAt === null) return Promise.reject(new Error(TAILOR_FAILED));
-  return writeTailoring(seen, { tailored_at: new Date().toISOString() });
+  return writeTailoring(seen, { tailored_at: new Date().toISOString(), source_uploaded_at: seen.document?.uploadedAt ?? null });
 }
 
 /** "Use library version": clear the tailoring on this link. Never writes the document. */
 export function resetToLibrary(seen: EvidenceLink): Promise<EvidenceLink> {
-  return writeTailoring(seen, { tailored_title: null, tailored_body: null, tailored_at: null });
+  return writeTailoring(seen, { tailored_title: null, tailored_body: null, tailored_at: null, source_uploaded_at: null });
 }
 
-/** The library file was (re)uploaded after this application's tailoring.
- *  Uses documents.uploaded_at, not updated_at (a review status change bumps
- *  updated_at without changing the file). */
+/** Compare the observed file version, not timestamps from different clocks.
+ * A replacement uploaded on a slow device still counts as a changed file.
+ * Keep mine acknowledges only the version seen, not an unseen newer upload. */
 export function libraryUpdatedSince(link: EvidenceLink): boolean {
-  if (!link.tailoredAt || !link.document?.uploadedAt) return false;
+  if (!link.tailoredAt || !link.document?.uploadedAt || !link.sourceUploadedAt) return false;
   const uploaded = Date.parse(link.document.uploadedAt);
-  const tailored = Date.parse(link.tailoredAt);
-  return Number.isFinite(uploaded) && Number.isFinite(tailored) && uploaded > tailored;
+  const acknowledged = Date.parse(link.sourceUploadedAt);
+  return Number.isFinite(uploaded) && Number.isFinite(acknowledged) && uploaded !== acknowledged;
 }
 
 export function linkTitle(link: EvidenceLink): string {

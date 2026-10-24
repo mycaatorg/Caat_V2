@@ -65,6 +65,7 @@ const link = (patch: Partial<EvidenceLink> = {}): EvidenceLink => ({
   tailoredTitle: null,
   tailoredBody: null,
   tailoredAt: null,
+  sourceUploadedAt: null,
   createdAt: "2026-10-20T00:00:00.000Z",
   document: { id: "doc-1", fileName: "portfolio.pdf", category: "letters", status: "pending_review", uploadedAt: "2026-10-01T00:00:00.000Z" },
   ...patch,
@@ -172,7 +173,7 @@ describe("writing links (never the document)", () => {
     const saved = await saveTailoring(link(), { title: "  Portfolio for Arts  ", body: "   " });
     expect(saved.tailoredTitle).toBe("Portfolio for Arts");
     const [payload] = calls(last(), "update")[0] as [Record<string, unknown>];
-    expect(Object.keys(payload).sort()).toEqual(["tailored_at", "tailored_body", "tailored_title"]);
+    expect(Object.keys(payload).sort()).toEqual(["source_uploaded_at", "tailored_at", "tailored_body", "tailored_title"]);
     expect(payload).toMatchObject({ tailored_title: "Portfolio for Arts", tailored_body: null });
     expect(typeof payload.tailored_at).toBe("string");
     expect(calls(last(), "eq")).toEqual([["id", "link-1"], ["user_id", "user-1"]]);
@@ -193,13 +194,14 @@ describe("writing links (never the document)", () => {
     expect(state.queries).toHaveLength(0);
   });
 
-  it("Keep mine re-stamps tailored_at only, from the tailoring it saw", async () => {
+  it("Keep mine acknowledges only the file version it saw", async () => {
     const before = "2026-10-21T00:00:00.000Z";
     state.resolver = () => ({ data: [row({ tailored_title: "Mine", tailored_at: "2026-10-23T00:00:00.000Z" })], error: null });
     const kept = await keepTailoring(link({ tailoredTitle: "Mine", tailoredAt: before }));
     expect(kept.tailoredTitle).toBe("Mine");
     const [payload] = calls(last(), "update")[0] as [Record<string, unknown>];
-    expect(Object.keys(payload)).toEqual(["tailored_at"]);
+    expect(payload.source_uploaded_at).toBe("2026-10-01T00:00:00.000Z");
+    expect(Object.keys(payload).sort()).toEqual(["source_uploaded_at", "tailored_at"]);
     expect(calls(last(), "eq")).toEqual([["id", "link-1"], ["user_id", "user-1"], ["tailored_at", before]]);
   });
 
@@ -207,7 +209,7 @@ describe("writing links (never the document)", () => {
     state.resolver = () => ({ data: [row()], error: null });
     const reset = await resetToLibrary(link({ tailoredTitle: "Mine", tailoredAt: "2026-10-21T00:00:00.000Z" }));
     expect(reset.tailoredAt).toBeNull();
-    expect(calls(last(), "update")).toEqual([[{ tailored_title: null, tailored_body: null, tailored_at: null }]]);
+    expect(calls(last(), "update")).toEqual([[{ tailored_title: null, tailored_body: null, tailored_at: null, source_uploaded_at: null }]]);
   });
 
   it("no write path ever touches the documents table", async () => {
@@ -222,13 +224,21 @@ describe("writing links (never the document)", () => {
 });
 
 describe("library updated since tailoring", () => {
-  it("is true only for a tailored link whose document was uploaded after the tailoring", () => {
-    const tailored = link({ tailoredTitle: "Mine", tailoredAt: "2026-10-21T00:00:00.000Z" });
+  it("is true only for a tailored link with a different acknowledged file version", () => {
+    const tailored = link({ tailoredTitle: "Mine", tailoredAt: "2026-10-21T00:00:00.000Z", sourceUploadedAt: "2026-10-01T00:00:00.000Z" });
     expect(libraryUpdatedSince({ ...tailored, document: { ...tailored.document!, uploadedAt: "2026-10-22T00:00:00.000Z" } })).toBe(true);
-    expect(libraryUpdatedSince({ ...tailored, document: { ...tailored.document!, uploadedAt: "2026-10-21T00:00:00.000Z" } })).toBe(false);
+    expect(libraryUpdatedSince({ ...tailored, document: { ...tailored.document!, uploadedAt: "2026-10-01T00:00:00.000Z" } })).toBe(false);
     expect(libraryUpdatedSince(tailored)).toBe(false);
     expect(libraryUpdatedSince(link({ document: { ...link().document!, uploadedAt: "2026-10-30T00:00:00.000Z" } }))).toBe(false);
     expect(libraryUpdatedSince({ ...tailored, document: null })).toBe(false);
+  });
+
+  it("compares the acknowledged file version independently of either device clock", () => {
+    const seen = link({ tailoredTitle: "Mine", tailoredAt: "2026-10-01T00:00:00.000Z" });
+    const uploaded = "2026-10-22T00:00:00.000Z";
+    const acknowledged = { ...seen, sourceUploadedAt: uploaded, document: { ...seen.document!, uploadedAt: uploaded } };
+    expect(libraryUpdatedSince(acknowledged)).toBe(false);
+    expect(libraryUpdatedSince({ ...acknowledged, document: { ...seen.document!, uploadedAt: "2026-09-01T00:00:00.000Z" } })).toBe(true);
   });
 
   it("shows the tailored title, else the library file name", () => {

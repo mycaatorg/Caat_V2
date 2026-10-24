@@ -37,6 +37,7 @@ export type Database = {
           id: string
           kind: string
           tailored_at: string | null
+          source_uploaded_at: string | null
           tailored_body: string | null
           tailored_title: string | null
           user_id: string
@@ -51,6 +52,7 @@ export type Database = {
         // Clients may update only the tailored_* columns (column-level grants).
         Update: {
           tailored_at?: string | null
+          source_uploaded_at?: string | null
           tailored_body?: string | null
           tailored_title?: string | null
         }

@@ -1506,7 +1506,7 @@ const linkWrite = (page: Page, method: "POST" | "PATCH" | "DELETE") =>
   page.waitForResponse((r) => new URL(r.url()).pathname.endsWith(LINK_WRITES) && r.request().method() === method && r.ok(), { timeout: 15_000 });
 const pdfBytes = (note: string) => Buffer.from(`%PDF-1.4\n% ${note}\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n`);
 
-test("a library document links to an application, keeps its tailoring when the file is replaced, and unlinking keeps the document (PROD-78)", async ({ page }) => {
+test("a library document links to an application, keeps its tailoring when the file is replaced, and unlinking keeps the document (PROD-78)", { tag: "@phone" }, async ({ page }) => {
   test.setTimeout(150_000);
   await signInToIsolatedStudent(page);
   const fileName = `${marker("portfolio")}.pdf`;

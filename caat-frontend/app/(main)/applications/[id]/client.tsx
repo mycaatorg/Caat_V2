@@ -152,8 +152,8 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
       setRetryingLinks(false);
     }
   };
-  const setEvidenceLinks = (evidenceLinks: EvidenceLink[]) =>
-    setHub((cur) => (cur ? { ...cur, evidenceLinks } : cur));
+  const setEvidenceLinks: React.Dispatch<React.SetStateAction<EvidenceLink[]>> = (update) =>
+    setHub((cur) => (cur ? { ...cur, evidenceLinks: typeof update === "function" ? update(cur.evidenceLinks) : update } : cur));
   const setSavedScholarships = (savedScholarships: SavedScholarshipForHub[]) =>
     setHub((cur) => (cur ? { ...cur, savedScholarships } : cur));
 
