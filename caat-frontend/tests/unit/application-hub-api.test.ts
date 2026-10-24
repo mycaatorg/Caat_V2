@@ -515,7 +515,7 @@ describe("fetchApplicationHub: linked library documents (PROD-78)", () => {
     use(hubResolver({ application_evidence_links: { data: [linkRow], error: null } }));
     const hub = await fetchApplicationHub("app-1");
     const q = io.client.queries.find((x) => x.table === "application_evidence_links")!;
-    expect(q.calls.filter((c) => c.method === "eq").map((c) => c.args)).toEqual([["user_id", "student-1"], ["application_id", "app-1"]]);
+    expect(q.calls.filter((c) => c.method === "eq").map((c) => c.args)).toEqual([["user_id", "student-1"], ["application_id", "app-1"], ["kind", "document"]]);
     expect(hub.evidenceLinksUnavailable).toBe(false);
     expect(hub.evidenceLinks).toHaveLength(1);
     expect(hub.evidenceLinks[0]).toMatchObject({ id: "link-1", documentId: "d4", tailoredTitle: "Portfolio for Melbourne" });

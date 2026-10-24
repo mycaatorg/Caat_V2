@@ -82,7 +82,7 @@ describe("reading links", () => {
     state.resolver = () => ({ data: [row({ tailored_title: "Portfolio", tailored_at: "2026-10-21T00:00:00.000Z" })], error: null });
     const links = await readEvidenceLinks("user-1", "app-1");
     expect(last().table).toBe(LINKS);
-    expect(calls(last(), "eq")).toEqual([["user_id", "user-1"], ["application_id", "app-1"]]);
+    expect(calls(last(), "eq")).toEqual([["user_id", "user-1"], ["application_id", "app-1"], ["kind", "document"]]);
     expect(links).toEqual([link({ tailoredTitle: "Portfolio", tailoredAt: "2026-10-21T00:00:00.000Z" })]);
   });
 

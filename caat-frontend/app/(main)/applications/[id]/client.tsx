@@ -41,6 +41,7 @@ import { SavedCoursesCard } from "@/components/applications/saved-courses-card";
 import { updateApplicationMajors } from "@/app/(main)/applications/api";
 import { mentionsSchool, type SavedScholarshipForHub } from "@/lib/scholarship-tracking";
 import { HubScholarshipAttachments } from "@/components/applications/hub-scholarship-attachments";
+import { HubEvidenceItems } from "@/components/applications/hub-evidence-items";
 import { HubLinkedDocuments } from "@/components/applications/hub-linked-documents";
 import { fetchEvidenceLinksForApplication, type EvidenceLink } from "@/lib/evidence-links";
 import {
@@ -442,6 +443,8 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
                 </Link>
               </CardContent>
             </Card>
+
+            <HubEvidenceItems key={application.id} applicationId={application.id} schoolName={schoolName} />
 
             {/* scholarships */}
             <Card className="shadow-sm">
