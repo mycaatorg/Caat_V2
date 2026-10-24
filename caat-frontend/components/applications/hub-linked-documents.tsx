@@ -213,7 +213,7 @@ export function HubLinkedDocuments({
                   <div role="group" aria-label={confirming.action === "unlink" ? `Unlink ${title}` : `Use library version for ${title}`} className="mt-2 flex flex-wrap items-center gap-2 text-sm">
                     <span>
                       {confirming.action === "unlink"
-                        ? "Removes it from this application only. The file stays in Documents."
+                        ? "Removes it and its scholarship requirement links from this application. The file stays in Documents."
                         : "Your tailored title and note for this application will be cleared. The document itself doesn't change."}
                     </span>
                     <Button

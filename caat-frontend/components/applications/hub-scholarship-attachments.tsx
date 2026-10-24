@@ -16,6 +16,12 @@ import {
 import { ScholarshipRequirementsCard } from "@/components/applications/scholarship-requirements-card";
 import { AttachScholarshipDialog, attachCopy } from "@/components/applications/attach-scholarship-dialog";
 
+import { RequirementWorkProvider } from "@/components/applications/requirement-supporting-work";
+
+function SupportingWorkScope({ applicationId, schoolId, children }: { applicationId?: string; schoolId: number; children: React.ReactNode }) {
+  return applicationId ? <RequirementWorkProvider applicationId={applicationId} schoolId={schoolId}>{children}</RequirementWorkProvider> : <>{children}</>;
+}
+
 function GroupHeading({ children }: { children: React.ReactNode }) {
   return (
     <div className="font-code text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/70 mb-2.5">
@@ -35,6 +41,7 @@ function GroupHeading({ children }: { children: React.ReactNode }) {
  * this touches the application's status or its 3-step preparation score.
  */
 export function HubScholarshipAttachments({
+  applicationId,
   schoolId,
   schoolName,
   saved,
@@ -46,6 +53,7 @@ export function HubScholarshipAttachments({
   retrying,
   now,
 }: {
+  applicationId?: string;
   schoolId: number;
   schoolName: string;
   saved: SavedScholarshipForHub[];
@@ -158,6 +166,7 @@ export function HubScholarshipAttachments({
             You haven&apos;t attached a scholarship to this application.
           </p>
         ) : (
+          <SupportingWorkScope applicationId={applicationId} schoolId={schoolId}>
           <ul className="space-y-3">
             {attached.map((s) => {
               const pendingKeys = new Set([...pending].filter((p) => p.startsWith(`${s.id}:`)).map((p) => p.slice(s.id.length + 1)));
@@ -177,6 +186,7 @@ export function HubScholarshipAttachments({
               );
             })}
           </ul>
+          </SupportingWorkScope>
         )}
         <Button
           variant="outline"

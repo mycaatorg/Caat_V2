@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { CHECKLIST_NOTICE, type ChecklistItem, type RequirementsChecklist } from "@/lib/requirements-checklist";
 import { SCHOLARSHIP_STATUS_LABELS, type SavedScholarshipForHub } from "@/lib/scholarship-tracking";
 
+import { RequirementSupportingWork, RemovedRequirementWork } from "@/components/applications/requirement-supporting-work";
+
 const MAROON = "text-[#9a1a27] dark:text-[#e06b78]";
 
 /**
@@ -99,11 +101,13 @@ export function ScholarshipRequirementsCard({
                 <p className="text-xs text-muted-foreground">
                   <span data-item-source>{item.source}</span> · {item.sourceSuffix}
                 </p>
+                <RequirementSupportingWork scholarshipId={scholarship.id} item={item} />
               </div>
             </li>
           );
         })}
       </ul>
+      <RemovedRequirementWork scholarshipId={scholarship.id} items={checklist.items} />
       <Link href={`/scholarships/${encodeURIComponent(scholarship.id)}`} className={`mt-3 inline-block text-xs ${MAROON} hover:underline`}>
         See how this compares with your profile
       </Link>
