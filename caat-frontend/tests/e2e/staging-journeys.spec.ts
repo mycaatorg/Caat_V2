@@ -1589,7 +1589,7 @@ test("a library document links to an application, keeps its tailoring when the f
 
     // Unlink: the link goes, the document stays.
     await linked.getByRole("button", { name: `Unlink ${tailoredTitle}`, exact: true }).click();
-    await expect(linked.getByText("Removes it from this application only. The file stays in Documents.")).toBeVisible();
+    await expect(linked.getByText("Removes it and its scholarship requirement links from this application. The file stays in Documents.")).toBeVisible();
     const unlinked = linkWrite(page, "DELETE");
     await linked.getByRole("button", { name: "Confirm unlink", exact: true }).click();
     await unlinked;
