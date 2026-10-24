@@ -1,3 +1,4 @@
+import { notifyRequirementWorkChanged } from '@/lib/requirement-work-events';
 import { evidencePages } from '@/lib/evidence-pagination';
 import { supabase } from '@/lib/supabase/client';
 import { evidenceUserId, type EvidenceItem } from '@/lib/evidence-items';
@@ -16,6 +17,7 @@ function map(row: LinkRow): ItemLink {
 function one(data: unknown, message = CHANGED): ItemLink {
   const rows = data as LinkRow[] | null;
   if (rows?.length !== 1) throw new Error(message);
+  notifyRequirementWorkChanged();
   return map(rows[0]);
 }
 export async function fetchItemLinks(applicationId: string): Promise<ItemLink[]> {
@@ -38,6 +40,7 @@ export async function unlinkItem(seen: ItemLink) {
   const { data, error } = await supabase.from(TABLE).delete().eq('user_id', id).eq('id', seen.id).eq('revision', seen.revision).select('id');
   if (error) throw new Error('Could not unlink this item. Try again.');
   if (data?.length !== 1) throw new Error(CHANGED);
+  notifyRequirementWorkChanged();
 }
 async function write(seen: ItemLink, patch: { tailored_title?: string | null; tailored_body?: string | null; source_revision?: string | null }): Promise<ItemLink> {
   const id = await evidenceUserId();

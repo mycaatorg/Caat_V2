@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
+import { notifyRequirementWorkChanged } from "@/lib/requirement-work-events";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { requirementsChecklist, type ChecklistItem } from "@/lib/requirements-checklist";
@@ -90,6 +91,7 @@ export function HubScholarshipAttachments({
       onSavedChange(
         saved.map((row) => (row.id === s.id ? { ...row, schoolId: to, attachedSchoolName: to === null ? null : schoolName } : row)),
       );
+      notifyRequirementWorkChanged();
       if (to !== null) setDialogOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : to === null ? "Couldn't detach this scholarship. Try again." : "Couldn't attach. Try again.");

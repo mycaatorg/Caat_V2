@@ -49,3 +49,21 @@ it('retains changed and removed requirements for review; unlink errors do not hi
  expect(hasText('Could not remove link')).toBe(true);
  expect(document.querySelector('[data-requirement-link="r1"]')).not.toBeNull();
 });
+it('keeps the successful-save dialog open until refresh finishes so focus can return to an enabled opener',async()=>{
+ await mountComponent(<Screen/>);
+ const opener=button('Link supporting work: Essay required');opener.focus();await click(opener);
+ await click(document.querySelector('input[type="radio"]')!);
+ let resolve!: (value:unknown)=>void;
+ io.load.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));io.add.mockResolvedValue(linked);
+ await click(button('Link selected work'));
+ expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+ const {act}=await import('react');await act(async()=>{resolve({links:[linked],sources:[source]});});
+ expect(document.querySelector('[role="dialog"]')).toBeNull();expect(document.activeElement).toBe(opener);
+});
+it('refreshes known same-page source changes and cascaded removals immediately',async()=>{
+ io.load.mockResolvedValue({links:[linked],sources:[source]});await mountComponent(<Screen/>);
+ expect(document.querySelector('[data-requirement-link="r1"]')).not.toBeNull();
+ io.load.mockResolvedValue({links:[],sources:[]});
+ const {act}=await import('react');await act(async()=>{window.dispatchEvent(new Event('caat:requirement-work-changed'));});
+ expect(document.querySelector('[data-requirement-link="r1"]')).toBeNull();
+});

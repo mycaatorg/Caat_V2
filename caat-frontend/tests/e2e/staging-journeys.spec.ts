@@ -1760,6 +1760,8 @@ test('requirement supporting work persists with tailored previews, manual ticks 
  const del=async(table:string,query:string)=>{const r=await request.delete(`${api}/rest/v1/${table}?${query}`,{headers});expect(r.ok()).toBe(true);};
  const saved=(await read('user_bookmarked_scholarships',`${own}&scholarship_id=eq.${REQ_SCHOLARSHIP.id}`))[0];
  const ticks=await read('user_scholarship_prep_checks',`${own}&scholarship_id=eq.${REQ_SCHOLARSHIP.id}`);
+ const secondSaved=(await read('user_bookmarked_scholarships',`${own}&scholarship_id=eq.${SCHOLARSHIP_ID}`))[0];
+ const secondTicks=await read('user_scholarship_prep_checks',`${own}&scholarship_id=eq.${SCHOLARSHIP_ID}`);
  const existing=(await read('user_school_applications',`${own}&school_id=eq.900001`))[0];
  let appId=existing?.id as string|undefined,itemId:string|undefined,documentId:string|undefined,draftId:string|undefined;
  const evidenceIds:string[]=[];
@@ -1767,6 +1769,7 @@ test('requirement supporting work persists with tailored previews, manual ticks 
  try {
   if(!appId) appId=(await create('user_school_applications',{user_id:session.user.id,school_id:900001,status:'researching'})).id;
   const bookmarked=await request.post(`${api}/rest/v1/user_bookmarked_scholarships?on_conflict=user_id,scholarship_id`,{headers:{...headers,Prefer:'resolution=merge-duplicates,return=representation'},data:{user_id:session.user.id,scholarship_id:REQ_SCHOLARSHIP.id,school_id:900001,status:'interested'}});expect(bookmarked.ok()).toBe(true);
+  expect((await request.post(`${api}/rest/v1/user_bookmarked_scholarships?on_conflict=user_id,scholarship_id`,{headers:{...headers,Prefer:'resolution=merge-duplicates,return=representation'},data:{user_id:session.user.id,scholarship_id:SCHOLARSHIP_ID,school_id:900001,status:'interested'}})).ok()).toBe(true);
   await del('user_scholarship_prep_checks',`${own}&scholarship_id=eq.${REQ_SCHOLARSHIP.id}`);
   itemId=(await create('evidence_items',{user_id:session.user.id,kind:'award',title:'Library version',description:'Original source'})).id;
   const evidence=await create('application_evidence_links',{user_id:session.user.id,application_id:appId,kind:'item',evidence_item_id:itemId});evidenceIds.push(evidence.id);
@@ -1785,7 +1788,7 @@ test('requirement supporting work persists with tailored previews, manual ticks 
   for(const name of [title,file,draft]){
    await opener.click();await dialog.getByRole('radio',{name:new RegExp(name)}).check();
    if(name===title) await expect(dialog.getByText('Application-specific award statement',{exact:true})).toBeVisible();
-   await dialog.getByRole('button',{name:'Link selected work',exact:true}).click();await expect(dialog).toHaveCount(0);
+   await dialog.getByRole('button',{name:'Link selected work',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(opener).toBeFocused();
    await expect(essay.getByText(name,{exact:true})).toBeVisible();
   }
   await page.reload();await expect(essay.locator('[data-requirement-link]')).toHaveCount(3);
@@ -1794,12 +1797,29 @@ test('requirement supporting work persists with tailored previews, manual ticks 
   const row=essay.locator('[data-requirement-link]').filter({hasText:title});await row.locator('summary').click();
   await expect(row.getByText('Application-specific award statement',{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);
+  const itemHub=page.getByRole('region',{name:'Application activities, awards and experience',exact:true});
+  await itemHub.getByRole('button',{name:`Tailor ${title}`,exact:true}).click();
+  const tailoring=page.getByRole('dialog',{name:/Tailor for/});
+  await tailoring.getByRole('textbox',{name:'Application description',exact:true}).fill('Updated application statement');
+  await tailoring.getByRole('button',{name:'Save application version',exact:true}).click();await expect(tailoring).toHaveCount(0);
+  await expect(row.getByText('Updated application statement',{exact:true})).toBeVisible();
+  await expect(row.getByText('Application-specific award statement',{exact:true})).toHaveCount(0);
   await testInfo.attach('requirement-supporting-work',{body:await card.screenshot(),contentType:'image/png'});
   await row.getByRole('button',{name:`Remove supporting link: ${title}`,exact:true}).click();
   await expect(essay.locator('[data-requirement-link]')).toHaveCount(2);await expect(essay.getByRole('checkbox')).toBeChecked();
   expect((await read('evidence_items',`${own}&id=eq.${itemId}`))[0].description).toBe('Original source');
+  const documentHub=page.getByRole('region',{name:'Linked from your documents',exact:true});
+  await documentHub.getByRole('button',{name:`Unlink ${file}`,exact:true}).click();
+  await documentHub.getByRole('button',{name:'Confirm unlink',exact:true}).click();
+  await expect(essay.locator('[data-requirement-link]')).toHaveCount(1);
   await card.getByRole('button',{name:`Detach ${REQ_SCHOLARSHIP.title}`,exact:true}).click();await expect(card).toHaveCount(0);
   expect(await read('requirement_evidence_links',`${own}&application_id=eq.${appId}&scholarship_id=eq.${REQ_SCHOLARSHIP.id}`)).toEqual([]);
+  // The second attached scholarship keeps the provider mounted. Reattaching
+  // must not resurrect the old cached draft association.
+  await page.getByRole('button',{name:'Attach a saved scholarship',exact:true}).click();
+  const attaching=page.getByRole('dialog',{name:'Attach a saved scholarship',exact:true});
+  await attaching.getByRole('button',{name:`Attach ${REQ_SCHOLARSHIP.title}`,exact:true}).click();await expect(attaching).toHaveCount(0);
+  await expect(opener).toBeEnabled();await expect(essay.locator('[data-requirement-link]')).toHaveCount(0);
   expect((await read('essay_drafts',`${own}&id=eq.${draftId}`))).toHaveLength(1);
   expect((await read('user_scholarship_prep_checks',`${own}&scholarship_id=eq.${REQ_SCHOLARSHIP.id}`))).toHaveLength(1);
  } finally {
@@ -1809,6 +1829,8 @@ test('requirement supporting work persists with tailored previews, manual ticks 
   if(draftId)await del('essay_drafts',`${own}&id=eq.${draftId}`);
   await del('user_bookmarked_scholarships',`${own}&scholarship_id=eq.${REQ_SCHOLARSHIP.id}`);
   if(saved){await create('user_bookmarked_scholarships',saved);for(const tick of ticks)await create('user_scholarship_prep_checks',tick);}
+  await del('user_bookmarked_scholarships',`${own}&scholarship_id=eq.${SCHOLARSHIP_ID}`);
+  if(secondSaved){await create('user_bookmarked_scholarships',secondSaved);for(const tick of secondTicks)await create('user_scholarship_prep_checks',tick);}
   if(!existing&&appId)await del('user_school_applications',`${own}&id=eq.${appId}`);
  }
 });

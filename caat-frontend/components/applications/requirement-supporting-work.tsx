@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { REQUIREMENT_WORK_CHANGED } from '@/lib/requirement-work-events';
 import { LibraryDialog } from '@/components/evidence/library-dialog';
 import { fetchRequirementWork, linkRequirementWork, unlinkRequirementWork, requirementReview, sourceForLink, type RequirementWork, type RequirementWorkLink, type WorkSource } from '@/lib/requirement-evidence';
 
@@ -27,15 +28,19 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
   const [selected, setSelected] = useState('');
   const [query, setQuery] = useState('');
   const generation = useRef(0);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const supportRegion = useRef<HTMLDivElement | null>(null);
   const writing = useRef(false);
   const load = useCallback(async () => {
     const request = ++generation.current;
     setLoading(true);
     try {
       const next = await fetchRequirementWork(applicationId);
-      if (request === generation.current) { setWork(next); setError(null); }
+      if (request === generation.current) { setWork(next); setError(null); return true; }
+      return false;
     } catch {
       if (request === generation.current) { setWork(null); setError(LOAD_ERROR); }
+      return false;
     } finally {
       if (request === generation.current) setLoading(false);
     }
@@ -44,16 +49,28 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
   useEffect(() => {
     void load();
     const refresh = () => { if (!writing.current) void load(); };
+    const knownChange = () => { void load(); };
     window.addEventListener('focus', refresh);
-    return () => { cancelPending(); window.removeEventListener('focus', refresh); };
+    window.addEventListener(REQUIREMENT_WORK_CHANGED, knownChange);
+    return () => { cancelPending(); window.removeEventListener('focus', refresh); window.removeEventListener(REQUIREMENT_WORK_CHANGED, knownChange); };
   }, [load, cancelPending]);
+  // Dialog unmount effects can run before the opener's disabled attribute is
+  // removed. Restore after the commit, with a stable fallback during load errors.
+  useEffect(() => {
+    if (target || !returnFocus.current) return;
+    const opener = returnFocus.current;
+    returnFocus.current = null;
+    if (opener.isConnected) opener.focus();
+    if (document.activeElement !== opener) supportRegion.current?.focus();
+  }, [target]);
   const open = (next: Target) => {
+    returnFocus.current = document.activeElement as HTMLElement;
     setTarget(next); setSelected(''); setQuery(''); setError(null); void load();
   };
-  const run = async (action: () => Promise<void>) => {
+  const run = async (action: () => Promise<void>, onSuccess?: () => void) => {
     if (writing.current) return;
     writing.current = true; setBusy(true); setError(null);
-    try { await action(); await load(); }
+    try { await action(); if (await load()) onSuccess?.(); }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not save this link. Try again.'); }
     finally { writing.current = false; setBusy(false); }
   };
@@ -64,8 +81,9 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
   const disabled = loading || busy || !work;
 
   return <WorkContext.Provider value={{ work, disabled, open, remove }}>
-    <div className="mb-3 space-y-2">
+    <div ref={supportRegion} tabIndex={-1} aria-label="Supporting work" className="mb-3 space-y-2">
       <p className="text-xs text-muted-foreground">Connect supporting work to each requirement. Links follow your current work; you decide when to tick preparation.</p>
+      <p className="text-xs text-muted-foreground">Moving or detaching a scholarship clears its requirement links. Your saved work and preparation ticks stay.</p>
       <Button size="sm" variant="ghost" disabled={loading || busy} onClick={() => void load()}>Refresh supporting work</Button>
       {loading && <p role="status" className="text-xs text-muted-foreground">Loading supporting work…</p>}
       {error && !target && <p role="alert" className="text-sm text-destructive">{error}</p>}
@@ -94,8 +112,7 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
           if (!selectedSource) return;
           void run(async () => {
             await linkRequirementWork({ applicationId, schoolId, scholarshipId: target.scholarshipId, itemKey: target.item.key, label: target.item.label, source: { kind: selectedSource.kind, id: selectedSource.id } });
-            setTarget(null); setSelected('');
-          });
+          }, () => { setTarget(null); setSelected(''); });
         }}>{busy ? 'Saving…' : 'Link selected work'}</Button>
         <Button variant="ghost" disabled={busy} onClick={() => { setTarget(null); setError(null); }}>Cancel</Button>
       </div>
