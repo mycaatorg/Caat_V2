@@ -48,23 +48,23 @@ export function DocumentUsageButton({ documentId, fileName, usage }: {
   documentId: string; fileName: string; usage: UsageState;
 }) {
   const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
   const entries = usage.data?.[documentId] ?? [];
   const known = usage.data !== null;
   const count = entries.length;
   const countLabel = `Used in ${count} application${count === 1 ? "" : "s"}`;
   const label = usage.error ? "Application links unavailable" : !known ? "Checking applications…" : count ? countLabel : "Not linked to an application";
   return <>
-    <button type="button" data-used-in={known && count > 0 ? "" : undefined}
+    <button ref={opener} type="button" data-used-in={known && count > 0 ? "" : undefined}
       aria-label={`View application links for ${fileName}`} aria-haspopup="dialog"
       onClick={() => setOpen(true)}
       className="mt-0.5 block max-w-full text-left text-xs text-muted-foreground underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-ring">
       {label}
     </button>
-    {open && <LibraryDialog title="Applications using this document" description={fileName} busy={false} onClose={() => setOpen(false)}>
+    {open && <LibraryDialog title="Applications using this document" description={fileName} busy={false} returnFocusRef={opener} onClose={() => setOpen(false)}>
       {usage.loading && <p role="status" className="mb-3 text-sm text-muted-foreground">{known ? "Refreshing application links…" : "Checking application links…"}</p>}
       {usage.error && <div role="alert" className="mb-4 text-sm">
         <p>Could not refresh application links.{known ? " Showing the last loaded links." : " Your links are unavailable, not empty."}</p>
-        <Button variant="outline" size="sm" className="mt-2" onClick={() => void usage.refresh()}>Retry application links</Button>
       </div>}
       {known && count > 0 && <ul className="space-y-3">
         {entries.map(entry => <li key={entry.applicationId} className="rounded-lg border p-3">
@@ -74,7 +74,10 @@ export function DocumentUsageButton({ documentId, fileName, usage }: {
       </ul>}
       {known && count === 0 && !usage.error && !usage.loading && <p className="text-sm text-muted-foreground">Not linked to an application. Link this document from an application&apos;s Documents section.</p>}
       {known && count === 0 && (usage.error || usage.loading) && <p className="text-sm text-muted-foreground">No links in the last loaded results.</p>}
-      {!usage.error && <Button variant="outline" size="sm" className="mt-4" disabled={usage.loading} onClick={() => void usage.refresh()}>Refresh application links</Button>}
+      <Button variant="outline" size="sm" className="mt-4" aria-disabled={usage.loading}
+        onClick={() => { if (!usage.loading) void usage.refresh(); }}>
+        {usage.error ? "Retry application links" : "Refresh application links"}
+      </Button>
     </LibraryDialog>}
   </>;
 }

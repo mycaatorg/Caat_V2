@@ -1972,12 +1972,15 @@ test("document usage opens named applications, preserves tailoring and refreshes
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(dialog.getByRole("link")).toHaveCount(1);
     await page.route(usageRoute, route => route.fulfill({ status: 503, contentType: "application/json", body: '{"message":"simulated usage outage"}' }));
-    await dialog.getByRole("button", { name: "Refresh application links", exact: true }).click();
+    const refreshAction = dialog.getByRole("button", { name: "Refresh application links", exact: true });
+    await refreshAction.focus(); await refreshAction.press("Enter");
     await expect(dialog.getByRole("alert")).toContainText("Showing the last loaded links");
+    await expect(dialog.getByRole("button", { name: "Retry application links", exact: true })).toBeFocused();
     await expect(dialog.getByRole("link")).toHaveCount(1);
     await page.unroute(usageRoute);
-    await dialog.getByRole("button", { name: "Retry application links", exact: true }).click();
+    await dialog.getByRole("button", { name: "Retry application links", exact: true }).press("Enter");
     await expect(dialog.getByRole("alert")).toHaveCount(0); await expect(dialog.getByRole("link")).toHaveCount(1);
+    await expect(refreshAction).toBeFocused();
     await page.keyboard.press("Escape"); await expect(opener).toBeFocused();
     await expect(opener).toHaveText("Used in 1 application");
     expect((await read("documents", `${own}&id=eq.${documentId}`))).toHaveLength(1);

@@ -345,3 +345,27 @@ describe("document application navigation (PROD-164)", () => {
     expect(document.querySelector('[role="dialog"] a')).toBeNull();
   });
 });
+
+it("returns focus to the actual document button after pointer opening without browser focus", async () => {
+  io.fetchDocumentUsage.mockResolvedValue({"doc-1":[usageEntry()]});
+  await mount();
+  const opener=button("View application links for transcript.pdf");
+  expect(document.activeElement).not.toBe(opener);
+  await click(opener);await click(button("Close dialog"));
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
+  expect(document.activeElement).toBe(opener);
+});
+
+it("keeps the same focused action through failed refresh and pending retry", async () => {
+  const retry=deferred<Record<string,ReturnType<typeof usageEntry>[]>>();
+  io.fetchDocumentUsage.mockResolvedValueOnce({"doc-1":[usageEntry()]}).mockRejectedValueOnce(new Error("offline")).mockReturnValueOnce(retry.promise);
+  await mount();await click(button("View application links for transcript.pdf"));
+  const action=button("Refresh application links");action.focus();await click(action);await flush();
+  expect(button("Retry application links")).toBe(action);expect(document.activeElement).toBe(action);
+  await click(action);
+  expect(action.isConnected).toBe(true);expect(action.disabled).toBe(false);expect(action.getAttribute("aria-disabled")).toBe("true");
+  expect(document.activeElement).toBe(action);
+  await click(action);expect(io.fetchDocumentUsage).toHaveBeenCalledTimes(3);
+  retry.resolve({});await flush();
+  expect(button("Refresh application links")).toBe(action);expect(document.activeElement).toBe(action);
+});
