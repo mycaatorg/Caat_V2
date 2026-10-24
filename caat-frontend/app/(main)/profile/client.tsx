@@ -12,6 +12,7 @@ import { PersonalInfoCard } from "@/components/profile/PersonalInfoCard";
 import { AcademicProfileCard } from "@/components/profile/AcademicProfileCard";
 import { StandardisedTestingCard } from "@/components/profile/StandardisedTestingCard";
 import { InterestsGoalsCard } from "@/components/profile/InterestsGoalsCard";
+import { EvidenceLibraryCard } from "@/components/profile/EvidenceLibraryCard";
 import { ExtracurricularsCard } from "@/components/profile/ExtracurricularsCard";
 import { RecommendersCard } from "@/components/profile/RecommendersCard";
 import type { ProfileRow, StandardisedTestScore } from "@/types/profile";
@@ -387,6 +388,7 @@ export default function ProfileClient({
 
         {/* ── Extracurriculars (full width) ──────────────────────────────────── */}
         <ExtracurricularsCard />
+        <EvidenceLibraryCard />
 
         {/* ── Recommenders (full width) ──────────────────────────────────────── */}
         <RecommendersCard />
