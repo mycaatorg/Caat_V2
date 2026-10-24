@@ -21,18 +21,18 @@ async function childRows<T>(ids: string[], fetchPage: (ids: string[], from: numb
 // Account records and text, not uploaded file binaries or authentication data.
 // Every query is owner-scoped directly or through already-owned parent IDs.
 export async function GET() {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401, headers: NO_STORE });
-  }
-
-  const uid = user.id;
-
   try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401, headers: NO_STORE });
+    }
+
+    const uid = user.id;
+
     const data: Record<string, unknown> = {};
     data.profile = await evidencePages((from, to) => supabase.from("profiles").select("*").eq("id", uid).order("id").range(from, to), EXPORT_ERROR);
 

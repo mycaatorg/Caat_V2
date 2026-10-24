@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   queries: [] as Query[],
   resolve: null as unknown as (query: Query) => QueryResult,
   getUser: vi.fn(),
+  clientError: null as Error | null,
 }));
 
 vi.mock("next/server", () => ({
@@ -22,7 +23,9 @@ vi.mock("next/server", () => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
-  createServerClient: async () => ({
+  createServerClient: async () => {
+    if (state.clientError) throw state.clientError;
+    return ({
     auth: { getUser: state.getUser },
     from: (table: string) => {
       const query: Query = { table, filters: [] };
@@ -39,7 +42,8 @@ vi.mock("@/lib/supabase/server", () => ({
         Promise.resolve(state.resolve(query)).then(resolve, reject);
       return builder;
     },
-  }),
+  });
+  },
 }));
 
 import { GET } from "@/app/(main)/settings/export/route";
@@ -47,6 +51,7 @@ import { GET } from "@/app/(main)/settings/export/route";
 beforeEach(() => {
   state.user = { id: "user-1", email: "ada@example.test" };
   state.queries = [];
+  state.clientError = null;
   state.resolve = () => ({ data: [], error: null });
   state.getUser.mockReset().mockImplementation(async () => ({ data: { user: state.user }, error: null }));
 });
@@ -243,4 +248,14 @@ it.each(["resume_sections", "standardised_test_subjects"])("rejects the whole ex
   const response = await GET();
   expect(response.status).toBe(500);
   expect(await response.json()).toEqual({error:"Could not export your data. Please try again."});
+});
+
+it.each(["client", "auth"])("returns a generic noncached error when %s setup throws", async source => {
+  if (source === "client") state.clientError = new Error("sensitive connection details");
+  else state.getUser.mockRejectedValueOnce(new Error("sensitive auth details"));
+  const response = await GET();
+  expect(response.status).toBe(500);
+  expect(response.headers.get("Cache-Control")).toBe("no-store");
+  expect(await response.json()).toEqual({error:"Could not export your data. Please try again."});
+  expect(state.queries).toHaveLength(0);
 });
