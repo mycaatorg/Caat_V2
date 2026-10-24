@@ -91,6 +91,7 @@ export async function readEvidenceLinks(userId: string, applicationId: string): 
     .select(LINK_COLUMNS)
     .eq("user_id", userId)
     .eq("application_id", applicationId)
+    .eq("kind", "document")
     .order("created_at", { ascending: true });
   if (error) throw new Error("Could not load your linked documents");
   return ((data ?? []) as unknown as LinkRowShape[]).map(toLink);

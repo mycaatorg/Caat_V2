@@ -1620,3 +1620,126 @@ test("a library document links to an application, keeps its tailoring when the f
   await expect(page.getByRole("heading", { name: "Document Vault" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(fileName, { exact: true })).toHaveCount(0);
 });
+
+test('library activities, awards and experience import once and tailor independently across two applications (PROD-153)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  test.setTimeout(180_000);
+  page.setDefaultTimeout(15_000);
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, 'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const auth = await request.post(`${api}/auth/v1/token?grant_type=password`, { headers: { apikey: key }, data: { email: STUDENT_EMAIL, password: process.env.E2E_TEST_PASSWORD } });
+  expect(auth.ok()).toBe(true);
+  const session = await auth.json() as { access_token: string; user: { id: string } };
+  const headers = { apikey: key, Authorization: `Bearer ${session.access_token}`, Prefer: 'return=representation' };
+  const own = `user_id=eq.${session.user.id}`;
+  const read = async (table: string, query: string) => { const r = await request.get(`${api}/rest/v1/${table}?${query}`, { headers }); expect(r.ok()).toBe(true); return r.json(); };
+  const create = async (table: string, data: unknown) => { const r = await request.post(`${api}/rest/v1/${table}`, { headers, data }); expect(r.ok()).toBe(true); return (await r.json())[0]; };
+  const profile = (await read('profiles', `id=eq.${session.user.id}&select=activities,default_resume_id`))[0];
+  const activity = marker('E2E library activity'), experience = marker('E2E library experience'), award = marker('E2E library award');
+  const items: string[] = [], createdApps: string[] = [], apps: string[] = [];
+  let resumeId: string | null = null;
+  const library = page.getByRole('region', { name: 'Activities, awards and experience library', exact: true });
+  const hub = page.getByRole('region', { name: 'Application activities, awards and experience', exact: true });
+  const itemWrite = () => page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/rest/v1/evidence_items') && r.request().method() === 'POST' && r.ok());
+  try {
+    expect((await request.patch(`${api}/rest/v1/profiles?id=eq.${session.user.id}`, { headers, data: { activities: [...(profile.activities ?? []), activity] } })).ok()).toBe(true);
+    resumeId = (await create('resumes', { user_id: session.user.id, title: marker('Library import resume') })).id;
+    expect((await request.patch(`${api}/rest/v1/profiles?id=eq.${session.user.id}`, { headers, data: { default_resume_id: resumeId } })).ok()).toBe(true);
+    const resumeData = { entries: [{ id: 'library-experience', title: experience, company: 'Local club', startDate: 'Summer 2024', endDate: '', current: true, description: '<p>Helped <strong>new members</strong>.</p>' }] };
+    const section = await create('resume_sections', { resume_id: resumeId, section_key: 'experience', label: 'Experience', mode: 'guided', sort_order: 0, content_html: '', structured_data: resumeData });
+    for (const schoolId of [900001, 900153]) {
+      const existing = await read('user_school_applications', `${own}&school_id=eq.${schoolId}&select=id`);
+      const app = existing[0] ?? await create('user_school_applications', { user_id: session.user.id, school_id: schoolId, status: 'researching' });
+      apps.push(app.id); if (!existing.length) createdApps.push(app.id);
+    }
+    await signInToIsolatedStudent(page);
+    await page.goto('/profile#evidence-library');
+    await expect(library.getByRole('button', {name:'Import existing work',exact:true})).toBeEnabled();
+    await expect(page.getByRole('link', {name:`Edit "${marker('Library import resume')}"`,exact:true})).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);
+    await library.getByRole('button', { name: 'Import existing work', exact: true }).focus();
+    await library.getByRole('button', { name: 'Import existing work', exact: true }).press('Enter');
+    const importing = page.getByRole('dialog', { name: 'Import existing work', exact: true });
+    for (const name of [activity, experience]) {
+      const writing = itemWrite();
+      await importing.getByRole('button', { name: `Import ${name}`, exact: true }).click();
+      items.push((await (await writing).json())[0].id);
+      await expect(importing.getByRole('button', { name: `Import ${name}`, exact: true })).toBeDisabled();
+    }
+    await page.keyboard.press('Escape');
+    await expect(importing).toHaveCount(0);
+    await expect(library.getByRole('button', { name: 'Import existing work', exact: true })).toBeFocused();
+    await expect(library.locator('[data-library-item]').filter({ has: page.getByRole('heading', { name: experience, exact: true }) }).getByText('Summer 2024 – Present', { exact: false })).toBeVisible();
+    expect((await read('resume_sections', `id=eq.${section.id}&select=structured_data`))[0].structured_data).toEqual(resumeData);
+    await library.getByRole('button', { name: 'Add library item', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: 'Add library item', exact: true });
+    await editor.getByRole('combobox', { name: 'Type', exact: true }).selectOption('award');
+    await editor.getByLabel('Title', { exact: true }).fill(award);
+    await editor.getByLabel('Description', { exact: true }).fill('Original achievement');
+    const writing = itemWrite(); await editor.getByRole('button', { name: 'Save item', exact: true }).click();
+    items.push((await (await writing).json())[0].id);
+    await expect(editor).toHaveCount(0);
+    await page.reload();
+    await expect(library.getByRole('heading', { name: award, exact: true })).toBeVisible();
+    await library.screenshot({ path: `/tmp/caat-library-${testInfo.project.name}.png` });
+    for (const appId of apps) {
+      await page.goto(`/applications/${appId}`);
+      await hub.getByRole('button', { name: 'Add from your library', exact: true }).click();
+      const picker = page.getByRole('dialog', { name: 'Add from your library', exact: true });
+      await picker.getByRole('button', { name: `Link ${award}`, exact: true }).click();
+      await expect(picker).toHaveCount(0);
+      await expect(hub.getByText('Original achievement', { exact: true })).toBeVisible();
+    }
+    await page.goto(`/applications/${apps[0]}`);
+    await hub.getByRole('button', { name: `Tailor ${award}`, exact: true }).click();
+    const tailor = page.getByRole('dialog', { name: /^Tailor for / });
+    await tailor.getByLabel('Application title', { exact: true }).fill('My tailored achievement');
+    await tailor.getByRole('textbox', { name: 'Application description', exact: true }).fill('Independent application wording');
+    await tailor.getByRole('button', { name: 'Save application version', exact: true }).click();
+    await expect(tailor).toHaveCount(0);
+    await page.goto('/profile#evidence-library');
+    const awardRow = library.locator('[data-library-item]').filter({ has: page.getByRole('heading', { name: award, exact: true }) });
+    await expect(awardRow.getByText('Used in 2 applications', { exact: true })).toBeVisible();
+    await expect(awardRow.getByRole('button', { name: `Delete ${award}`, exact: true })).toBeDisabled();
+    await awardRow.getByRole('button', { name: `Edit ${award}`, exact: true }).click();
+    const edit = page.getByRole('dialog', { name: 'Edit library item', exact: true });
+    await edit.getByRole('textbox', { name: 'Description', exact: true }).fill('Updated achievement');
+    await edit.getByRole('button', { name: 'Save item', exact: true }).click();
+    await expect(edit).toHaveCount(0);
+    await page.goto(`/applications/${apps[0]}`);
+    await expect(hub.getByText('Independent application wording', { exact: true })).toBeVisible();
+    const changed = hub.getByText('Library version updated since you tailored this. Your text has been kept.', { exact: true });
+    await expect(changed).toBeVisible();
+    await hub.screenshot({ path: `/tmp/caat-library-hub-${testInfo.project.name}.png` });
+    await hub.getByRole('button', { name: 'Keep mine', exact: true }).click();
+    await expect(changed).toHaveCount(0);
+    await page.reload();
+    await expect(hub.getByText('Independent application wording', { exact: true })).toBeVisible();
+    await expect(changed).toHaveCount(0);
+    await page.goto(`/applications/${apps[1]}`);
+    await expect(hub.getByText('Updated achievement', { exact: true })).toBeVisible();
+    await expect(hub.getByText('Independent application wording', { exact: true })).toHaveCount(0);
+    await page.goto(`/applications/${apps[0]}`);
+    await hub.getByRole('button', { name: 'Use library version', exact: true }).click();
+    await hub.getByRole('button', { name: 'Confirm use library item', exact: true }).click();
+    await expect(hub.getByText('Updated achievement', { exact: true })).toBeVisible();
+    for (const appId of apps) {
+      await page.goto(`/applications/${appId}`);
+      await hub.getByRole('button', { name: `Unlink ${award}`, exact: true }).click();
+      await hub.getByRole('button', { name: 'Confirm unlink item', exact: true }).click();
+      await expect(hub.getByRole('heading', { name: award, exact: true })).toHaveCount(0);
+    }
+    await page.goto('/profile#evidence-library');
+    await expect(awardRow.getByRole('heading', { name: award, exact: true })).toBeVisible();
+    await awardRow.getByRole('button', { name: `Delete ${award}`, exact: true }).click();
+    await awardRow.getByRole('button', { name: 'Confirm delete item', exact: true }).click();
+    await expect(awardRow).toHaveCount(0);
+  } finally {
+    if (items.length) {
+      await request.delete(`${api}/rest/v1/application_evidence_links?${own}&evidence_item_id=in.(${items.join(',')})`, { headers });
+      await request.delete(`${api}/rest/v1/evidence_items?${own}&id=in.(${items.join(',')})`, { headers });
+    }
+    for (const id of createdApps) await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${id}`, { headers });
+    if (resumeId) await request.delete(`${api}/rest/v1/resumes?${own}&id=eq.${resumeId}`, { headers });
+    await request.patch(`${api}/rest/v1/profiles?id=eq.${session.user.id}`, { headers, data: { activities: profile.activities, default_resume_id: profile.default_resume_id } });
+  }
+});

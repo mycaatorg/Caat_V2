@@ -236,10 +236,10 @@ export function ExtracurricularsCard() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Your Resumes
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-8 justify-between font-medium gap-1.5 min-w-[160px]">
+                      <Button variant="outline" size="sm" className="h-8 max-w-full justify-between font-medium gap-1.5 min-w-0">
                         <span className="truncate">
                           {activeResume?.title ?? "Select a resume"}
                           {activeResume?.id === defaultResumeId ? " (default)" : ""}
@@ -306,11 +306,11 @@ export function ExtracurricularsCard() {
             )}
 
             {/* Manage resume button */}
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="h-8 gap-1.5" asChild>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" className="min-h-8 h-auto max-w-full gap-1.5 whitespace-normal py-1 text-left" asChild>
                 <Link href={`/resume-builder${activeResumeId ? `?id=${activeResumeId}` : ""}`}>
                   <FileText className="h-3.5 w-3.5" />
-                  {activeResume ? `Edit "${activeResume.title}"` : "Manage Resume"}
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{activeResume ? `Edit "${activeResume.title}"` : "Manage Resume"}</span>
                 </Link>
               </Button>
               {resumes.length > 1 && (

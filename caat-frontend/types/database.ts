@@ -28,6 +28,12 @@ export type Database = {
         Update: { user_id?: string; course_id?: string; created_at?: string }
         Relationships: [{ foreignKeyName: "user_course_bookmarks_course_id_fkey"; columns: ["course_id"]; isOneToOne: false; referencedRelation: "course_offerings"; referencedColumns: ["id"] }]
       }
+      evidence_items: {
+        Row: { id: string; user_id: string; kind: string; title: string; organisation: string | null; role: string | null; start_date: string | null; end_date: string | null; is_current: boolean; description: string; origin_key: string | null; revision: string; created_at: string }
+        Insert: { user_id: string; kind: string; title: string; organisation?: string | null; role?: string | null; start_date?: string | null; end_date?: string | null; is_current?: boolean; description?: string; origin_key?: string | null }
+        Update: { kind?: string; title?: string; organisation?: string | null; role?: string | null; start_date?: string | null; end_date?: string | null; is_current?: boolean; description?: string }
+        Relationships: []
+      }
       application_evidence_links: {
         Row: {
           application_id: string
@@ -38,6 +44,8 @@ export type Database = {
           kind: string
           tailored_at: string | null
           source_uploaded_at: string | null
+          source_revision: string | null
+          revision: string
           tailored_body: string | null
           tailored_title: string | null
           user_id: string
@@ -45,18 +53,21 @@ export type Database = {
         // Clients may insert only these columns (column-level grants).
         Insert: {
           application_id: string
-          document_id: string
-          kind?: "document"
+          document_id?: string
+          evidence_item_id?: string
+          kind?: "document" | "item"
           user_id: string
         }
         // Clients may update only the tailored_* columns (column-level grants).
         Update: {
           tailored_at?: string | null
           source_uploaded_at?: string | null
+          source_revision?: string | null
           tailored_body?: string | null
           tailored_title?: string | null
         }
         Relationships: [
+          { foreignKeyName: "application_evidence_links_item_fkey"; columns: ["evidence_item_id", "user_id"]; isOneToOne: false; referencedRelation: "evidence_items"; referencedColumns: ["id", "user_id"] },
           {
             foreignKeyName: "application_evidence_links_application_fkey"
             columns: ["application_id", "user_id"]
