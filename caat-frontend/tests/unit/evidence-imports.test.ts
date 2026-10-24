@@ -25,3 +25,10 @@ describe('explicit evidence imports',()=>{
   expect(result[0].input.description).toContain('Built a team\nHeld events');
  });
 });
+it('explains oversized imports without truncating the source',async()=>{
+ const { importCandidateProblem }=await import('@/lib/evidence-imports');
+ const candidate=activityCandidates(['A'.repeat(201)])[0];
+ expect(importCandidateProblem(candidate)).toMatch(/edit the original.*add.*manually/i);
+ expect(candidate.input.title).toHaveLength(201);
+ expect(importCandidateProblem(activityCandidates(['Debate'])[0])).toBeNull();
+});

@@ -19,7 +19,7 @@ vi.mock("@/lib/supabase/client", () => {
       if (op) ctx.op = op;
       return b;
     };
-    for (const m of ["select", "eq", "in", "order", "limit", "is", "not"]) b[m] = pass(m);
+    for (const m of ["select", "eq", "in", "order", "limit", "is", "not", "range"]) b[m] = pass(m);
     for (const m of ["insert", "update", "upsert", "delete"]) b[m] = pass(m, m);
     b.then = (f: (v: unknown) => unknown, r?: (e: unknown) => unknown) => Promise.resolve(state.resolver(ctx)).then(f, r);
     return b;
@@ -36,6 +36,12 @@ const row = { id: "link-1", application_id: "app-1", evidence_item_id: source.id
 const call = (q: Ctx, method: string) => q.calls.filter(c=>c.method===method).map(c=>c.args);
 beforeEach(()=>{state.userId="user-1";state.queries=[];state.resolver=()=>({data:[],error:null});});
 describe("evidence library writes",()=>{
+ it("reads beyond the first API page without dropping saved items",async()=>{
+  state.resolver=q=>({data:call(q,"range")[0]?.[0]===200 ? [{...source,id:"last-item"}] : Array.from({length:200},(_,i)=>({...source,id:`item-${i}`}))});
+  const result=await items.listEvidenceItems();
+  expect(result).toHaveLength(201);
+  expect(result[200].id).toBe("last-item");
+ });
  it("rejects blank/long titles and invalid dates before a database write",async()=>{
   for(const patch of [{title:" "},{title:"x".repeat(201)},{start_date:"2026-02-30"},{start_date:"2026-02-02",end_date:"2026-02-01"}]) await expect(items.createEvidenceItem({...input,...patch})).rejects.toThrow();
   expect(state.queries).toHaveLength(0);
@@ -63,6 +69,12 @@ describe("evidence library writes",()=>{
  });
 });
 describe("item links",()=>{
+ it("can tailor a maximum-length description together with its metadata",async()=>{
+  state.resolver=()=>({data:[row]});
+  const [seen]=await links.fetchItemLinks("app-1");
+  const full=items.evidenceText({...input,description:"x".repeat(10000),organisation:"o".repeat(200),role:"r".repeat(200)});
+  await expect(links.tailorItem(seen,{title:"Complete version",body:full})).resolves.toMatchObject({id:"link-1"});
+ });
  it("reads only owned item links and maps their current source",async()=>{
   state.resolver=()=>({data:[row]});
   const result=await links.fetchItemLinks("app-1");

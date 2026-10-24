@@ -51,3 +51,6 @@ VALUES
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, category = EXCLUDED.category,
  description = EXCLUDED.description, career_paths = EXCLUDED.career_paths,
  typical_coursework = EXCLUDED.typical_coursework;
+
+-- PROD-153: a second application target for independent tailoring journeys.
+INSERT INTO public.schools (id,name,country,website,institution_type) VALUES (900153,'E2E Library University','Australia','https://library-university.example.test','university') ON CONFLICT (id) DO NOTHING;

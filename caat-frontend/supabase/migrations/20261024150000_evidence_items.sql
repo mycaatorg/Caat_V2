@@ -61,6 +61,11 @@ DO $$ BEGIN
       ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED;
   END IF;
 END $$;
+-- Item tailoring includes the 10,000-character description plus role/date metadata.
+-- Preserve the existing document-note limit.
+ALTER TABLE public.application_evidence_links DROP CONSTRAINT IF EXISTS application_evidence_links_body_check;
+ALTER TABLE public.application_evidence_links ADD CONSTRAINT application_evidence_links_body_check
+  CHECK (tailored_body IS NULL OR char_length(tailored_body) BETWEEN 1 AND CASE WHEN kind='item' THEN 12000 ELSE 10000 END);
 CREATE UNIQUE INDEX IF NOT EXISTS application_evidence_links_application_item_key
   ON public.application_evidence_links(application_id,evidence_item_id) WHERE evidence_item_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS application_evidence_links_user_item_idx

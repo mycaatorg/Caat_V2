@@ -1,6 +1,7 @@
+import { evidencePages } from '@/lib/evidence-pagination';
 import { supabase } from '@/lib/supabase/client';
 import { htmlToText } from '@/lib/html-text';
-import { EMPTY_EVIDENCE_INPUT, evidenceUserId, type EvidenceItemInput } from '@/lib/evidence-items';
+import { EMPTY_EVIDENCE_INPUT, evidenceUserId, validateEvidenceInput, type EvidenceItemInput } from '@/lib/evidence-items';
 export interface ImportCandidate { key: string; label: string; input: EvidenceItemInput }
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 export function activityCandidates(values: unknown): ImportCandidate[] {
@@ -35,13 +36,18 @@ export async function fetchImportCandidates(): Promise<ImportCandidate[]> {
   const id = await evidenceUserId();
   const [profile, sections] = await Promise.all([
     supabase.from('profiles').select('activities').eq('id', id),
-    supabase.from('resume_sections').select('id, structured_data, mode, resumes!inner(user_id, title)').eq('resumes.user_id', id).eq('section_key', 'experience'),
+    evidencePages((from,to) => supabase.from('resume_sections').select('id, structured_data, mode, resumes!inner(user_id, title)').eq('resumes.user_id', id).eq('section_key', 'experience').order('id').range(from,to), 'Could not load resume experience. Try again.'),
   ]);
-  if (profile.error || sections.error) throw new Error('Could not load activities and resume experience. Try again.');
+  if (profile.error) throw new Error('Could not load activities and resume experience. Try again.');
   const result = activityCandidates(profile.data?.[0]?.activities);
-  for (const section of sections.data ?? []) {
+  for (const section of sections) {
     if (section.mode === 'free') continue;
     for (const candidate of experienceCandidates(section.id, section.structured_data)) result.push({ ...candidate, label: `From resume: ${section.resumes?.title || 'Untitled'}` });
   }
   return result;
+}
+
+export function importCandidateProblem(candidate: ImportCandidate): string | null {
+  try { validateEvidenceInput(candidate.input); if (candidate.key.length > 500) throw new Error('This entry is too long.'); return null; }
+  catch (e) { return `${e instanceof Error ? e.message : 'This entry cannot be imported.'} Edit the original entry or add a shorter library item manually. Nothing has been copied or shortened.`; }
 }

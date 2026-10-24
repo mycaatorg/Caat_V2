@@ -1,3 +1,4 @@
+import { evidencePages } from '@/lib/evidence-pagination';
 import { supabase } from '@/lib/supabase/client';
 import { getClientUserId } from '@/lib/current-user';
 import type { Database } from '@/types/database';
@@ -33,9 +34,8 @@ function oneItem(data: unknown, message: string): EvidenceItem {
 }
 export async function listEvidenceItems(): Promise<EvidenceItem[]> {
   const id = await evidenceUserId();
-  const { data, error } = await supabase.from('evidence_items').select('*').eq('user_id', id).order('created_at', { ascending: false });
-  if (error) throw new Error('Could not load your library. Try again.');
-  return (data ?? []) as EvidenceItem[];
+  const data = await evidencePages((from,to) => supabase.from('evidence_items').select('*').eq('user_id', id).order('created_at', { ascending: false }).order('id').range(from,to), 'Could not load your library. Try again.');
+  return data as EvidenceItem[];
 }
 export async function createEvidenceItem(input: EvidenceItemInput, originKey?: string): Promise<EvidenceItem> {
   const clean = validateEvidenceInput(input);
@@ -64,8 +64,7 @@ export async function deleteEvidenceItem(seen: EvidenceItem): Promise<void> {
 }
 export async function fetchItemUsage(): Promise<Record<string, ItemUsage[]>> {
   const id = await evidenceUserId();
-  const { data, error } = await supabase.from('application_evidence_links').select('evidence_item_id, application_id, tailored_at, user_school_applications!inner(schools(name))').eq('user_id', id).eq('kind', 'item');
-  if (error) throw new Error('Could not load where your library items are used.');
+  const data = await evidencePages((from,to) => supabase.from('application_evidence_links').select('evidence_item_id, application_id, tailored_at, user_school_applications!inner(schools(name))').eq('user_id', id).eq('kind', 'item').order('id').range(from,to), 'Could not load where your library items are used.');
   const usage: Record<string, ItemUsage[]> = {};
   for (const row of data ?? []) {
     if (!row.evidence_item_id) continue;

@@ -57,3 +57,11 @@ it('requires unlink confirmation and retains the row on failure',async()=>{
  expect(hasText('My preserved text')).toBe(false);
  expect(hasText(/No library items linked yet/i)).toBe(true);
 });
+it('closes an older reset confirmation after keeping the latest tailoring',async()=>{
+ io.keep.mockResolvedValue({...linked,revision:'r2',sourceRevision:'v2'});
+ await mountComponent(<HubEvidenceItems applicationId='a1' schoolName='Alpha University'/>);
+ await click(button('Use library version'));
+ await click(button('Keep mine'));
+ expect(document.querySelector('[aria-label="Reset item tailoring"]')).toBeNull();
+ expect(hasText('My preserved text')).toBe(true);
+});

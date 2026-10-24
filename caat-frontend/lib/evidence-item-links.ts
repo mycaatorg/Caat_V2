@@ -1,5 +1,7 @@
+import { evidencePages } from '@/lib/evidence-pagination';
 import { supabase } from '@/lib/supabase/client';
 import { evidenceUserId, type EvidenceItem } from '@/lib/evidence-items';
+export const ITEM_TAILOR_BODY_MAX = 12000;
 const TABLE = 'application_evidence_links';
 const COLUMNS = 'id, application_id, evidence_item_id, revision, source_revision, tailored_at, tailored_title, tailored_body, evidence_items(*)';
 export interface ItemLink {
@@ -18,8 +20,7 @@ function one(data: unknown, message = CHANGED): ItemLink {
 }
 export async function fetchItemLinks(applicationId: string): Promise<ItemLink[]> {
   const id = await evidenceUserId();
-  const { data, error } = await supabase.from(TABLE).select(COLUMNS).eq('user_id', id).eq('application_id', applicationId).eq('kind', 'item').order('created_at', { ascending: true });
-  if (error) throw new Error('Could not load your linked activities, awards and experience.');
+  const data = await evidencePages((from,to) => supabase.from(TABLE).select(COLUMNS).eq('user_id', id).eq('application_id', applicationId).eq('kind', 'item').order('created_at', { ascending: true }).order('id').range(from,to), 'Could not load your linked activities, awards and experience.');
   return ((data ?? []) as unknown as LinkRow[]).map(map);
 }
 export async function linkItem(applicationId: string, itemId: string): Promise<ItemLink> {
@@ -46,7 +47,7 @@ async function write(seen: ItemLink, patch: { tailored_title?: string | null; ta
 }
 export function tailorItem(seen: ItemLink, input: {title: string; body: string}) {
   const title = input.title.trim(), body = input.body.trim();
-  if (!title || title.length > 200 || body.length > 10000) return Promise.reject(new Error('Add a title up to 200 characters and a description up to 10,000 characters.'));
+  if (!title || title.length > 200 || body.length > ITEM_TAILOR_BODY_MAX) return Promise.reject(new Error('Add a title up to 200 characters and a description up to 12,000 characters.'));
   if (!seen.item) return Promise.reject(new Error('The library item is unavailable. Refresh before tailoring.'));
   return write(seen, { tailored_title: title, tailored_body: body || null, source_revision: seen.item.revision });
 }

@@ -49,6 +49,8 @@ try {
   const links=owner.client.from('application_evidence_links');
   const tailored=ok(await links.update({tailored_title:'Application title',tailored_body:'Snapshot',source_revision:edited.revision}).eq('id',link.id).eq('revision',link.revision).select('*').single());
   assert.notEqual(tailored.revision,link.revision);
+  ok(await links.update({tailored_body:'x'.repeat(10500)}).eq('id',link.id));
+  ok(await links.update({tailored_body:'Snapshot'}).eq('id',link.id));
   assert.deepEqual(ok(await links.update({tailored_title:'Lost update'}).eq('id',link.id).eq('revision',link.revision).select('id')),[]);
   const newer=ok(await items.update({description:'Updated source'}).eq('id',source.id).select('*').single());
   const kept=ok(await links.select('*').eq('id',link.id).single());
