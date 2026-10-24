@@ -376,12 +376,17 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
               } : undefined}
             >
               {scholarshipPage.visible.map((s) => (
-                <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+                <li key={s.id} data-shortlist-scholarship={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
                   <div className="flex-1 min-w-[14rem]">
                     <Link href={`/scholarships/${s.id}`} className="font-medium text-sm hover:underline">{s.title}</Link>
                     <p className="text-xs text-muted-foreground">
                       {[s.provider, s.amount].filter(Boolean).join(" · ")}
                     </p>
+                    {s.attachedTo ? (
+                      <Link href={`/applications/${s.attachedTo.applicationId}`} className={`text-xs ${MAROON} hover:underline`}>
+                        For {s.attachedTo.schoolName}
+                      </Link>
+                    ) : null}
                   </div>
                   <span className="text-xs text-muted-foreground">{closes(s.deadlineAt)}</span>
                   <Pill>{SCHOLARSHIP_STATUS_LABELS[s.status]}</Pill>

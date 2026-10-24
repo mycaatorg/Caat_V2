@@ -128,6 +128,17 @@ describe("My shortlist", () => {
     expect(link(/See where to study it/).getAttribute("href")).toBe("/majors/m1");
   });
 
+  it("PROD-77: an attached scholarship says which application it is for, an unattached one does not", async () => {
+    const attached = list();
+    attached.scholarships = [
+      { ...attached.scholarships[0], attachedTo: { schoolId: 8, schoolName: "Banksia College", applicationId: "app-8" } },
+      { id: "s2", title: "Unattached Award", provider: null, amount: null, deadlineAt: null, status: "applied", attachedTo: null },
+    ];
+    await mountComponent(<ShortlistView initial={attached} />);
+    expect(link("For Banksia College").getAttribute("href")).toBe("/applications/app-8");
+    expect(queryLink(/^For /, document.querySelector('[data-shortlist-scholarship="s2"]')!)).toBeNull();
+  });
+
   it("filters by kind", async () => {
     await mountComponent(<ShortlistView initial={list()} />);
     await click(button("Majors"));

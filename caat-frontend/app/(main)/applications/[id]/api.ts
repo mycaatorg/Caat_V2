@@ -3,9 +3,14 @@ import { sanitizeError } from "@/lib/safe-error";
 import type { ApplicationRow, ApplicationStatus } from "@/types/applications";
 import type { ScholarshipRow } from "@/types/scholarships";
 import type { ProfileRow } from "@/types/profile";
-import { fetchTrackedForSchool, type TrackedScholarship } from "@/lib/scholarship-tracking";
+import {
+  fetchPrepChecks,
+  fetchSavedScholarshipsForHub,
+  type SavedScholarshipForHub,
+} from "@/lib/scholarship-tracking";
 import { assertApplicationWritten } from "@/app/(main)/applications/api";
 import { normalizeHubCourse, type HubCourse } from "@/lib/course-data";
+import { readEvidenceLinks, type EvidenceLink } from "@/lib/evidence-links";
 
 export type { HubCourse };
 import {
@@ -72,8 +77,14 @@ export interface ApplicationHub {
   targetMajor: string | null;
   /** per-application "applying for" majors (names), editable on the hub */
   intendedMajors: string[];
-  /** scholarships the student linked to this school, with status (item 5) */
-  trackedScholarships: TrackedScholarship[];
+  /** PROD-77: all of the caller's saved scholarships, with attachment and the
+   *  recorded fields their checklists need (owner-only read) */
+  savedScholarships: SavedScholarshipForHub[];
+  /** true when that read failed: the card shows Retry, never "none saved" */
+  savedScholarshipsUnavailable: boolean;
+  /** PROD-77: the caller's preparation ticks, by scholarship id */
+  prepChecks: Record<string, string[]>;
+  prepChecksUnavailable: boolean;
   readiness: ReadinessSignals;
   /** per_school prompts, with the draft tagged to THIS school */
   essaysForSchool: EssayLine[];
@@ -91,6 +102,11 @@ export interface ApplicationHub {
   savedCourses: HubCourse[];
   /** true when that read failed, so the card shows Retry rather than "none saved" */
   savedCoursesUnavailable: boolean;
+  /** PROD-78: library documents linked to this application (owner-only read).
+   *  Not a preparation step: they never change the 3-step checklist. */
+  evidenceLinks: EvidenceLink[];
+  /** true when that read failed, so the card shows Retry rather than "none linked" */
+  evidenceLinksUnavailable: boolean;
 }
 
 export const HUB_SCHOLARSHIP_LIMIT = 5;
@@ -164,6 +180,19 @@ async function readSavedCourses(userId: string, schoolId: number): Promise<HubCo
   });
 }
 
+/** The scholarships card's own Retry: re-reads saved scholarships and ticks. */
+export async function fetchHubScholarshipAttachments(): Promise<
+  Pick<ApplicationHub, "savedScholarships" | "savedScholarshipsUnavailable" | "prepChecks" | "prepChecksUnavailable">
+> {
+  const [saved, ticks] = await Promise.allSettled([fetchSavedScholarshipsForHub(), fetchPrepChecks()]);
+  return {
+    savedScholarships: saved.status === "fulfilled" ? saved.value : [],
+    savedScholarshipsUnavailable: saved.status !== "fulfilled",
+    prepChecks: ticks.status === "fulfilled" ? ticks.value : {},
+    prepChecksUnavailable: ticks.status !== "fulfilled",
+  };
+}
+
 /** The hub card's own Retry: re-reads only the saved courses. */
 export async function fetchSavedCoursesForSchool(schoolId: number): Promise<HubCourse[]> {
   const user = await getUser();
@@ -199,7 +228,7 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
 
   // Parallel: profile, prompts (+scope), all essay drafts (+school_id), all
   // documents (+school_id), active scholarships recorded for this school.
-  const [profileRes, promptsRes, draftsRes, docsRes, schRes, coursesRes] = await Promise.all([
+  const [profileRes, promptsRes, draftsRes, docsRes, schRes, coursesRes, savedSchRes, ticksRes, linksRes] = await Promise.all([
     supabase
       .from("profiles")
       .select("target_majors")
@@ -212,6 +241,20 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     readSavedCourses(user.id, schoolId).then(
       (courses) => ({ courses, unavailable: false }),
       () => ({ courses: [] as HubCourse[], unavailable: true }),
+    ),
+    // PROD-77: saved scholarships (attached, suggestions, dialog) and ticks.
+    fetchSavedScholarshipsForHub().then(
+      (rows) => ({ rows, unavailable: false }),
+      () => ({ rows: [] as SavedScholarshipForHub[], unavailable: true }),
+    ),
+    fetchPrepChecks().then(
+      (checks) => ({ checks, unavailable: false }),
+      () => ({ checks: {} as Record<string, string[]>, unavailable: true }),
+    ),
+    // PROD-78: library documents linked here (and their tailoring).
+    readEvidenceLinks(user.id, application.id).then(
+      (links) => ({ links, unavailable: false }),
+      () => ({ links: [] as EvidenceLink[], unavailable: true }),
     ),
   ]);
 
@@ -291,8 +334,6 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     deadline: s.deadline_at ?? null,
   }));
 
-  const trackedScholarships = await fetchTrackedForSchool(schoolName);
-
   return {
     application,
     schoolId,
@@ -300,7 +341,10 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     schoolCountry,
     targetMajor,
     intendedMajors: application.intended_majors ?? [],
-    trackedScholarships,
+    savedScholarships: savedSchRes.rows,
+    savedScholarshipsUnavailable: savedSchRes.unavailable,
+    prepChecks: ticksRes.checks,
+    prepChecksUnavailable: ticksRes.unavailable,
     readiness,
     essaysForSchool,
     essaysShared,
@@ -310,6 +354,8 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     scholarshipsUnavailable: schRes.error,
     savedCourses: coursesRes.courses,
     savedCoursesUnavailable: coursesRes.unavailable,
+    evidenceLinks: linksRes.links,
+    evidenceLinksUnavailable: linksRes.unavailable,
   };
 }
 

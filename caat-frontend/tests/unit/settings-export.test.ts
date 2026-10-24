@@ -108,6 +108,8 @@ describe("settings data export route", () => {
     "user_school_notes",
     "user_bookmarked_schools",
     "user_bookmarked_scholarships",
+    "user_scholarship_prep_checks",
+    "application_evidence_links",
     "user_bookmarked_majors",
     "custom_essay_prompts",
     "essay_drafts",

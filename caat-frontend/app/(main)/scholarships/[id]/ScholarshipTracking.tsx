@@ -24,8 +24,9 @@ import {
  * Unified track + status control for the scholarship detail page (item 5).
  * Tracking and status are one thing: picking any status starts tracking the
  * scholarship (no separate bookmark step), and it updates the UI instantly
- * with no page refresh. Scholarships are connected to a school via their
- * scraped school_name, so there is no manual "applying at" link.
+ * with no page refresh. Attaching a saved scholarship to one of the student's
+ * applications (PROD-77) happens on that application's hub, not here; the
+ * status upsert below never changes the attachment.
  */
 export default function ScholarshipTracking({ scholarshipId }: { scholarshipId: string }) {
   const [loading, setLoading] = useState(true);

@@ -3,7 +3,8 @@ import { createMockSupabase, type QueryContext, type QueryResult } from "./mock-
 
 const io = vi.hoisted(() => ({
   client: null as unknown as ReturnType<typeof createMockSupabase>,
-  tracked: vi.fn(),
+  saved: vi.fn(),
+  ticks: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/client", () => ({
@@ -15,7 +16,7 @@ vi.mock("@/lib/safe-error", () => ({
   sanitizeError: (e: unknown) =>
     typeof e === "object" && e && "message" in e ? String((e as { message: string }).message) : "error",
 }));
-vi.mock("@/lib/scholarship-tracking", () => ({ fetchTrackedForSchool: io.tracked }));
+vi.mock("@/lib/scholarship-tracking", () => ({ fetchSavedScholarshipsForHub: io.saved, fetchPrepChecks: io.ticks }));
 
 import {
   fetchApplicationHub,
@@ -103,8 +104,10 @@ function hubResolver(overrides: Partial<Record<string, QueryResult>> = {}) {
 }
 
 beforeEach(() => {
-  io.tracked.mockReset();
-  io.tracked.mockResolvedValue([]);
+  io.saved.mockReset();
+  io.saved.mockResolvedValue([]);
+  io.ticks.mockReset();
+  io.ticks.mockResolvedValue({});
   use(hubResolver());
 });
 
@@ -240,12 +243,35 @@ describe("fetchApplicationHub", () => {
     });
   });
 
-  it("passes tracked scholarships and intended majors through", async () => {
-    io.tracked.mockResolvedValue([{ id: "t1", title: "Tracked", provider: "P", amount: null, status: "applied" }]);
+  it("passes saved scholarships, ticks and intended majors through", async () => {
+    const saved = [{ id: "t1", title: "Tracked", provider: "P", amount: null, status: "applied", schoolId: 7 }];
+    io.saved.mockResolvedValue(saved);
+    io.ticks.mockResolvedValue({ t1: ["essay"] });
     const hub = await fetchApplicationHub("app-1");
-    expect(io.tracked).toHaveBeenCalledWith("The University of Melbourne");
-    expect(hub.trackedScholarships).toHaveLength(1);
+    expect(hub.savedScholarships).toEqual(saved);
+    expect(hub.savedScholarshipsUnavailable).toBe(false);
+    expect(hub.prepChecks).toEqual({ t1: ["essay"] });
+    expect(hub.prepChecksUnavailable).toBe(false);
     expect(hub.intendedMajors).toEqual(["Law"]);
+  });
+
+  it("PROD-77: a failed saved-scholarship or tick read is unavailable, not empty, and the hub still loads", async () => {
+    io.saved.mockRejectedValue(new Error("boom"));
+    io.ticks.mockRejectedValue(new Error("boom"));
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.savedScholarshipsUnavailable).toBe(true);
+    expect(hub.prepChecksUnavailable).toBe(true);
+    expect(hub.savedScholarships).toEqual([]);
+    expect(hub.readiness).toBeDefined();
+  });
+
+  it("PROD-77: reads saved scholarships and ticks in the parallel batch, not after it", async () => {
+    let started = 0;
+    io.saved.mockImplementation(() => { started += 1; return new Promise(() => {}); });
+    io.ticks.mockImplementation(() => { started += 1; return new Promise(() => {}); });
+    void fetchApplicationHub("app-1");
+    await vi.waitFor(() => expect(started).toBe(2));
+    expect(io.client.queries.some((q) => q.table === "essay_prompts")).toBe(true);
   });
 });
 
@@ -470,5 +496,49 @@ describe("fetchMajorOptions", () => {
   it("returns major names in order", async () => {
     use(() => ({ data: [{ name: "Commerce" }, { name: "Law" }], error: null }));
     expect(await fetchMajorOptions()).toEqual(["Commerce", "Law"]);
+  });
+});
+
+describe("fetchApplicationHub: linked library documents (PROD-78)", () => {
+  const linkRow = {
+    id: "link-1",
+    application_id: "app-1",
+    document_id: "d4",
+    tailored_title: "Portfolio for Melbourne",
+    tailored_body: null,
+    tailored_at: "2026-10-21T00:00:00.000Z",
+    created_at: "2026-10-20T00:00:00.000Z",
+    documents: { id: "d4", file_name: "elsewhere.pdf", category: "letters", status: "verified", uploaded_at: "2026-10-01T00:00:00.000Z" },
+  };
+
+  it("reads this application's links for the caller only", async () => {
+    use(hubResolver({ application_evidence_links: { data: [linkRow], error: null } }));
+    const hub = await fetchApplicationHub("app-1");
+    const q = io.client.queries.find((x) => x.table === "application_evidence_links")!;
+    expect(q.calls.filter((c) => c.method === "eq").map((c) => c.args)).toEqual([["user_id", "student-1"], ["application_id", "app-1"]]);
+    expect(hub.evidenceLinksUnavailable).toBe(false);
+    expect(hub.evidenceLinks).toHaveLength(1);
+    expect(hub.evidenceLinks[0]).toMatchObject({ id: "link-1", documentId: "d4", tailoredTitle: "Portfolio for Melbourne" });
+  });
+
+  it("marks links unavailable on a failed read and keeps the rest of the hub", async () => {
+    use(hubResolver({ application_evidence_links: { data: null, error: { message: "down" } } }));
+    const hub = await fetchApplicationHub("app-1");
+    expect(hub.evidenceLinks).toEqual([]);
+    expect(hub.evidenceLinksUnavailable).toBe(true);
+    expect(hub.readiness.score).toBe(2);
+  });
+
+  it("never counts a linked document as a document attached here in the 3-step checklist", async () => {
+    const otherSchoolKeyDoc = { id: "d4", file_name: "elsewhere.pdf", category: "letters", status: "verified", school_id: 99 };
+    const withoutLink = await (use(hubResolver({ documents: { data: [otherSchoolKeyDoc], error: null } })), fetchApplicationHub("app-1"));
+    use(hubResolver({
+      documents: { data: [otherSchoolKeyDoc], error: null },
+      application_evidence_links: { data: [linkRow], error: null },
+    }));
+    const withLink = await fetchApplicationHub("app-1");
+    expect(withLink.evidenceLinks).toHaveLength(1);
+    expect(withLink.readiness).toEqual(withoutLink.readiness);
+    expect(withLink.readiness.keyDocsUploaded).toBe(false);
   });
 });

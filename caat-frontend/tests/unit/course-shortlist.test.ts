@@ -35,6 +35,27 @@ describe('course shortlist continuity', () => {
     ]);
     expect(client.queries.find(q => q.table === 'user_school_applications')?.calls).toContainEqual({ method: 'eq', args: ['user_id', 'owner'] });
   });
+  it('PROD-77: marks a saved scholarship attached to one of the owner applications, and nothing else', async () => {
+    const sch = (id: string) => ({ id, title: id, provider_name: 'P', amount_display: null, deadline_at: null });
+    const rows: Record<string, unknown[]> = {
+      user_bookmarked_scholarships: [
+        { scholarship_id: 'a', status: 'applied', school_id: 7, schools: { name: 'UNSW Sydney' }, scholarships: sch('a') },
+        { scholarship_id: 'b', status: 'interested', school_id: null, schools: null, scholarships: sch('b') },
+        { scholarship_id: 'c', status: 'interested', school_id: 9, schools: { name: 'Stale University' }, scholarships: sch('c') },
+      ],
+      user_school_applications: [{ id: 'app-7', school_id: 7, status: 'applying' }],
+    };
+    const client = createMockSupabase({ resolver: ctx => ({ data: rows[ctx.table] ?? [], error: null }) });
+    const list = await loadShortlist(client as never, 'owner');
+    expect(list.scholarships.map(s => [s.id, s.attachedTo ?? null])).toEqual([
+      ['a', { schoolId: 7, schoolName: 'UNSW Sydney', applicationId: 'app-7' }],
+      ['b', null],
+      ['c', null],
+    ]);
+    const select = String(client.queries.find(q => q.table === 'user_bookmarked_scholarships')?.calls[0].args[0]);
+    expect(select).toContain('school_id');
+    expect(select).toContain('schools(name)');
+  });
   it('does not silently omit courses when their save query fails', async () => {
     const client = createMockSupabase({ resolver: ctx => ctx.table === 'user_course_bookmarks' ? { data: null, error: { message: 'offline' } } : { data: [], error: null } });
     await expect(loadShortlist(client as never, 'owner')).rejects.toThrow('Could not load your shortlist');

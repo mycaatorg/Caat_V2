@@ -11,6 +11,7 @@ const io = vi.hoisted(() => ({
   reuploadDocument: vi.fn(),
   getDocumentSignedUrl: vi.fn(),
   fetchMySchools: vi.fn(),
+  fetchDocumentUsage: vi.fn(),
   params: new URLSearchParams(),
   toast: { success: vi.fn(), error: vi.fn() },
 }));
@@ -23,6 +24,7 @@ vi.mock("@/app/(main)/documents/api", () => ({
   getDocumentSignedUrl: io.getDocumentSignedUrl,
 }));
 vi.mock("@/lib/my-schools", () => ({ fetchMySchools: io.fetchMySchools }));
+vi.mock("@/lib/evidence-links", () => ({ fetchDocumentUsage: io.fetchDocumentUsage }));
 // Stable across renders, like Next's hook while the URL is unchanged.
 vi.mock("next/navigation", () => ({ useSearchParams: () => io.params }));
 vi.mock("sonner", () => ({ toast: io.toast }));
@@ -90,6 +92,7 @@ beforeEach(() => {
   io.fetchMySchools.mockResolvedValue([{ id: 7, name: "Alpha University" }]);
   io.uploadDocument.mockImplementation(async (file: File) => doc("doc-new", file.name));
   io.deleteDocument.mockResolvedValue(undefined);
+  io.fetchDocumentUsage.mockResolvedValue({});
 });
 
 afterEach(() => unmountAll());
@@ -272,5 +275,34 @@ describe("view", () => {
     await flush();
     expect(io.toast.error).toHaveBeenCalledWith("Could not open document");
     expect(open).not.toHaveBeenCalled();
+  });
+});
+
+describe("used in applications (PROD-78)", () => {
+  it("badges each document with the number of applications it is linked to", async () => {
+    io.fetchDocumentUsage.mockResolvedValue({ "doc-1": 2, "doc-2": 1 });
+    await mount();
+    expect(row("transcript.pdf").textContent).toContain("Used in 2 applications");
+    expect(row("passport.pdf").textContent).toContain("Used in 1 application");
+    expect(row("passport.pdf").textContent).not.toContain("1 applications");
+    expect(io.fetchDocumentUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows no badge for unlinked documents, and none at all when usage cannot be read", async () => {
+    io.fetchDocumentUsage.mockResolvedValue({ "doc-1": 1 });
+    await mount();
+    expect(row("passport.pdf").textContent).not.toContain("Used in");
+    unmountAll();
+    io.fetchDocumentUsage.mockRejectedValue(new Error("offline"));
+    await mount();
+    expect(row("transcript.pdf").textContent).not.toContain("Used in");
+  });
+
+  it("warns in the delete dialog that a linked document must be unlinked first", async () => {
+    io.fetchDocumentUsage.mockResolvedValue({ "doc-1": 2 });
+    await mount();
+    await click(menuItem("transcript.pdf", "Delete"));
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog.textContent).toContain("It is linked to 2 applications. Unlink it from them first; deleting is refused while it is linked.");
   });
 });
