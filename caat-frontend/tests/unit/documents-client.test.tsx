@@ -59,6 +59,7 @@ function doc(id: string, name: string, patch: Partial<DocumentRow> = {}): Docume
   };
 }
 
+const usageEntry = (applicationId = "app-1", schoolName = "Alpha University", tailored = false) => ({ applicationId, schoolName, tailored });
 const transcript = () => doc("doc-1", "transcript.pdf");
 const passport = () => doc("doc-2", "passport.pdf", { category: "identity" });
 const pdf = (name = "new-transcript.pdf") => new File(["%PDF-1.7"], name, { type: "application/pdf" });
@@ -280,7 +281,7 @@ describe("view", () => {
 
 describe("used in applications (PROD-78)", () => {
   it("badges each document with the number of applications it is linked to", async () => {
-    io.fetchDocumentUsage.mockResolvedValue({ "doc-1": 2, "doc-2": 1 });
+    io.fetchDocumentUsage.mockResolvedValue({ "doc-1": [usageEntry(),usageEntry("app-2","Beta University",true)], "doc-2": [usageEntry()] });
     await mount();
     expect(row("transcript.pdf").textContent).toContain("Used in 2 applications");
     expect(row("passport.pdf").textContent).toContain("Used in 1 application");
@@ -289,7 +290,7 @@ describe("used in applications (PROD-78)", () => {
   });
 
   it("shows no badge for unlinked documents, and none at all when usage cannot be read", async () => {
-    io.fetchDocumentUsage.mockResolvedValue({ "doc-1": 1 });
+    io.fetchDocumentUsage.mockResolvedValue({ "doc-1": [usageEntry()] });
     await mount();
     expect(row("passport.pdf").textContent).not.toContain("Used in");
     unmountAll();
@@ -299,10 +300,48 @@ describe("used in applications (PROD-78)", () => {
   });
 
   it("warns in the delete dialog that a linked document must be unlinked first", async () => {
-    io.fetchDocumentUsage.mockResolvedValue({ "doc-1": 2 });
+    io.fetchDocumentUsage.mockResolvedValue({ "doc-1": [usageEntry(),usageEntry("app-2","Beta University",true)] });
     await mount();
     await click(menuItem("transcript.pdf", "Delete"));
     const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
     expect(dialog.textContent).toContain("It is linked to 2 applications. Unlink it from them first; deleting is refused while it is linked.");
+  });
+});
+
+describe("document application navigation (PROD-164)", () => {
+  it("opens named application links with tailoring labels and restores keyboard focus", async () => {
+    io.fetchDocumentUsage.mockResolvedValue({"doc-1":[usageEntry(),usageEntry("app-2","Beta University",true)]});
+    await mount();
+    const opener=button("View application links for transcript.pdf");
+    opener.focus();await click(opener);
+    const dialog=document.querySelector('[role="dialog"]')!;
+    const links=[...dialog.querySelectorAll('a')];
+    expect(links.map(a=>a.getAttribute('href'))).toEqual(["/applications/app-1","/applications/app-2"]);
+    expect(dialog.textContent).toContain("Alpha University");expect(dialog.textContent).toContain("Beta University");
+    expect(dialog.textContent).toContain("Uses library details");expect(dialog.textContent).toContain("Tailored for this application");
+    await click(button("Close dialog"));
+    // Radix defers unmount auto-focus to the next timer turn.
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
+    expect(document.activeElement).toBe(opener);
+  });
+  it("distinguishes unavailable usage from empty and recovers with retry", async () => {
+    io.fetchDocumentUsage.mockRejectedValueOnce(new Error("offline")).mockResolvedValue({});
+    await mount();
+    expect(row("transcript.pdf").textContent).toContain("Application links unavailable");
+    await click(button("View application links for transcript.pdf"));
+    expect(document.querySelector('[role="dialog"]')!.textContent).not.toContain("Not linked to an application");
+    await click(button("Retry application links"));await flush();
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Not linked to an application");
+  });
+  it("keeps loaded links usable during refresh and ignores an older response", async () => {
+    const slow=deferred<Record<string,ReturnType<typeof usageEntry>[]>>();
+    io.fetchDocumentUsage.mockResolvedValueOnce({"doc-1":[usageEntry()] }).mockReturnValueOnce(slow.promise).mockResolvedValueOnce({});
+    await mount();await click(button("View application links for transcript.pdf"));
+    await act(async()=>window.dispatchEvent(new Event("focus")));
+    expect(document.querySelector('[role="dialog"] a')?.getAttribute('href')).toBe('/applications/app-1');
+    await act(async()=>window.dispatchEvent(new Event("caat:requirement-work-changed")));await flush();
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Not linked to an application");
+    slow.resolve({"doc-1":[usageEntry()]});await flush();
+    expect(document.querySelector('[role="dialog"] a')).toBeNull();
   });
 });

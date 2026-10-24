@@ -1,3 +1,4 @@
+import { evidencePages } from "@/lib/evidence-pagination";
 import { notifyRequirementWorkChanged } from "@/lib/requirement-work-events";
 import { supabase } from "@/lib/supabase/client";
 import { getClientUserId } from "@/lib/current-user";
@@ -115,22 +116,27 @@ export async function fetchLibraryDocuments(): Promise<LibraryDocument[]> {
   return ((data ?? []) as DocumentRowShape[]).map(toDocument);
 }
 
-/** documentId -> number of applications it is linked to, from one
- *  owner-filtered query. Throws on error (never a wrong zero). */
-export async function fetchDocumentUsage(): Promise<Record<string, number>> {
+export type DocumentApplication = { applicationId: string; schoolName: string; tailored: boolean };
+export type DocumentUsage = Record<string, DocumentApplication[]>;
+
+/** One paginated owner-scoped sequence for the whole vault, never one per file.
+ * Application metadata is read through RLS; unavailable names have a fallback. */
+export async function fetchDocumentUsage(): Promise<DocumentUsage> {
   const userId = await requireUserId();
-  const { data, error } = await supabase
-    .from(LINKS)
-    .select("document_id, application_id")
-    .eq("user_id", userId)
-    .not("document_id", "is", null);
-  if (error) throw new Error("Could not load where your documents are used");
-  const apps = new Map<string, Set<string>>();
-  for (const r of (data ?? []) as { document_id: string; application_id: string }[]) {
-    if (!apps.has(r.document_id)) apps.set(r.document_id, new Set());
-    apps.get(r.document_id)!.add(r.application_id);
+  const data = await evidencePages((from, to) => supabase.from(LINKS)
+    .select("document_id, application_id, tailored_at, user_school_applications(schools(name))")
+    .eq("user_id", userId).eq("kind", "document").order("id").range(from, to),
+    "Could not load where your documents are used");
+  const usage: DocumentUsage = {};
+  for (const row of data) {
+    if (!row.document_id) continue;
+    const entries = usage[row.document_id] ??= [];
+    if (entries.some(entry => entry.applicationId === row.application_id)) continue;
+    entries.push({ applicationId: row.application_id,
+      schoolName: row.user_school_applications?.schools?.name ?? "Application",
+      tailored: row.tailored_at != null });
   }
-  return Object.fromEntries([...apps].map(([id, set]) => [id, set.size]));
+  return usage;
 }
 
 function oneRow(data: unknown, failure: string): EvidenceLink {

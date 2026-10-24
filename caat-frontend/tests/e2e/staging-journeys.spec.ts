@@ -1914,3 +1914,77 @@ test("account download includes all pages, saved courses and only own community 
     for (const follow of addedFollows) expect((await request.delete(`${api}/rest/v1/community_follows?${follow.query}`, { headers: follow.headers })).ok()).toBe(true);
   }
 });
+
+// PROD-164: document library → named application usage with recovery and refresh.
+test("document usage opens named applications, preserves tailoring and refreshes unlink (PROD-164)", { tag: "@phone" }, async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL").origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const auth = await request.post(`${api}/auth/v1/token?grant_type=password`, { headers: { apikey: key }, data: { email: STUDENT_EMAIL, password: process.env.E2E_TEST_PASSWORD } });
+  expect(auth.ok()).toBe(true);
+  const session = await auth.json() as { access_token: string; user: { id: string } };
+  const headers = { apikey: key, Authorization: `Bearer ${session.access_token}`, Prefer: "return=representation" };
+  const read = async (table: string, query: string) => {
+    const response = await request.get(`${api}/rest/v1/${table}?${query}`, { headers });
+    expect(response.ok()).toBe(true); return response.json();
+  };
+  const create = async (table: string, data: unknown) => {
+    const response = await request.post(`${api}/rest/v1/${table}`, { headers, data });
+    expect(response.ok()).toBe(true); return (await response.json())[0];
+  };
+  const own = `user_id=eq.${session.user.id}`;
+  const createdApps: string[] = [], links: string[] = [], apps: string[] = [];
+  const fileName = marker(`Usage-${testInfo.project.name}.pdf`);
+  let documentId: string | undefined;
+  const usageRoute = /\/rest\/v1\/application_evidence_links\?.*select=document_id/;
+  try {
+    for (const school of [900001, 900153]) {
+      const existing = (await read("user_school_applications", `${own}&school_id=eq.${school}`))[0];
+      if (existing) apps.push(existing.id);
+      else { const app = await create("user_school_applications", { user_id: session.user.id, school_id: school, status: "researching" }); apps.push(app.id); createdApps.push(app.id); }
+    }
+    documentId = (await create("documents", { user_id: session.user.id, category: "other", file_name: fileName, storage_path: `${session.user.id}/${crypto.randomUUID()}.pdf`, status: "pending" })).id;
+    for (const [index, applicationId] of apps.entries()) {
+      const link = await create("application_evidence_links", { user_id: session.user.id, application_id: applicationId, kind: "document", document_id: documentId });
+      links.push(link.id);
+      if (index) {
+        // Tailoring is update-only by design; match the application's real write path.
+        expect((await request.patch(`${api}/rest/v1/application_evidence_links?${own}&id=eq.${link.id}`, { headers,
+          data: { tailored_title: "Specific application portfolio", tailored_at: new Date().toISOString() } })).ok()).toBe(true);
+      }
+    }
+    await signInToIsolatedStudent(page); await page.goto("/documents");
+    const opener = page.getByRole("button", { name: `View application links for ${fileName}`, exact: true });
+    await expect(opener).toHaveText("Used in 2 applications"); await opener.focus(); await opener.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Applications using this document", exact: true });
+    await expect(dialog.getByRole("link", { name: "E2E Test University", exact: true })).toHaveAttribute("href", `/applications/${apps[0]}`);
+    await expect(dialog.getByRole("link", { name: "E2E Library University", exact: true })).toHaveAttribute("href", `/applications/${apps[1]}`);
+    await expect(dialog.getByText("Uses library details", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Tailored for this application", { exact: true })).toBeVisible();
+    const box = await dialog.boundingBox(); expect(box!.x).toBeGreaterThanOrEqual(0); expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    await testInfo.attach("document-application-usage", { body: await page.screenshot(), contentType: "image/png" });
+    await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0); await expect(opener).toBeFocused();
+    await opener.click(); await dialog.getByRole("link", { name: "E2E Library University", exact: true }).click();
+    await page.waitForURL(`**/applications/${apps[1]}`);
+    await expect(page.getByText("Specific application portfolio", { exact: true })).toBeVisible();
+    await page.goto("/documents"); await expect(opener).toHaveText("Used in 2 applications"); await opener.click();
+    expect((await request.delete(`${api}/rest/v1/application_evidence_links?${own}&id=eq.${links[1]}`, { headers })).ok()).toBe(true);
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(dialog.getByRole("link")).toHaveCount(1);
+    await page.route(usageRoute, route => route.fulfill({ status: 503, contentType: "application/json", body: '{"message":"simulated usage outage"}' }));
+    await dialog.getByRole("button", { name: "Refresh application links", exact: true }).click();
+    await expect(dialog.getByRole("alert")).toContainText("Showing the last loaded links");
+    await expect(dialog.getByRole("link")).toHaveCount(1);
+    await page.unroute(usageRoute);
+    await dialog.getByRole("button", { name: "Retry application links", exact: true }).click();
+    await expect(dialog.getByRole("alert")).toHaveCount(0); await expect(dialog.getByRole("link")).toHaveCount(1);
+    await page.keyboard.press("Escape"); await expect(opener).toBeFocused();
+    await expect(opener).toHaveText("Used in 1 application");
+    expect((await read("documents", `${own}&id=eq.${documentId}`))).toHaveLength(1);
+  } finally {
+    await page.unroute(usageRoute);
+    for (const id of links) expect.soft((await request.delete(`${api}/rest/v1/application_evidence_links?${own}&id=eq.${id}`, { headers })).ok()).toBe(true);
+    if (documentId) expect.soft((await request.delete(`${api}/rest/v1/documents?${own}&id=eq.${documentId}`, { headers })).ok()).toBe(true);
+    for (const id of createdApps) expect.soft((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${id}`, { headers })).ok()).toBe(true);
+  }
+});
