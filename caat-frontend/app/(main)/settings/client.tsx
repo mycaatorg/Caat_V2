@@ -76,7 +76,9 @@ export function DataAccountSection() {
           <div>
             <p className="text-sm font-medium">Export my data</p>
             <p className="text-sm text-muted-foreground">
-              Download everything tied to your account as a JSON file.
+              Download your profile, saved opportunities, workspace records and
+              community activity as JSON. Includes document details, but not
+              uploaded files, login secrets or moderation reports.
             </p>
           </div>
           <Button
