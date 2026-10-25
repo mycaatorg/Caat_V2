@@ -13,6 +13,8 @@ vi.mock("@/components/dashboard/api", () => ({ toggleTodo: vi.fn() }));
 vi.mock("@/lib/onboarding", () => ({ dismissOnboarding: vi.fn() }));
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 
+vi.mock("@/components/today/task-editor", () => ({ TaskEditor: () => null }));
+
 import TodayPage from "@/app/(main)/today/page";
 
 afterEach(() => { unmountAll(); vi.clearAllMocks(); });
