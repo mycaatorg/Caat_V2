@@ -236,6 +236,7 @@ export async function addTodo(
     .single();
 
   if (error) throw new Error(sanitizeError(error));
+  if (!data?.id) throw new Error("Could not confirm the saved to-do");
   return data as TodoItem;
 }
 

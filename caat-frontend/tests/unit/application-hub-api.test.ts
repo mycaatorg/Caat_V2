@@ -451,6 +451,28 @@ describe("hub saved courses at this university (PROD-148)", () => {
     },
   });
 
+  it("loads saved courses beyond the first API page with a stable owner-scoped order", async () => {
+    use(ctx => {
+      const offset = Number(ctx.calls.find(c => c.method === "range")?.args[0] ?? 0);
+      // Without pagination, return the backend cap rather than looping forever.
+      return {data: offset === 0 ? Array.from({length:200}, (_,i)=>saved(`c${i}`)) : [saved("last")], error:null};
+    });
+    const result = await fetchSavedCoursesForSchool(7);
+    expect(result).toHaveLength(201);
+    expect(result.at(-1)?.id).toBe("last");
+    for (const q of io.client.queries) {
+      expect(q.calls.filter(c=>c.method === "eq").map(c=>c.args)).toEqual([["user_id","student-1"],["course_offerings.school_id",7]]);
+      expect(q.calls.find(c=>c.method === "order")?.args[0]).toBe("course_id");
+    }
+  });
+  it("rejects malformed saved rows instead of silently hiding them", async () => {
+    use(hubResolver({user_course_bookmarks:{data:[saved("valid"),saved("invalid",{name:null})],error:null}}));
+    await expect(fetchSavedCoursesForSchool(7)).rejects.toThrow("Could not load your saved courses");
+  });
+  it("rejects a failed second page instead of returning a partial list", async () => {
+    use(ctx => Number(ctx.calls.find(c=>c.method === "range")?.args[0] ?? 0) === 0 ? {data:Array.from({length:200},(_,i)=>saved(`c${i}`)),error:null} : {data:null,error:{message:"offline"}});
+    await expect(fetchSavedCoursesForSchool(7)).rejects.toThrow("Could not load your saved courses");
+  });
   it("reads only the caller's saved courses whose offering is at this school, in the parallel batch", async () => {
     use(hubResolver({ user_course_bookmarks: { data: [saved("c1")], error: null } }));
     const hub = await fetchApplicationHub("app-1");
@@ -463,7 +485,7 @@ describe("hub saved courses at this university (PROD-148)", () => {
     expect(hub.savedCoursesUnavailable).toBe(false);
     expect(hub.savedCourses).toEqual([{
       id: "c1", name: "Course c1", campus: "Parkville", application_route: "Apply through VTAC.",
-      application_url: "https://vtac.edu.au", source_url: "https://unimelb.edu.au/c", verified_at: "2026-10-01T00:00:00.000Z", active: true,
+      application_url: "https://vtac.edu.au", source_url: "https://unimelb.edu.au/c", verified_at: "2026-10-01T00:00:00.000Z", active: true, prerequisites: null, prerequisites_url: null, assumed_knowledge: null, source_year: null,
     }]);
   });
 

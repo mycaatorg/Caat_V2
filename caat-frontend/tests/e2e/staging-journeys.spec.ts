@@ -1991,3 +1991,71 @@ test("document usage opens named applications, preserves tailoring and refreshes
     for (const id of createdApps) expect.soft((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${id}`, { headers })).ok()).toBe(true);
   }
 });
+
+// PROD-169: personal course follow-up from the hub to Today; no provider/status writes.
+test("course follow-up survives a failed save and appears on Today without changing application progress (PROD-169)", { tag: "@phone" }, async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL").origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const auth = await request.post(`${api}/auth/v1/token?grant_type=password`, { headers: { apikey: key }, data: { email: STUDENT_EMAIL, password: process.env.E2E_TEST_PASSWORD } });
+  expect(auth.ok()).toBe(true);
+  const session = await auth.json() as { access_token: string; user: { id: string } };
+  const headers = { apikey: key, Authorization: `Bearer ${session.access_token}`, Prefer: "return=representation" };
+  const own = `user_id=eq.${session.user.id}`;
+  const read = async (table: string, query: string) => {
+    const response = await request.get(`${api}/rest/v1/${table}?${query}`, { headers });
+    expect(response.ok()).toBe(true); return response.json();
+  };
+  const insert = async (table: string, data: unknown) => {
+    const response = await request.post(`${api}/rest/v1/${table}`, { headers, data });
+    expect(response.ok()).toBe(true); return (await response.json())[0];
+  };
+  let app = (await read('user_school_applications', `${own}&school_id=eq.${SCHOOL_ID}`))[0];
+  const createdApp = !app;
+  const createdBookmark = !(await read('user_course_bookmarks', `${own}&course_id=eq.${E2E_COURSE.id}`)).length;
+  const taskText = marker(`Check maths pathway ${testInfo.project.name}`);
+  const taskFilter = `${own}&text=eq.${encodeURIComponent(taskText)}`;
+  const todoRoute = '**/rest/v1/user_todos*';
+  try {
+    if (!app) app = await insert('user_school_applications', {user_id:session.user.id,school_id:SCHOOL_ID,status:'researching'});
+    if (createdBookmark) await insert('user_course_bookmarks', {user_id:session.user.id,course_id:E2E_COURSE.id});
+    await signInToIsolatedStudent(page);
+    await page.goto(`/applications/${app.id}`);
+    const card = page.getByRole('region',{name:'Courses you saved at E2E Test University',exact:true});
+    await expect(card.getByText('Recorded prerequisites',{exact:true})).toBeVisible();
+    await expect(card.getByText('Assumed knowledge',{exact:true})).toBeVisible();
+    await expect(card.getByText('Preparation guidance, not automatically an entry requirement.',{exact:true})).toBeVisible();
+    const prepBefore = await page.locator('[data-prep-checklist]').innerText();
+    const opener = card.getByRole('button',{name:`Plan a follow-up for ${E2E_COURSE.name}`,exact:true});
+    await opener.focus(); await opener.press('Enter');
+    const dialog = page.getByRole('dialog',{name:'Plan a course follow-up'});
+    await expect(dialog.getByLabel('Your next step')).toHaveValue(`Confirm entry requirements for ${E2E_COURSE.name} at E2E Test University`);
+    await dialog.getByLabel('Your next step').fill(taskText);
+    await dialog.getByLabel('Due date (optional)').fill('2026-11-15');
+    const box = await dialog.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    await testInfo.attach('course-follow-up', {body:await page.screenshot(),contentType:'image/png'});
+    await page.route(todoRoute, route => route.request().method() === 'POST' ? route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'temporary test outage'})}) : route.continue());
+    await dialog.getByRole('button',{name:'Save to Today',exact:true}).click();
+    await expect(dialog.getByRole('alert')).toContainText('Could not confirm');
+    await expect(dialog.getByLabel('Your next step')).toHaveValue(taskText);
+    await expect(dialog.getByLabel('Due date (optional)')).toHaveValue('2026-11-15');
+    expect(await read('user_todos',taskFilter)).toHaveLength(0);
+    await page.unroute(todoRoute);
+    await dialog.getByRole('button',{name:'Save to Today',exact:true}).click();
+    await expect(dialog).toHaveCount(0);await expect(opener).toBeFocused();
+    const todos = await read('user_todos',taskFilter);
+    expect(todos).toHaveLength(1);expect(todos[0]).toMatchObject({user_id:session.user.id,done:false,due_date:'2026-11-15',priority:2});
+    expect(await page.locator('[data-prep-checklist]').innerText()).toBe(prepBefore);
+    expect((await read('user_school_applications',`${own}&id=eq.${app.id}`))[0].status).toBe(app.status);
+    await card.getByRole('link',{name:'View on Today',exact:true}).click();
+    await expect(page).toHaveURL(/\/today\?view=todos/);
+    await expect(page.getByText(taskText,{exact:true})).toBeVisible();
+    await page.reload();await expect(page.getByText(taskText,{exact:true})).toBeVisible();
+  } finally {
+    await page.unroute(todoRoute);
+    expect((await request.delete(`${api}/rest/v1/user_todos?${taskFilter}`,{headers})).ok()).toBe(true);
+    if (createdBookmark) expect((await request.delete(`${api}/rest/v1/user_course_bookmarks?${own}&course_id=eq.${E2E_COURSE.id}`,{headers})).ok()).toBe(true);
+    if (createdApp && app) expect((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${app.id}`,{headers})).ok()).toBe(true);
+  }
+});

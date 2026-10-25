@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CourseSource, ProviderLink } from "@/components/courses/course-source";
+import { CourseFollowUp } from "@/components/courses/course-follow-up";
 import type { HubCourse } from "@/lib/course-data";
 
 const MAROON = "text-[#9a1a27] dark:text-[#e06b78]";
@@ -67,7 +68,17 @@ export function SavedCoursesCard({ schoolName, courses, unavailable, retrying, o
                 {!c.active ? (
                   <p className="text-xs text-muted-foreground mt-1">No longer in the active catalogue. Check current availability.</p>
                 ) : null}
-                <dl className="mt-2 space-y-2 text-sm">
+                <dl className="mt-3 space-y-3 text-sm">
+                  <div>
+                    <dt className="font-medium">Recorded prerequisites</dt>
+                    <dd className="mt-1 text-muted-foreground break-words whitespace-pre-wrap">{c.prerequisites ?? "Prerequisites not recorded. Check the provider before planning your application."}</dd>
+                    {c.prerequisites_url ? <dd className="mt-1"><ProviderLink href={c.prerequisites_url}>Check prerequisite details<span className="sr-only"> for {c.name}</span></ProviderLink></dd> : null}
+                  </div>
+                  <div>
+                    <dt className="font-medium">Assumed knowledge</dt>
+                    <dd className="mt-1 text-muted-foreground break-words whitespace-pre-wrap">{c.assumed_knowledge ?? "Assumed knowledge not recorded."}</dd>
+                    <dd className="mt-1 text-xs text-muted-foreground">Preparation guidance, not automatically an entry requirement.</dd>
+                  </div>
                   <div>
                     <dt className="font-code text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70">Official application route</dt>
                     <dd className="text-muted-foreground break-words">
@@ -82,8 +93,10 @@ export function SavedCoursesCard({ schoolName, courses, unavailable, retrying, o
                   </div>
                 </dl>
                 <div className="mt-2">
+                  <p className="mb-2 text-xs text-muted-foreground">{c.source_year ? `Source year: ${c.source_year}. Check which intake and applicant rules apply to you.` : "Source year not recorded."}</p>
                   <CourseSource course={c} checkedAt={checkedAt} />
                 </div>
+                <CourseFollowUp course={c} schoolName={schoolName} />
               </li>
             ))}
           </ul>
