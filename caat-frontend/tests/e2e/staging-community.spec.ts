@@ -211,8 +211,9 @@ test("community post draft survives a failed request and retry persists once", a
     await page.getByRole("button", { name: "Post", exact: true }).click();
     await expect(page.getByText("Post shared.", { exact: true })).toBeVisible();
     await page.reload();
-    const cards = page.locator("div.bg-card").filter({ hasText: content });
+    const cards = page.getByRole("main").locator("div.bg-card").filter({ hasText: content });
     await expect(cards).toHaveCount(1);
+    // Ignore hidden streaming page copies; still reject duplicate active cards.
     // Assert the complete rendered body, not matching descendant paragraphs.
     // The array form still rejects duplicate cards or duplicated body content.
     const bodies = cards.locator(".community-prose");
