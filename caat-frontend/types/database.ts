@@ -1865,6 +1865,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      edit_personal_task: {
+        Args: { p_id: string; p_original_text: string; p_original_due_date: string | null; p_text: string; p_due_date: string | null }
+        Returns: { id: string; text: string; due_date: string | null; done: boolean; priority: number }[]
+      }
+
       approve_group_join_request: {
         Args: { p_group_id: string; p_requester_user_id: string }
         Returns: boolean

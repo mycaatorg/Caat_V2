@@ -1,9 +1,10 @@
 'use client';
 
 import {useEffect,useId,useRef,useState} from 'react';
+import Link from 'next/link';
 import {Button} from '@/components/ui/button';
 import {LibraryDialog} from '@/components/evidence/library-dialog';
-import {editPersonalTask,fetchPersonalTask,TaskConflictError,validatePersonalTask,type TaskDetails} from '@/lib/personal-tasks';
+import {editPersonalTask,fetchPersonalTask,TaskAuthError,TaskConflictError,validatePersonalTask,type TaskDetails} from '@/lib/personal-tasks';
 
 type Task = {id:string;text:string;dueDate:string|null};
 export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;onSaved:(saved:TaskDetails)=>void}) {
@@ -11,6 +12,7 @@ export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;o
  const opener=useRef<HTMLButtonElement|null>(null);
  const activeRequest=useRef<AbortController|null>(null);
  const working=useRef(false);
+ const generation=useRef(0);
  const saveAction=useRef<HTMLButtonElement|null>(null);
  const dateField=useRef<HTMLInputElement|null>(null);
  const reloadAction=useRef<HTMLButtonElement|null>(null);
@@ -19,25 +21,36 @@ export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;o
  const [dueDate,setDueDate]=useState('');
  const [original,setOriginal]=useState({id:task.id,text:task.text,due_date:task.dueDate});
  const [busy,setBusy]=useState(false);
+ const [loading,setLoading]=useState(false);
+ const [authError,setAuthError]=useState(false);
  const [error,setError]=useState<string|null>(null);
  const [missing,setMissing]=useState(false);
- useEffect(()=>()=>activeRequest.current?.abort(),[]);
+ useEffect(()=>()=>{generation.current++;activeRequest.current?.abort();},[]);
 
  async function run<T>(action:(signal:AbortSignal)=>Promise<T>,success:(value:T)=>void,loading=false) {
   if(working.current)return;
-  working.current=true;setBusy(true);setError(null);
+  const request=++generation.current;
+  working.current=true;setBusy(true);setLoading(loading);setError(null);setAuthError(false);
   const controller=new AbortController();activeRequest.current=controller;
   let timer:ReturnType<typeof setTimeout>|undefined;
   try {
    const value=await Promise.race([action(controller.signal),new Promise<never>((_,reject)=>{
     timer=setTimeout(()=>{controller.abort();reject(new Error('Timed out'));},30_000);
    })]);
-   success(value);
+   if(request===generation.current)success(value);
   } catch(e) {
-   setError(e instanceof TaskConflictError ? e.message : loading ? 'Could not load the saved task. Your edits are still here.' : 'Could not confirm the save. Your edits are still here. Reload the saved task to check whether it saved before trying again.');
+   if(request!==generation.current)return;
+   setAuthError(e instanceof TaskAuthError);
+   setError(e instanceof TaskConflictError || e instanceof TaskAuthError ? e.message : loading ? 'Could not load the saved task. Your edits are still here.' : 'Could not confirm the save. Your edits are still here. Reload the saved task to check whether it saved before trying again.');
   } finally {
-   clearTimeout(timer);activeRequest.current=null;working.current=false;setBusy(false);
+   clearTimeout(timer);
+   if(request===generation.current){activeRequest.current=null;working.current=false;setBusy(false);setLoading(false);}
   }
+ }
+ function close() {
+  if(working.current&&!loading)return;
+  generation.current++;activeRequest.current?.abort();activeRequest.current=null;working.current=false;
+  setBusy(false);setLoading(false);setOpen(false);
  }
  function save() {
   if(working.current||missing)return;
@@ -58,9 +71,9 @@ export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;o
  }
  return <>
   <Button ref={opener} type="button" size="sm" variant="ghost" disabled={disabled} className="shrink-0" aria-label={`Edit task: ${task.text}`} onClick={()=>{
-   setOriginal({id:task.id,text:task.text,due_date:task.dueDate});setText(task.text);setDueDate(task.dueDate??'');setError(null);setMissing(false);setOpen(true);
+   setOriginal({id:task.id,text:task.text,due_date:task.dueDate});setText(task.text);setDueDate(task.dueDate??'');setError(null);setAuthError(false);setMissing(false);setOpen(true);
   }}>Edit</Button>
-  {open&&<LibraryDialog title="Edit personal task" description="Update your task text or due date. Completion and priority stay unchanged." busy={busy} onClose={()=>setOpen(false)} returnFocusRef={opener}>
+  {open&&<LibraryDialog title="Edit personal task" description="Update your task text or due date. Completion and priority stay unchanged." busy={busy&&!loading} onClose={close} returnFocusRef={opener}>
    <form className="space-y-4" onSubmit={e=>{e.preventDefault();save();}} noValidate>
     <div><label htmlFor={`${id}-text`} className="block text-sm font-medium">Task</label>
      <textarea id={`${id}-text`} value={text} onChange={e=>setText(e.target.value)} disabled={busy||missing} maxLength={1000} rows={3} className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"/>
@@ -68,10 +81,10 @@ export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;o
     <div><label htmlFor={`${id}-date`} className="block text-sm font-medium">Due date (optional)</label>
      <input ref={dateField} id={`${id}-date`} type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} disabled={busy||missing} className="mt-1 min-w-0 max-w-full rounded-md border bg-background px-3 py-2 text-sm"/>
     </div>
-    {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
+    {error&&<div role="alert" className="text-sm text-destructive"><p>{error}</p>{authError&&<Link href="/login?next=/today" className="underline">Sign in again</Link>}</div>}
     <div className="flex flex-wrap gap-2">
      <Button ref={saveAction} type="submit" aria-disabled={busy||missing} aria-busy={busy}>{busy?'Working…':'Save changes'}</Button>
-     <Button type="button" variant="ghost" disabled={busy} onClick={()=>setOpen(false)}>Cancel</Button>
+     <Button type="button" variant="ghost" disabled={busy&&!loading} onClick={close}>Cancel</Button>
     </div>
     <div className="border-t pt-3">
      <p className="text-xs text-muted-foreground">Reload replaces your edits with the latest saved text and date.</p>

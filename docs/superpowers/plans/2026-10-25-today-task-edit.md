@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans.
 
 **Goal:** Correct saved personal task text/date on Today safely.
-**Architecture:** Dedicated owner-scoped read/compare-and-update helpers, one editor per mounted row, parent callback updates that row without resetting completion. Existing LibraryDialog and todo table.
+**Architecture:** Dedicated owner-scoped read helpers and an invoker compare-and-update RPC, one editor per mounted row, parent callback updates that row without resetting completion. Existing LibraryDialog and todo table.
 **Tech Stack:** React/Next, Supabase, Vitest, Playwright.
 **Spec:** docs/superpowers/specs/2026-10-25-today-task-edit.md
 
@@ -11,7 +11,7 @@
 - Text 1–1000 trimmed characters; optional real date; completion and priority untouched.
 - Optimistic conflict check on original text/date; no zero-row success.
 - Preserve draft on failure, explicit reload, bounded requests and explicit opener focus.
-- No schema, dependencies or provider/status writes.
+- One additive invoker RPC; no new tables, dependencies or provider/status writes.
 
 ## Review focus
 - External edits and deletion must not be overwritten/reported saved.

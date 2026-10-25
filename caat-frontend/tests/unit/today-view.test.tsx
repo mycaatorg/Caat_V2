@@ -293,7 +293,7 @@ describe("Today", () => {
   });
 });
 
-vi.mock("@/lib/personal-tasks", () => ({ editPersonalTask: io.editTask, fetchPersonalTask: vi.fn(), validatePersonalTask: (p: unknown) => p, TaskConflictError: class extends Error {} }));
+vi.mock("@/lib/personal-tasks", () => ({ editPersonalTask: io.editTask, fetchPersonalTask: vi.fn(), validatePersonalTask: (p: unknown) => p, TaskAuthError: class extends Error {}, TaskConflictError: class extends Error {} }));
 
 it("editing a completed task preserves completion and Undo preserves the edited wording", async()=>{
  await mountComponent(<TodayView {...props()} />);

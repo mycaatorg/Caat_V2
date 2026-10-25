@@ -5,11 +5,12 @@ import {button,change,click,deferred,mountComponent,unmountAll} from './dom-help
 const io=vi.hoisted(()=>({edit:vi.fn(),load:vi.fn(),saved:vi.fn()}));
 vi.mock('@/lib/personal-tasks',()=>({
  editPersonalTask:io.edit,fetchPersonalTask:io.load,
+ TaskAuthError:class extends Error {constructor(){super('Please sign in again.');}},
  TaskConflictError:class extends Error {constructor(){super('This task changed or was removed elsewhere. Reload the saved task before trying again.');}},
  validatePersonalTask:(patch:{text:string;due_date:string|null})=>{if(!patch.text.trim())throw new Error('Write a task');return {...patch,text:patch.text.trim()};},
 }));
 import {TaskEditor} from '@/components/today/task-editor';
-import {TaskConflictError} from '@/lib/personal-tasks';
+import {TaskAuthError,TaskConflictError} from '@/lib/personal-tasks';
 const task={id:'t1',text:'Call admissions',dueDate:'2026-11-01'};
 const saved={id:'t1',text:'Call maths faculty',due_date:null,priority:1,done:true};
 const text=()=>document.querySelector('textarea') as HTMLTextAreaElement;
@@ -62,4 +63,17 @@ it('does not treat a partially entered native date as intentionally clearing the
  Object.defineProperty(date(),'validity',{configurable:true,value:{badInput:true}});
  await click(button('Save changes'));
  expect(io.edit).not.toHaveBeenCalled();expect(document.querySelector('[role="alert"]')?.textContent).toContain('Complete the due date');
+});
+
+it('allows canceling a slow reload and ignores its response after reopening',async()=>{
+ const pending=deferred<typeof saved>();io.load.mockReturnValueOnce(pending.promise);
+ await open();await change(text(),'Local draft');await click(button('Reload saved task'));
+ expect(button('Cancel').disabled).toBe(false);await click(button('Cancel'));expect(dialog()).toBeNull();
+ await click(button('Edit task: Call admissions'));await change(text(),'New session draft');
+ await act(async()=>pending.resolve(saved));expect(text().value).toBe('New session draft');
+});
+it('explains expired authentication and offers sign in while retaining the draft',async()=>{
+ io.edit.mockRejectedValueOnce(new TaskAuthError());await open();await change(text(),'Unsaved correction');await click(button('Save changes'));
+ expect(document.querySelector('[role="alert"]')?.textContent).toContain('sign in');expect(text().value).toBe('Unsaved correction');
+ expect(document.querySelector('a[href="/login?next=/today"]')).not.toBeNull();
 });
