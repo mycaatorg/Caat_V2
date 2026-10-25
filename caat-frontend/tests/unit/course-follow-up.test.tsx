@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React, { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { mountComponent, unmountAll, button, click, change, link, flush } from './dom-helpers';
+import { mountComponent, unmountAll, button, click, change, link } from './dom-helpers';
 import type { HubCourse } from '@/lib/course-data';
 const io = vi.hoisted(()=>({add:vi.fn()}));
 vi.mock('@/components/dashboard/api',()=>({addTodo:io.add}));
@@ -53,6 +53,7 @@ it('rejects empty tasks and bounds free text',async()=>{
 it('returns focus to the explicit opener even when pointer opening did not focus it',async()=>{
  await mountComponent(<CourseFollowUp course={course} schoolName="Alpha University"/>);
  const opener=button('Plan a follow-up for Computing');
- await click(opener);await click(button('Cancel'));await flush();
- expect(document.activeElement).toBe(opener);
+ await click(opener);await click(button('Cancel'));
+ // Radix restores focus in the unmount timer, after React's microtask flush.
+ await vi.waitFor(()=>expect(document.activeElement).toBe(opener));
 });
