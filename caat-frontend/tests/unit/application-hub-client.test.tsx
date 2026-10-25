@@ -410,7 +410,7 @@ describe("scholarships panel", () => {
 describe("courses you saved at this university (PROD-148)", () => {
   const savedCourse = {
     id: "alpha-cs", name: "Bachelor of Computing", campus: "City", application_route: "Apply through UAC.",
-    application_url: "https://www.uac.edu.au", source_url: "https://alpha.edu.au/computing", verified_at: "2026-10-20T00:00:00.000Z", active: true,
+    application_url: "https://www.uac.edu.au", source_url: "https://alpha.edu.au/computing", verified_at: "2026-10-20T00:00:00.000Z", active: true, prerequisites: null, prerequisites_url: null, assumed_knowledge: null, source_year: null,
   };
   const savedCard = () => document.querySelector('[aria-label="Courses you saved at Alpha University"]') as HTMLElement | null;
 
@@ -514,3 +514,5 @@ describe("linked library documents (PROD-78)", () => {
     expect(score()).toBe("1");
   });
 });
+
+vi.mock("@/components/dashboard/api", () => ({ addTodo: vi.fn() }));
