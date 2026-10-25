@@ -2060,3 +2060,78 @@ test("course follow-up survives a failed save and appears on Today without chang
     if (createdApp && app) expect((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${app.id}`,{headers})).ok()).toBe(true);
   }
 });
+
+// PROD-170: compare-and-update, recovery and owner isolation for task edits.
+test("Today task editing preserves other fields and recovers from conflicts and outages (PROD-170)", {tag:'@phone'}, async({page,request,browserName},testInfo)=>{
+ test.setTimeout(120_000);
+ const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin;
+ const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ const login=async(email:string)=>{
+  const res=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email,password:process.env.E2E_TEST_PASSWORD}});
+  expect(res.ok()).toBe(true);return res.json();
+ };
+ const session=await login(STUDENT_EMAIL);
+ const headers={apikey:key,Authorization:`Bearer ${session.access_token}`,Prefer:'return=representation'};
+ const initial='学'.repeat(995)+'\n",()';
+ const taskMarker=marker(`Edited task ${testInfo.project.name}`);
+ const changed=`${taskMarker} other tab`, finalText=`${taskMarker} corrected`;
+ const created=await request.post(`${api}/rest/v1/user_todos`,{headers,data:{user_id:session.user.id,text:initial,due_date:'2026-11-01',priority:1,done:false}});
+ expect(created.ok()).toBe(true);const task=(await created.json())[0];
+ const url=`${api}/rest/v1/user_todos?user_id=eq.${session.user.id}&id=eq.${task.id}`;
+ const todoRoute='**/rest/v1/rpc/edit_personal_task';
+ try{
+  await signInToIsolatedStudent(page);await page.goto('/today?view=todos');
+  const opener=page.getByRole('button',{name:`Edit task: ${initial}`,exact:true});
+  await expect(opener).toBeVisible();await opener.click();
+  const dialog=page.getByRole('dialog',{name:'Edit personal task'});
+  await expect(dialog.getByLabel('Task',{exact:true})).toHaveValue(initial);
+  // Exercise a successful 1000-character multilingual compare in the POST body.
+  await dialog.getByRole('button',{name:'Save changes',exact:true}).click();
+  await expect(dialog).toHaveCount(0);
+  expect((await(await request.get(url,{headers})).json())[0].text).toBe(initial);
+  await opener.click();
+  // Desktop segmented inputs permit partial typing; phone date pickers do not.
+  if(browserName==='chromium' && !testInfo.project.use.isMobile){
+   const dateInput=dialog.getByLabel('Due date (optional)');
+   await dateInput.focus();await dateInput.press('ArrowLeft');await dateInput.press('ArrowLeft');await dateInput.press('Backspace');
+   expect(await dateInput.evaluate((node:HTMLInputElement)=>node.validity.badInput)).toBe(true);
+   await dialog.getByRole('button',{name:'Save changes',exact:true}).click();
+   await expect(dialog.getByRole('alert')).toContainText('Complete the due date');
+   expect((await(await request.get(url,{headers})).json())[0].due_date).toBe('2026-11-01');
+   await dateInput.fill('2026-11-01');
+  }
+  await dialog.getByLabel('Task',{exact:true}).fill(finalText);
+  expect((await request.patch(url,{headers,data:{text:changed}})).ok()).toBe(true);
+  await dialog.getByRole('button',{name:'Save changes',exact:true}).click();
+  await expect(dialog.getByRole('alert')).toContainText('changed or was removed');
+  await expect(dialog.getByLabel('Task',{exact:true})).toHaveValue(finalText);
+  expect((await(await request.get(url,{headers})).json())[0].text).toBe(changed);
+  await dialog.getByRole('button',{name:'Reload saved task',exact:true}).click();
+  await expect(dialog.getByLabel('Task',{exact:true})).toHaveValue(changed);
+  await dialog.getByLabel('Task',{exact:true}).fill(finalText);
+  await dialog.getByLabel('Due date (optional)').fill('2026-11-05');
+  const box=await dialog.boundingBox();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await testInfo.attach('today-task-editor',{body:await page.screenshot(),contentType:'image/png'});
+  await page.route(todoRoute,route=>route.request().method()==='POST'?route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'test outage'})}):route.continue());
+  const save=dialog.getByRole('button',{name:'Save changes',exact:true});
+  await save.click();await expect(dialog.getByRole('alert')).toContainText('Could not confirm');await expect(save).toBeFocused();
+  await expect(dialog.getByLabel('Task',{exact:true})).toHaveValue(finalText);
+  await page.unroute(todoRoute);await save.click();await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button',{name:`Edit task: ${finalText}`,exact:true})).toBeFocused();
+  const stored=(await(await request.get(url,{headers})).json())[0];
+  expect(stored).toMatchObject({text:finalText,due_date:'2026-11-05',done:false,priority:1});
+  await page.reload();await expect(page.getByText(finalText,{exact:true})).toBeVisible();
+  const peer=await login('e2e.peer@caat.local.test');
+  const peerHeaders={apikey:key,Authorization:`Bearer ${peer.access_token}`,Prefer:'return=representation'};
+  const peerRead=await request.get(`${api}/rest/v1/user_todos?id=eq.${task.id}`,{headers:peerHeaders});
+  expect(peerRead.ok()).toBe(true);expect(await peerRead.json()).toEqual([]);
+  const peerWrite=await request.patch(`${api}/rest/v1/user_todos?id=eq.${task.id}`,{headers:peerHeaders,data:{text:'Should not write'}});
+  expect(peerWrite.ok()).toBe(true);expect(await peerWrite.json()).toEqual([]);
+  const peerRpc=await request.post(`${api}/rest/v1/rpc/edit_personal_task`,{headers:peerHeaders,data:{p_id:task.id,p_original_text:finalText,p_original_due_date:'2026-11-05',p_text:'Should not write',p_due_date:null}});
+  expect(peerRpc.ok()).toBe(true);expect(await peerRpc.json()).toEqual([]);
+  expect((await(await request.get(url,{headers})).json())[0].text).toBe(finalText);
+ }finally{
+  await page.unroute(todoRoute);
+  expect((await request.delete(url,{headers})).ok()).toBe(true);
+ }
+});
