@@ -72,9 +72,10 @@ export function createMockSupabase(opts: {
     return builder;
   });
 
-  const rpc = vi.fn((name: string, args: Record<string, unknown>) =>
-    Promise.resolve(opts.rpc ? opts.rpc(name, args) : { data: [], error: null }),
-  );
+  const rpc = vi.fn((name: string, args: Record<string, unknown>) => {
+    const result = Promise.resolve(opts.rpc ? opts.rpc(name, args) : { data: [], error: null });
+    return Object.assign(result, { abortSignal: (_signal: AbortSignal) => result });
+  });
 
   const sessionUser = opts.sessionUser === undefined ? opts.user ?? null : opts.sessionUser;
   const auth = {

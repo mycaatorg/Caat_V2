@@ -2,9 +2,9 @@
 import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { click, deferred, flush, hasText, link, mountComponent, queryAll, queryButton, queryLink, unmountAll } from "./dom-helpers";
+import { button, change, click, deferred, flush, hasText, link, mountComponent, queryAll, queryButton, queryLink, unmountAll } from "./dom-helpers";
 
-const io = vi.hoisted(() => ({ toggleTodo: vi.fn(), dismiss: vi.fn(), track: vi.fn(), refresh: vi.fn(), toast: { error: vi.fn(), success: vi.fn() } }));
+const io = vi.hoisted(() => ({ editTask: vi.fn(), toggleTodo: vi.fn(), dismiss: vi.fn(), track: vi.fn(), refresh: vi.fn(), toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: io.refresh }) }));
 vi.mock("@/components/dashboard/api", () => ({ toggleTodo: io.toggleTodo }));
 vi.mock("@/lib/onboarding", () => ({ dismissOnboarding: io.dismiss }));
@@ -291,4 +291,20 @@ describe("Today", () => {
     expect(window.location.search).toBe("?view=todos&page=2");
     expect(io.toggleTodo).toHaveBeenCalledWith("todo-11", true);
   });
+});
+
+vi.mock("@/lib/personal-tasks", () => ({ editPersonalTask: io.editTask, fetchPersonalTask: vi.fn(), validatePersonalTask: (p: unknown) => p, TaskAuthError: class extends Error {}, TaskConflictError: class extends Error {} }));
+
+it("editing a completed task preserves completion and Undo preserves the edited wording", async()=>{
+ await mountComponent(<TodayView {...props()} />);
+ await click(document.querySelector('[aria-label=\'Mark "Ask Ms Lee for a reference" done\']') as HTMLElement);
+ const undo = io.toast.success.mock.calls.at(-1)![1].action.onClick;
+ io.editTask.mockResolvedValueOnce({id:'t1',text:'Ask Dr Chen instead',due_date:'2026-11-05',done:false,priority:3});
+ await click(button('Edit task: Ask Ms Lee for a reference'));
+ await change(document.querySelector('textarea')!, 'Ask Dr Chen instead');
+ await click(button('Save changes'));
+ expect(document.querySelector('[aria-label=\'Restore "Ask Dr Chen instead"\']')).not.toBeNull();
+ await act(async()=>undo());
+ expect(document.querySelector('[aria-label=\'Mark "Ask Dr Chen instead" done\']')).not.toBeNull();
+ expect(document.body.textContent).toContain('5 Nov');
 });

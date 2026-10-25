@@ -1,5 +1,8 @@
 "use client";
 
+import { TaskEditor } from "@/components/today/task-editor";
+import type { TaskDetails } from "@/lib/personal-tasks";
+
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -194,7 +197,7 @@ function RecentRows({ items, todayISO }: { items: RecentWork[]; todayISO: string
 
 type TodayTodoRow = TodayTodo & { done: boolean };
 
-function TodoRows({ items, todayISO, pendingIds, onToggle }: { items: TodayTodoRow[]; todayISO: string; pendingIds: Set<string>; onToggle: (todo: TodayTodoRow, done: boolean) => void }) {
+function TodoRows({ items, todayISO, pendingIds, onToggle, onSaved }: { items: TodayTodoRow[]; todayISO: string; pendingIds: Set<string>; onToggle: (todo: TodayTodoRow, done: boolean) => void; onSaved: (saved: TaskDetails) => void }) {
   return (
     <ul className="border divide-y bg-card">
       {items.map((t) => {
@@ -203,7 +206,7 @@ function TodoRows({ items, todayISO, pendingIds, onToggle }: { items: TodayTodoR
           <li key={t.id} className={`flex items-start gap-3 px-4 py-3 ${t.done ? "opacity-60" : ""}`}>
             <Checkbox id={`todo-${t.id}`} checked={t.done} disabled={pendingIds.has(t.id)} className="mt-0.5 rounded-none" onCheckedChange={(checked) => onToggle(t, checked === true)} aria-label={t.done ? `Restore "${t.text}"` : `Mark "${t.text}" done`} />
             <label htmlFor={`todo-${t.id}`} className="flex-1 min-w-0 text-sm cursor-pointer">
-              <span className={`block ${t.done ? "line-through" : ""}`}>{t.text}</span>
+              <span className={`block break-words ${t.done ? "line-through" : ""}`}>{t.text}</span>
               {t.dueDate && !t.done ? (
                 <span className={`block text-xs ${overdue ? MAROON : "text-muted-foreground"}`}>
                   {overdue ? "Overdue · " : "Due "}
@@ -211,6 +214,7 @@ function TodoRows({ items, todayISO, pendingIds, onToggle }: { items: TodayTodoR
                 </span>
               ) : null}
             </label>
+            <TaskEditor task={t} disabled={pendingIds.has(t.id)} onSaved={onSaved} />
           </li>
         );
       })}
@@ -391,6 +395,12 @@ export function TodayView(props: TodayViewProps) {
     window.history.replaceState(null, "", focusUrl(null, 1));
   }
 
+  function savedTask(saved: TaskDetails) {
+    // A completion/Undo can settle separately; only apply fields this edit owns.
+    setTodos(current => current.map(todo => todo.id === saved.id ? { ...todo, text: saved.text, dueDate: saved.due_date } : todo));
+    router.refresh();
+  }
+
   async function toggleTodoState(todo: TodayTodoRow, done: boolean) {
     if (pendingTodoIdsRef.current.has(todo.id)) return;
     const version = (todoVersionsRef.current.get(todo.id) ?? 0) + 1;
@@ -451,7 +461,7 @@ export function TodayView(props: TodayViewProps) {
               {focus.view === "attention" ? <TaskRows items={visible as TodayTask[]} /> : null}
               {focus.view === "upcoming" ? <ComingUpRows items={visible as UnifiedDeadline[]} todayISO={todayISO} /> : null}
               {focus.view === "recent" ? <RecentRows items={visible as RecentWork[]} todayISO={todayISO} /> : null}
-              {focus.view === "todos" ? <TodoRows items={visible as TodayTodoRow[]} todayISO={todayISO} pendingIds={pendingTodoIds} onToggle={toggleTodoState} /> : null}
+              {focus.view === "todos" ? <TodoRows items={visible as TodayTodoRow[]} todayISO={todayISO} pendingIds={pendingTodoIds} onToggle={toggleTodoState} onSaved={savedTask} /> : null}
             </>
           ) : (
             <p className="border bg-card px-4 py-5 text-sm text-muted-foreground">
@@ -555,7 +565,7 @@ export function TodayView(props: TodayViewProps) {
               }
             />
             {todos.length ? (
-              <TodoRows items={todos.slice(0, PREVIEW_LIMIT.todos)} todayISO={todayISO} pendingIds={pendingTodoIds} onToggle={toggleTodoState} />
+              <TodoRows items={todos.slice(0, PREVIEW_LIMIT.todos)} todayISO={todayISO} pendingIds={pendingTodoIds} onToggle={toggleTodoState} onSaved={savedTask} />
             ) : (
               <p className="border bg-card px-4 py-5 text-sm text-muted-foreground">No open to-dos.</p>
             )}

@@ -75,3 +75,7 @@ Two phone engines run outside the PR gate, only when `CAAT_PHONE=1` is set (the 
 - `npm run test:e2e:phone`: isolated stack only (it needs `CAAT_ISOLATED_E2E=1` and loopback URLs). It checks that every signed-in page in the route manifest fits the screen, that the phone menu opens, reaches a tool, takes focus and closes on Escape and after navigating, and it runs the four journeys tagged `@phone`: essay autosave, resume reload, application tracking and failed-save recovery. Measured: 14 tests in about 1.2 min. It passed three runs in a row with no retries.
 
 Not verified: Tab-key reachability on WebKit. Safari skips links and buttons on Tab unless the user changes a setting, so that check is skipped there. Firefox and real devices are also not covered. Adding these to CI would cost about 2 min per run plus about 75 MiB of WebKit download; propose a manual `workflow_dispatch` job before any schedule.
+
+### Personal task editing (PROD-170)
+
+Fresh bootstrap applies `supabase/migrations/20261025020000_edit_personal_task.sql`. The Today browser journey verifies long multilingual original text through the POST-body RPC, conflict/reload, failure/retry, preserved completion/priority and peer isolation. Existing disposable stacks need this migration too; do not rely on a manually prepared local database as evidence that fresh CI bootstrap includes it.
