@@ -12,6 +12,7 @@ export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;o
  const activeRequest=useRef<AbortController|null>(null);
  const working=useRef(false);
  const saveAction=useRef<HTMLButtonElement|null>(null);
+ const dateField=useRef<HTMLInputElement|null>(null);
  const reloadAction=useRef<HTMLButtonElement|null>(null);
  const [open,setOpen]=useState(false);
  const [text,setText]=useState('');
@@ -40,6 +41,7 @@ export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;o
  }
  function save() {
   if(working.current||missing)return;
+  if(dateField.current?.validity.badInput){setError("Complete the due date, or clear all its parts to remove it.");dateField.current.focus();return;}
   let values;
   try {values=validatePersonalTask({text,due_date:dueDate||null});}
   catch(e) {setError(e instanceof Error ? e.message : 'Check your task text and due date.');return;}
@@ -64,7 +66,7 @@ export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;o
      <textarea id={`${id}-text`} value={text} onChange={e=>setText(e.target.value)} disabled={busy||missing} maxLength={1000} rows={3} className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"/>
     </div>
     <div><label htmlFor={`${id}-date`} className="block text-sm font-medium">Due date (optional)</label>
-     <input id={`${id}-date`} type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} disabled={busy||missing} className="mt-1 min-w-0 max-w-full rounded-md border bg-background px-3 py-2 text-sm"/>
+     <input ref={dateField} id={`${id}-date`} type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} disabled={busy||missing} className="mt-1 min-w-0 max-w-full rounded-md border bg-background px-3 py-2 text-sm"/>
     </div>
     {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
     <div className="flex flex-wrap gap-2">

@@ -2061,7 +2061,7 @@ test("course follow-up survives a failed save and appears on Today without chang
 });
 
 // PROD-170: compare-and-update, recovery and owner isolation for task edits.
-test("Today task editing preserves other fields and recovers from conflicts and outages (PROD-170)", {tag:'@phone'}, async({page,request},testInfo)=>{
+test("Today task editing preserves other fields and recovers from conflicts and outages (PROD-170)", {tag:'@phone'}, async({page,request,browserName},testInfo)=>{
  test.setTimeout(120_000);
  const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin;
  const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -2083,6 +2083,16 @@ test("Today task editing preserves other fields and recovers from conflicts and 
   await expect(opener).toBeVisible();await opener.click();
   const dialog=page.getByRole('dialog',{name:'Edit personal task'});
   await expect(dialog.getByLabel('Task',{exact:true})).toHaveValue(initial);
+  // Desktop segmented inputs permit partial typing; phone date pickers do not.
+  if(browserName==='chromium' && !testInfo.project.use.isMobile){
+   const dateInput=dialog.getByLabel('Due date (optional)');
+   await dateInput.focus();await dateInput.press('ArrowLeft');await dateInput.press('ArrowLeft');await dateInput.press('Backspace');
+   expect(await dateInput.evaluate((node:HTMLInputElement)=>node.validity.badInput)).toBe(true);
+   await dialog.getByRole('button',{name:'Save changes',exact:true}).click();
+   await expect(dialog.getByRole('alert')).toContainText('Complete the due date');
+   expect((await(await request.get(url,{headers})).json())[0].due_date).toBe('2026-11-01');
+   await dateInput.fill('2026-11-01');
+  }
   await dialog.getByLabel('Task',{exact:true}).fill(finalText);
   expect((await request.patch(url,{headers,data:{text:changed}})).ok()).toBe(true);
   await dialog.getByRole('button',{name:'Save changes',exact:true}).click();

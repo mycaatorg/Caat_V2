@@ -57,3 +57,9 @@ it('disables Edit while completion is pending',async()=>{
  await mountComponent(<TaskEditor task={task} disabled onSaved={io.saved}/>);
  expect(button('Edit task: Call admissions').disabled).toBe(true);
 });
+it('does not treat a partially entered native date as intentionally clearing the due date',async()=>{
+ await open();await change(date(),'');
+ Object.defineProperty(date(),'validity',{configurable:true,value:{badInput:true}});
+ await click(button('Save changes'));
+ expect(io.edit).not.toHaveBeenCalled();expect(document.querySelector('[role="alert"]')?.textContent).toContain('Complete the due date');
+});
