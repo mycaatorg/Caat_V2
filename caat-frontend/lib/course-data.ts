@@ -33,7 +33,7 @@ export function normalizeCourse(value: unknown): CourseOffering | null {
 /** A saved course as the application hub shows it (PROD-148): the same
  *  safe-URL and valid-date rules as the catalogue, but a row is kept (with an
  *  unsafe link dropped) because hiding a saved course would misreport it. */
-export type HubCourse = Pick<CourseOffering, 'id' | 'name' | 'campus' | 'application_route' | 'application_url' | 'verified_at' | 'active'> & { source_url: string | null };
+export type HubCourse = Pick<CourseOffering, 'id' | 'name' | 'campus' | 'application_route' | 'application_url' | 'verified_at' | 'active' | 'prerequisites' | 'prerequisites_url' | 'assumed_knowledge' | 'source_year'> & { source_url: string | null };
 
 export function normalizeHubCourse(value: unknown): HubCourse | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -41,7 +41,9 @@ export function normalizeHubCourse(value: unknown): HubCourse | null {
   const id = text(r.id), name = text(r.name);
   if (!id || !name) return null;
   return {
-    id, name, campus: text(r.campus), application_route: text(r.application_route),
+    id, name, prerequisites: text(r.prerequisites), prerequisites_url: safeHref(text(r.prerequisites_url)),
+    assumed_knowledge: text(r.assumed_knowledge), source_year: year(r.source_year),
+    campus: text(r.campus), application_route: text(r.application_route),
     application_url: safeHref(text(r.application_url)), source_url: safeHref(text(r.source_url)),
     verified_at: checkedDate(r.verified_at), active: r.active === true,
   };
