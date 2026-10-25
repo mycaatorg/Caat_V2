@@ -47,3 +47,9 @@ describe("addTodo", () => {
   expect(io.client.queries).toHaveLength(0);
  });
 });
+
+it("does not insert after a course save times out during authentication", async()=>{
+ const controller=new AbortController();controller.abort();
+ await expect(addTodo("Check prerequisites",undefined,controller.signal)).rejects.toThrow();
+ expect(io.client.queries).toHaveLength(0);
+});

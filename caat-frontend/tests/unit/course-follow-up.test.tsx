@@ -9,7 +9,7 @@ vi.mock('next/link',()=>({default:({href,children,...rest}: React.PropsWithChild
 import { CourseFollowUp } from '@/components/courses/course-follow-up';
 const course:HubCourse = {id:'cs',name:'Computing',campus:null,application_route:null,application_url:null,source_url:'https://example.edu.au',verified_at:null,active:true,prerequisites:'Maths',prerequisites_url:null,assumed_knowledge:null,source_year:2027};
 beforeEach(()=>{io.add.mockReset();io.add.mockResolvedValue({id:'todo1'});});
-afterEach(unmountAll);
+afterEach(()=>{vi.useRealTimers();unmountAll();});
 const dialog = () => document.querySelector('[role="dialog"]');
 const field = () => document.querySelector('textarea') as HTMLTextAreaElement;
 const date = () => document.querySelector('input[type="date"]') as HTMLInputElement;
@@ -22,7 +22,7 @@ it('creates an edited personal task with an optional due date and opens the corr
  await change(field(),'  Ask about bridging maths  ');await change(date(),'2026-11-01');
  await click(button('Save to Today'));
  expect(dialog()).toBeNull();
- expect(io.add).toHaveBeenCalledWith('Ask about bridging maths',{due_date:'2026-11-01',priority:2});
+ expect(io.add).toHaveBeenCalledWith('Ask about bridging maths',{due_date:'2026-11-01',priority:2},expect.any(AbortSignal));
  expect(status()?.textContent).toContain('Saved to your personal to-dos');
  expect(link('View on Today').getAttribute('href')).toBe('/today?view=todos');
 });
@@ -56,4 +56,22 @@ it('returns focus to the explicit opener even when pointer opening did not focus
  await click(opener);await click(button('Cancel'));
  // Radix restores focus in the unmount timer, after React's microtask flush.
  await vi.waitFor(()=>expect(document.activeElement).toBe(opener));
+});
+
+it('releases a stalled save after 30 seconds and preserves text for recovery',async()=>{
+ io.add.mockImplementation(()=>new Promise(()=>{}));
+ await open();await change(field(),'Phone admissions');
+ vi.useFakeTimers();await click(button('Save to Today'));
+ await act(async()=>{await vi.advanceTimersByTimeAsync(30000);});
+ expect(alert()?.textContent).toContain('Could not confirm');
+ expect(field().value).toBe('Phone admissions');
+ expect(button('Cancel').disabled).toBe(false);
+ expect(io.add.mock.calls[0][2].aborted).toBe(true);
+});
+it('keeps the Save action focusable during pending/error recovery',async()=>{
+ let reject!:(e:Error)=>void;io.add.mockImplementation(()=>new Promise((_,r)=>{reject=r;}));
+ await open();const save=button('Save to Today');save.focus();await click(save);
+ expect(save.disabled).toBe(false);expect(save.getAttribute('aria-disabled')).toBe('true');
+ await act(async()=>reject(new Error('offline')));
+ expect(document.activeElement).toBe(save);expect(save.getAttribute('aria-disabled')).toBe('false');
 });

@@ -215,7 +215,8 @@ export async function fetchTodos(): Promise<TodoItem[]> {
 
 export async function addTodo(
   text: string,
-  opts?: { due_date?: string | null; priority?: number }
+  opts?: { due_date?: string | null; priority?: number },
+  signal?: AbortSignal
 ): Promise<TodoItem> {
   const {
     data: { user },
@@ -223,7 +224,8 @@ export async function addTodo(
   } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Not authenticated");
 
-  const { data, error } = await supabase
+  if (signal?.aborted) throw new Error("Save canceled");
+  const query = supabase
     .from("user_todos")
     .insert({
       user_id: user.id,
@@ -232,8 +234,8 @@ export async function addTodo(
       due_date: opts?.due_date ?? null,
       priority: opts?.priority ?? 2,
     })
-    .select(TODO_SELECT)
-    .single();
+    .select(TODO_SELECT);
+  const { data, error } = await (signal ? query.abortSignal(signal) : query).single();
 
   if (error) throw new Error(sanitizeError(error));
   if (!data?.id) throw new Error("Could not confirm the saved to-do");

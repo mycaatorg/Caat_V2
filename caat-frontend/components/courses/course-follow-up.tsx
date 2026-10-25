@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { LibraryDialog } from '@/components/evidence/library-dialog';
@@ -12,6 +12,8 @@ export function CourseFollowUp({ course, schoolName }: { course: HubCourse; scho
   const id = useId();
   const opener = useRef<HTMLButtonElement | null>(null);
   const writing = useRef(false);
+  const activeRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => activeRequest.current?.abort(), []);
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -33,13 +35,25 @@ export function CourseFollowUp({ course, schoolName }: { course: HubCourse; scho
     writing.current = true;
     setBusy(true);
     setError(null);
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await addTodo(task, { due_date: dueDate || null, priority: 2 });
+      // Bound authentication as well as the insert. An aborted insert can still
+      // have committed, so recovery copy asks the student to check Today first.
+      await Promise.race([
+        addTodo(task, { due_date: dueDate || null, priority: 2 }, controller.signal),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => { controller.abort(); reject(new Error('Save timed out')); }, 30_000);
+        }),
+      ]);
       setSaved(true);
       setOpen(false);
     } catch {
       setError('Could not confirm the saved task. Your text is still here. Check Today before retrying if your connection was interrupted.');
     } finally {
+      clearTimeout(timer);
+      activeRequest.current = null;
       writing.current = false;
       setBusy(false);
     }
@@ -64,7 +78,7 @@ export function CourseFollowUp({ course, schoolName }: { course: HubCourse; scho
         </div>
         {error && <div role="alert" className="text-sm text-destructive"><p>{error}</p><Link href="/today?view=todos" className="underline">Check your to-dos on Today</Link></div>}
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save to Today'}</Button>
+          <Button type="submit" aria-disabled={busy} aria-busy={busy}>{busy ? 'Saving…' : 'Save to Today'}</Button>
           <Button type="button" variant="ghost" disabled={busy} onClick={() => setOpen(false)}>Cancel</Button>
         </div>
       </form>

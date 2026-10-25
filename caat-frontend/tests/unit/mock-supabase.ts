@@ -50,7 +50,7 @@ export function createMockSupabase(opts: {
         return builder;
       };
     // Chaining/filtering methods return the builder unchanged.
-    for (const m of ["select", "eq", "in", "order", "ilike", "or", "limit", "range", "not", "gte", "lte", "is"]) {
+    for (const m of ["abortSignal", "select", "eq", "in", "order", "ilike", "or", "limit", "range", "not", "gte", "lte", "is"]) {
       builder[m] = passthrough(m);
     }
     // Mutating verbs stamp the op so the resolver can branch on read vs write.
