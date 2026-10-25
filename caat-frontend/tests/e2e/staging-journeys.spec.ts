@@ -2050,8 +2050,9 @@ test("course follow-up survives a failed save and appears on Today without chang
     expect((await read('user_school_applications',`${own}&id=eq.${app.id}`))[0].status).toBe(app.status);
     await card.getByRole('link',{name:'View on Today',exact:true}).click();
     await expect(page).toHaveURL(/\/today\?view=todos/);
-    await expect(page.getByText(taskText,{exact:true})).toBeVisible();
-    await page.reload();await expect(page.getByText(taskText,{exact:true})).toBeVisible();
+    const savedTask = page.getByRole('region',{name:'Your to-dos',exact:true}).getByText(taskText,{exact:true});
+    await expect(savedTask).toBeVisible();
+    await page.reload();await expect(savedTask).toBeVisible();
   } finally {
     await page.unroute(todoRoute);
     expect((await request.delete(`${api}/rest/v1/user_todos?${taskFilter}`,{headers})).ok()).toBe(true);
