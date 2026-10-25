@@ -19,7 +19,7 @@ vi.mock("@/lib/supabase/client", () => {
       if (op) ctx.op = op;
       return b;
     };
-    for (const m of ["select", "eq", "in", "order", "limit", "is", "not"]) b[m] = pass(m);
+    for (const m of ["select", "eq", "in", "order", "limit", "is", "not", "range"]) b[m] = pass(m);
     for (const m of ["insert", "update", "upsert", "delete"]) b[m] = pass(m, m);
     b.then = (f: (v: unknown) => unknown, r?: (e: unknown) => unknown) => Promise.resolve(state.resolver(ctx)).then(f, r);
     return b;
@@ -120,11 +120,13 @@ describe("reading links", () => {
       ],
       error: null,
     });
-    expect(await fetchDocumentUsage()).toEqual({ "doc-1": 2, "doc-2": 1 });
+    expect(await fetchDocumentUsage()).toEqual({ "doc-1": [{applicationId:"app-1",schoolName:"Application",tailored:false},{applicationId:"app-2",schoolName:"Application",tailored:false}], "doc-2": [{applicationId:"app-1",schoolName:"Application",tailored:false}] });
     expect(state.queries).toHaveLength(1);
     expect(last().table).toBe(LINKS);
-    expect(calls(last(), "eq")).toEqual([["user_id", "user-1"]]);
-    expect(calls(last(), "not")).toEqual([["document_id", "is", null]]);
+    expect(calls(last(), "eq")).toContainEqual(["user_id", "user-1"]);
+    expect(calls(last(), "eq")).toContainEqual(["kind", "document"]);
+    expect(calls(last(), "order")).toEqual([["id"]]);
+    expect(calls(last(), "range")).toEqual([[0,199]]);
   });
 
   it("throws when usage cannot be read, so the page never shows a wrong zero", async () => {
@@ -246,4 +248,14 @@ describe("library updated since tailoring", () => {
     expect(linkTitle(link({ tailoredTitle: "Arts portfolio", tailoredAt: "2026-10-21T00:00:00.000Z" }))).toBe("Arts portfolio");
     expect(linkTitle(link({ document: null }))).toBe("Document unavailable");
   });
+});
+
+it("reads all document usage pages with names and tailoring, failing on a later page", async () => {
+  state.resolver = q => ({data:calls(q,"range")[0]?.[0] === 200 ? [{document_id:"doc-1",application_id:"last",tailored_at:"2026-10-25",user_school_applications:{schools:{name:"Last University"}}}] : Array.from({length:200},(_,i)=>({document_id:"doc-1",application_id:`app-${i}`,tailored_at:null})),error:null});
+  const usage = await fetchDocumentUsage();
+  expect(usage["doc-1"]).toHaveLength(201);
+  expect(usage["doc-1"][200]).toEqual({applicationId:"last",schoolName:"Last University",tailored:true});
+  expect(state.queries.every(q=>calls(q,"eq").some(args=>args[0] === "user_id" && args[1] === "user-1"))).toBe(true);
+  state.resolver = q => calls(q,"range")[0]?.[0] === 200 ? {data:null,error:{message:"private failure"}} : {data:Array.from({length:200},(_,i)=>({document_id:"doc-1",application_id:`app-${i}`})),error:null};
+  await expect(fetchDocumentUsage()).rejects.toThrow("Could not load where your documents are used");
 });
