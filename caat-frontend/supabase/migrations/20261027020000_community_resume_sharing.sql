@@ -1,5 +1,19 @@
 -- PROD-97: explicitly published resume copies. Original drafts stay owner-only.
 begin;
+-- Consumed IDs survive post/copy removal, so delayed requests cannot republish
+-- personal data. Only identity metadata is retained, until account deletion.
+create table public.community_resume_publications (
+  id uuid primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+create index community_resume_publications_owner on public.community_resume_publications(user_id);
+alter table public.community_resume_publications enable row level security;
+revoke all on public.community_resume_publications from public,anon,authenticated;
+grant select on public.community_resume_publications to authenticated;
+grant all on public.community_resume_publications to service_role;
+create policy resume_publications_owner_select on public.community_resume_publications for select to authenticated using (user_id=auth.uid());
+
 create table public.community_resume_shares (
   post_id uuid primary key references public.community_posts(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -41,6 +55,12 @@ begin
     -- In particular, an old request must not resurrect a revoked copy.
     raise exception 'This publication has changed or was removed. Preview a new copy.' using errcode = '23514';
   end if;
+  if exists (select 1 from public.community_resume_publications where id=p_post_id) then
+    raise exception 'This publication was removed. Preview a new copy.' using errcode = '23514';
+  end if;
+  if (select count(*) from public.community_resume_publications where user_id=v_user) >= 5000 then
+    raise exception 'Resume publication limit reached' using errcode = '23514';
+  end if;
   if not exists (select 1 from public.resumes r where r.id = (p_post->>'resume_link')::uuid and r.user_id = v_user) then
     raise exception 'Resume not found' using errcode = '42501';
   end if;
@@ -51,6 +71,7 @@ begin
      or (select count(*) from public.community_posts where user_id = v_user and created_at >= now() - interval '24 hours') >= 100 then
     raise exception 'Post limit reached' using errcode = '23514';
   end if;
+  insert into public.community_resume_publications(id,user_id) values(p_post_id,v_user);
   insert into public.community_posts(id,user_id,content,topic_tag,result_card,score_card,resume_link,is_anonymous,university_id,poll_options,group_id)
   values(p_post_id,v_user,coalesce(p_post->>'content',''),p_post->>'topic_tag',
     nullif(p_post->'result_card','null'::jsonb),nullif(p_post->'score_card','null'::jsonb),(p_post->>'resume_link')::uuid,

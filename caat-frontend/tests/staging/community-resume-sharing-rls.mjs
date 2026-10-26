@@ -21,6 +21,10 @@ try{
  ok(await create(owner.client));
  assert.deepEqual(await read(peer.client),snapshot);
  assert.deepEqual(await read(owner.client),snapshot);
+ assert.deepEqual(ok(await peer.client.from('community_resume_publications').select('*').eq('id',post)),[]);
+ assert.ok((await anon.from('community_resume_publications').select('*')).error);
+ assert.ok((await owner.client.from('community_resume_publications').delete().eq('id',post)).error);
+ assert.ok((await owner.client.from('community_resume_publications').insert({id:randomUUID(),user_id:owner.id})).error);
  assert.ok((await anon.rpc('read_community_resume',{p_post_id:post})).error);
  assert.deepEqual(ok(await peer.client.from('resumes').select('id').eq('id',resume)),[]);
  assert.deepEqual(ok(await peer.client.from('community_resume_shares').select('*').eq('post_id',post)),[]);
@@ -57,8 +61,11 @@ try{
  ok(await owner.client.from('community_resume_shares').delete().eq('post_id',post));
  assert.equal(await read(peer.client),null);
  assert.ok((await create(owner.client)).error); // replay cannot resurrect revoked shares
+ ok(await owner.client.from('community_posts').delete().eq('id',post));
+ assert.ok((await create(owner.client)).error,'revoke then delete cannot be replayed');
  ok(await owner.client.from('community_posts').delete().eq('id',privatePost));
  assert.equal(await read(owner.client,privatePost),null);
+ assert.ok((await create(owner.client,privatePost,{group_id:group})).error,'deleted post publication cannot be replayed');
  assert.deepEqual(ok(await admin.from('community_resume_shares').select('post_id').eq('post_id',privatePost)),[]);
  // A former private-group member retains a direct owner removal/export path.
  const email=`resume-cleanup-${randomUUID()}@caat.local.test`;
@@ -80,11 +87,13 @@ try{
  ok(await temp.client.rpc('delete_own_account'));disposableUser=null;disposableClient=null;
  assert.deepEqual(ok(await admin.from('community_resume_shares').select('post_id').eq('post_id',cascadePost)),[]);
  assert.deepEqual(ok(await admin.from('community_posts').select('id').eq('id',cascadePost)),[]);
+ assert.deepEqual(ok(await admin.from('community_resume_publications').select('id').eq('user_id',temp.id)),[]);
  console.log('PASS community resume privacy, immutable snapshots, atomicity, retries, revocation and post cascade');
 }finally{
  if(disposableClient)await disposableClient.rpc('delete_own_account');
  if(disposableUser)await admin.auth.admin.deleteUser(disposableUser);
  await admin.from('community_posts').delete().in('id',[post,legacy,privatePost,badPost]);
+ await admin.from('community_resume_publications').delete().in('id',[post,privatePost,badPost]);
  await admin.from('community_groups').delete().eq('id',group);
  await admin.from('resumes').delete().eq('id',resume);
  await admin.from('community_blocks').delete().eq('blocker_id',owner.id).eq('blocked_id',peer.id);

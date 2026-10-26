@@ -25,6 +25,7 @@ export const accountExportCollections = [
   { table: "community_groups", owner: "creator_id", order: ["id"] },
   { table: "community_likes", owner: "user_id", order: ["post_id", "user_id"] },
   { table: "community_poll_votes", owner: "user_id", order: ["post_id", "user_id"] },
+  { table: "community_resume_publications", owner: "user_id", order: ["id"] },
   { table: "community_resume_shares", owner: "user_id", order: ["post_id"] },
   { table: "community_posts", owner: "user_id", order: ["id"] },
   { table: "community_profile_settings", owner: "user_id", order: ["user_id"] },

@@ -18,6 +18,7 @@ export type Database = {
   }
   public: {
     Tables: {
+      community_resume_publications: {Row:{id:string;user_id:string;created_at:string};Insert:never;Update:never;Relationships:[]}
       community_resume_shares: { Row: {post_id:string;user_id:string;snapshot:Json;request_hash:string;created_at:string}; Insert:never; Update:never; Relationships:[] }
       shortlist_shares: { Row: ShareRecord; Insert: never; Update: never; Relationships: [] }
       course_preparation_checks: {

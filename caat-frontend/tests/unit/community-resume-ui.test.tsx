@@ -81,6 +81,15 @@ describe('community resume reader',()=>{
 });
 describe('resume share consent',()=>{
  afterEach(cleanup);
+ it('requires renewed consent after changing to anonymous posting',async()=>{
+  mocks.prepare.mockResolvedValue({snapshot,error:null});const onChange=vi.fn();
+  const view=await render(<ResumeSharePicker resumeId="resume" onChange={onChange} anonymous={false}/>);
+  await click(button('Preview shared copy'));await click(screen.getByRole('checkbox'));
+  expect(onChange.mock.lastCall?.[0]?.snapshot).toEqual(snapshot);
+  await view.rerender(<ResumeSharePicker resumeId="resume" onChange={onChange} anonymous/>);
+  expect(onChange.mock.lastCall?.[0]).toBeNull();
+  expect(document.querySelector<HTMLInputElement>('input[type=checkbox]')?.checked??false).toBe(false);
+ });
  it('shows the exact copy and requires explicit consent; changed selection discards stale preview',async()=>{
   let resolve!:(value:unknown)=>void;mocks.prepare.mockImplementationOnce(()=>new Promise(r=>{resolve=r;})).mockResolvedValue({snapshot:{...snapshot,title:'Second resume'},error:null});const onChange=vi.fn();
   const view=await render(<ResumeSharePicker resumeId="first" onChange={onChange} anonymous/>);

@@ -15,7 +15,7 @@ export function ResumeSharePicker({resumeId,onChange,anonymous,disabled=false}:{
   // Selection invalidates both the displayed copy and its consent.
   setPreview(null);setConfirmed(false);setError(null);setBusy(false);onChange(null);
   return ()=>{requests.current++;};
- },[resumeId,onChange]);
+ },[resumeId,onChange,anonymous]);
  async function prepare(){
   const request=++generation.current;setBusy(true);setPreview(null);setConfirmed(false);onChange(null);setError(null);
   try{
