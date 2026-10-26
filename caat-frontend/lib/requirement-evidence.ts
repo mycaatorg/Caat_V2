@@ -16,8 +16,16 @@ type EvidenceRow = { id: string; kind: string; tailored_title: string | null; ta
  * current tailoring; draft content is read directly, never copied or modified. */
 export async function fetchRequirementWork(applicationId: string): Promise<RequirementWork> {
  const userId = await evidenceUserId();
- const [links,evidence,drafts] = await Promise.all([
+ const [links,sources] = await Promise.all([
   evidencePages((from,to)=>supabase.from(TABLE).select('*').eq('user_id',userId).eq('application_id',applicationId).order('created_at').order('id').range(from,to),LOAD_ERROR),
+  fetchApplicationWorkSources(applicationId),
+ ]);
+ return {links,sources};
+}
+/** Current owned sources shared by scholarship and course preparation. */
+export async function fetchApplicationWorkSources(applicationId:string):Promise<WorkSource[]> {
+ const userId=await evidenceUserId();
+ const [evidence,drafts] = await Promise.all([
   evidencePages((from,to)=>supabase.from('application_evidence_links').select('id, kind, tailored_title, tailored_body, tailored_at, documents(file_name), evidence_items(*)').eq('user_id',userId).eq('application_id',applicationId).order('created_at').order('id').range(from,to),LOAD_ERROR),
   evidencePages((from,to)=>supabase.from('essay_drafts').select('id, label, content, prompt_id, prompt_slug, school_id').eq('user_id',userId).order('id').range(from,to),LOAD_ERROR),
  ]);
@@ -27,7 +35,7 @@ export async function fetchRequirementWork(applicationId: string): Promise<Requi
   if(row.kind==='item' && row.evidence_items) sources.push({kind:'evidence',id:row.id,title:row.tailored_title??row.evidence_items.title,category:row.evidence_items.kind,body:row.tailored_at?row.tailored_body??'':evidenceText(row.evidence_items),href:'/profile#evidence-library',tailored:!!row.tailored_at});
  }
  for(const row of drafts) sources.push({kind:'draft',id:row.id,title:row.label||row.prompt_slug||'Untitled draft',category:'Essay draft',body:row.content,href:`/essays?prompt=${encodeURIComponent(row.prompt_id)}${row.school_id===null?'':`&school=${row.school_id}`}`,tailored:false});
- return {links,sources};
+ return sources;
 }
 export type LinkWorkInput = { applicationId:string; schoolId:number; scholarshipId:string; itemKey:string; label:string; source:Pick<WorkSource,'kind'|'id'> };
 export async function linkRequirementWork(input:LinkWorkInput): Promise<RequirementWorkLink> {

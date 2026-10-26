@@ -11,3 +11,8 @@ ON CONFLICT (id) DO UPDATE SET institution_key = EXCLUDED.institution_key, insti
   program_code = EXCLUDED.program_code, name = EXCLUDED.name, school_id = EXCLUDED.school_id, campus = EXCLUDED.campus,
   duration = EXCLUDED.duration, application_route = EXCLUDED.application_route, application_url = EXCLUDED.application_url,
   source_url = EXCLUDED.source_url, source_year = EXCLUDED.source_year, verified_at = EXCLUDED.verified_at, active = EXCLUDED.active;
+
+-- PROD-175 isolated preparation journey owns a separate application fixture.
+INSERT INTO public.schools(id,name,country,institution_type) VALUES(900175,'E2E Preparation University','Australia','university') ON CONFLICT(id) DO NOTHING;
+INSERT INTO public.course_offerings(id,institution_key,institution_name,program_code,name,school_id,prerequisites,assumed_knowledge,application_route,source_url,source_year,verified_at)
+VALUES('e2e-preparation-course','e2e-preparation','E2E Preparation University','E2E175','E2E Preparation Course',900175,'Mathematics preparation recorded for this synthetic course.','Programming familiarity','Apply through the synthetic provider','https://university.example.test/preparation',2026,'2026-10-01T00:00:00Z') ON CONFLICT(id) DO NOTHING;

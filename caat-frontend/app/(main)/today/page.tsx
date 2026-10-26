@@ -1,3 +1,4 @@
+import { CoursePreparationReview } from "@/components/today/course-preparation-review";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
@@ -45,6 +46,7 @@ export default async function TodayPage({ searchParams = Promise.resolve({}) }: 
   return (
     <>
       <PageHeader title="Today" />
+      <CoursePreparationReview />
       <TodayView
         initialQuery={query.toString()}
         name={name}

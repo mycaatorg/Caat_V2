@@ -1,3 +1,4 @@
+import type { PreparationCheck, PreparationWork } from "./course-preparation";
 import type { CourseOffering } from "./courses";
 
 export type Json =
@@ -16,6 +17,18 @@ export type Database = {
   }
   public: {
     Tables: {
+      course_preparation_checks: {
+        Row: PreparationCheck
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      course_preparation_work: {
+        Row: PreparationWork
+        Insert: {user_id:string;application_id:string;check_id:string;evidence_link_id?:string|null;essay_draft_id?:string|null}
+        Update: never
+        Relationships: []
+      }
       course_offerings: {
         Row: CourseOffering
         Insert: Partial<CourseOffering> & Pick<CourseOffering, "id" | "institution_key" | "institution_name" | "program_code" | "name" | "source_url">
@@ -1865,6 +1878,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      save_course_preparation: {
+        Args: {p_application_id:string;p_course_id:string;p_item_key:string;p_action:string;p_expected_revision:string|null;p_expected_snapshot:Json}
+        Returns: PreparationCheck[]
+      }
       edit_personal_task: {
         Args: { p_id: string; p_original_text: string; p_original_due_date: string | null; p_text: string; p_due_date: string | null }
         Returns: { id: string; text: string; due_date: string | null; done: boolean; priority: number }[]

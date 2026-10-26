@@ -37,6 +37,7 @@ import {
   fetchHubScholarshipAttachments,
   type ApplicationHub,
 } from "./api";
+import { CoursePreparationCard } from "@/components/applications/course-preparation-card";
 import { SavedCoursesCard } from "@/components/applications/saved-courses-card";
 import { updateApplicationMajors } from "@/app/(main)/applications/api";
 import { mentionsSchool, type SavedScholarshipForHub } from "@/lib/scholarship-tracking";
@@ -339,6 +340,8 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
               onRetry={() => void retrySavedCourses()}
               checkedAt={checkedAt}
             />
+
+            <CoursePreparationCard key={applicationId} applicationId={applicationId} schoolId={hub.schoolId} />
 
             {/* essays */}
             <Card className="shadow-sm">
