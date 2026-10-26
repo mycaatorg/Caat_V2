@@ -13,6 +13,7 @@ export default function robots(): MetadataRoute.Robots {
       disallow: [
         "/today",
         "/shortlist",
+        "/share",
         "/welcome",
         "/dashboard",
         "/profile",

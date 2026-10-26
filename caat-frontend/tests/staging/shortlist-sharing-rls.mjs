@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import {randomBytes,randomUUID} from 'node:crypto';
+import {createClient} from '@supabase/supabase-js';
+import {assertLocalApiUrl} from './safety.mjs';
+assertLocalApiUrl(process.env.SUPABASE_URL);
+const opts={auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}};
+const admin=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,opts),anon=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_ANON_KEY,opts);
+const ok=r=>{assert.ifError(r.error);return r.data;},token=()=>randomBytes(32).toString('hex'),users=[];
+async function user(){const email=`e2e.share.${randomUUID()}@caat.local.test`;const u=ok(await admin.auth.admin.createUser({email,password:process.env.E2E_TEST_PASSWORD,email_confirm:true})).user;users.push(u.id);const client=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_ANON_KEY,opts);ok(await client.auth.signInWithPassword({email,password:process.env.E2E_TEST_PASSWORD}));return{id:u.id,client};}
+const courseId=`share-${randomUUID()}`;
+try{
+ const owner=await user(),peer=await user();
+ ok(await admin.from('course_offerings').insert({id:courseId,institution_key:'sharing',institution_name:'Share university',program_code:'CODE80',name:'Share course',campus:'North',school_id:900001,source_url:'https://example.edu/course',source_year:2026}));
+ ok(await owner.client.from('user_course_bookmarks').insert({user_id:owner.id,course_id:courseId}));
+ ok(await owner.client.from('user_bookmarked_schools').insert({user_id:owner.id,school_id:900001}));
+ const major='e2000000-0000-4000-8000-000000000001',scholarship='e2000000-0000-4000-8000-000000000002';
+ ok(await owner.client.from('user_bookmarked_majors').insert({user_id:owner.id,major_id:major}));
+ ok(await owner.client.from('user_bookmarked_scholarships').insert({user_id:owner.id,scholarship_id:scholarship}));
+ const selection=[{kind:'course',id:courseId},{kind:'school',id:'900001'},{kind:'major',id:major},{kind:'scholarship',id:scholarship}];
+ const preview=async(s=selection,c=owner.client)=>c.rpc('preview_shortlist_share',{p_selection:s});
+ const items=ok(await preview());assert.equal(items.length,4);
+ for(const item of items)assert.deepEqual(Object.keys(item).sort(),['details','id','kind','sourceUrl','title']);assert.deepEqual(Object.keys(items[0]).sort(),['details','id','kind','sourceUrl','title']);
+ for(const bad of [[],[...selection,selection[0]],[{kind:'document',id:randomUUID()}],[{kind:'course',id:'not-saved'}],null])assert.ok((await preview(bad)).error,'invalid/unsaved selection denied');
+ assert.ok((await preview(selection,peer.client)).error);assert.ok((await preview(selection,anon)).error);
+ const raw=token(),args={p_selection:selection,p_expected_items:items,p_token:raw};
+ assert.equal((await owner.client.rpc('create_shortlist_share',{...args,p_expected_items:[{...items[0],title:'Forged'}]})).error?.code,'PT409');
+ const [created,retry]=await Promise.all([owner.client.rpc('create_shortlist_share',args),owner.client.rpc('create_shortlist_share',args)]);
+ const share=ok(created)[0];assert.equal(ok(retry)[0].id,share.id,'idempotent concurrent create');assert.notEqual(share.token_hash,raw);assert.ok(!JSON.stringify(share).includes(raw));
+ const read=async t=>ok(await anon.rpc('read_shortlist_share',{p_token:t}));
+ assert.deepEqual((await read(raw)).items,items);assert.deepEqual(Object.keys(await read(raw)).sort(),['created_at','expires_at','items']);
+ assert.equal(await read('bad'),null);assert.equal(await read(token()),null);assert.equal(await read(null),null);
+ assert.equal((await anon.from('shortlist_shares').select('*')).error?.code,'42501');
+ assert.deepEqual(ok(await peer.client.from('shortlist_shares').select('*')),[]);
+ assert.equal((await owner.client.from('shortlist_shares').insert({user_id:owner.id})).error?.code,'42501');
+ assert.equal((await owner.client.from('shortlist_shares').update({items:[]}).eq('id',share.id)).error?.code,'42501');
+ assert.ok((await peer.client.rpc('revoke_shortlist_share',{p_id:share.id})).error);
+ assert.ok((await peer.client.rpc('replace_shortlist_share',{p_id:share.id,p_expected_revision:share.revision,p_token:token()})).error);
+ // Saved snapshot is independent of later catalogue and shortlist edits.
+ ok(await admin.from('course_offerings').update({name:'Changed later'}).eq('id',courseId));
+ assert.equal((await owner.client.rpc('create_shortlist_share',{...args,p_token:token()})).error?.code,'PT409');
+ ok(await owner.client.from('user_course_bookmarks').delete().eq('course_id',courseId));assert.deepEqual((await read(raw)).items,items);
+ const nextToken=token(),replacement=ok(await owner.client.rpc('replace_shortlist_share',{p_id:share.id,p_expected_revision:share.revision,p_token:nextToken}))[0];
+ assert.equal(await read(raw),null);assert.deepEqual((await read(nextToken)).items,items);
+ assert.equal((await owner.client.rpc('replace_shortlist_share',{p_id:share.id,p_expected_revision:share.revision,p_token:token()})).error?.code,'PT409');
+ const finalToken=token();const [rotate,revoke]=await Promise.all([owner.client.rpc('replace_shortlist_share',{p_id:share.id,p_expected_revision:replacement.revision,p_token:finalToken}),owner.client.rpc('revoke_shortlist_share',{p_id:share.id})]);ok(revoke);if(rotate.error)assert.equal(rotate.error.code,'PT409');
+ assert.equal(await read(nextToken),null);assert.equal(await read(finalToken),null);
+ assert.ok((await owner.client.rpc('replace_shortlist_share',{p_id:share.id,p_expected_revision:replacement.revision,p_token:token()})).error);
+ ok(await owner.client.from('shortlist_shares').delete().eq('id',share.id));
+ const one=[{kind:'school',id:'900001'}],oneItems=ok(await preview(one));const expToken=token();
+ const exp=ok(await owner.client.rpc('create_shortlist_share',{p_selection:one,p_expected_items:oneItems,p_token:expToken}))[0];
+ ok(await admin.from('shortlist_shares').update({expires_at:new Date(Date.now()-1000).toISOString()}).eq('id',exp.id));assert.equal(await read(expToken),null);
+ const cap=Array.from({length:49},()=>({user_id:owner.id,token_hash:token(),items:oneItems}));ok(await admin.from('shortlist_shares').insert(cap));
+ assert.equal((await owner.client.rpc('create_shortlist_share',{p_selection:one,p_expected_items:oneItems,p_token:token()})).error?.code,'54000');
+ ok(await owner.client.rpc('delete_own_account'));users.splice(users.indexOf(owner.id),1);
+ assert.deepEqual(ok(await admin.from('shortlist_shares').select('id').eq('user_id',owner.id)),[]);
+ console.log('Shortlist sharing PASS: exact preview/privacy, ownership/grants, concurrent idempotency, immutable snapshots, rotation/revocation, expiry/cap and account deletion.');
+}finally{for(const id of users)ok(await admin.auth.admin.deleteUser(id));ok(await admin.from('course_offerings').delete().eq('id',courseId));}
