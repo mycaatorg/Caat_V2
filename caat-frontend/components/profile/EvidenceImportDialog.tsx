@@ -1,10 +1,10 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 import { Button } from '@/components/ui/button';
 import { LibraryDialog } from '@/components/evidence/library-dialog';
 import { createEvidenceItem, type EvidenceItem } from '@/lib/evidence-items';
 import { fetchImportCandidates, importCandidateProblem, type ImportCandidate } from '@/lib/evidence-imports';
-export function EvidenceImportDialog({ existingKeys, onImported, onClose }: { existingKeys: Set<string>; onImported: (item: EvidenceItem)=>void; onClose: ()=>void }) {
+export function EvidenceImportDialog({ existingKeys, onImported, onClose, returnFocusRef, fallbackFocusRef }: { existingKeys: Set<string>; onImported: (item: EvidenceItem)=>void; onClose: ()=>void; returnFocusRef: RefObject<HTMLElement|null>; fallbackFocusRef: RefObject<HTMLElement|null> }) {
   const [candidates,setCandidates]=useState<ImportCandidate[] | null>(null), [loadError,setLoadError]=useState(false), [retry,setRetry]=useState(0);
   const [busy,setBusy]=useState<string | null>(null), [error,setError]=useState<string | null>(null);
   useEffect(()=>{let active=true;fetchImportCandidates().then(data=>{if(active){setCandidates(data);setLoadError(false);}}).catch(()=>{if(active)setLoadError(true);});return()=>{active=false;};},[retry]);
@@ -12,7 +12,7 @@ export function EvidenceImportDialog({ existingKeys, onImported, onClose }: { ex
     if(busy)return;setBusy(candidate.key);setError(null);
     try {onImported(await createEvidenceItem(candidate.input,candidate.key));}catch(e){setError(e instanceof Error?e.message:'Could not import this item. Try again.');}finally{setBusy(null);}
   }
-  return <LibraryDialog title="Import existing work" description="Choose activities or structured resume experience to copy into your library. Dates and notes keep their wording; resume formatting is converted to text. Your profile and resumes stay unchanged." busy={busy!==null} onClose={onClose}>
+  return <LibraryDialog returnFocusRef={returnFocusRef} fallbackFocusRef={fallbackFocusRef} title="Import existing work" description="Choose activities or structured resume experience to copy into your library. Dates and notes keep their wording; resume formatting is converted to text. Your profile and resumes stay unchanged." busy={busy!==null} onClose={onClose}>
     {error && <p role="alert" className="mb-3 text-sm text-destructive">{error}</p>}
     {loadError ? <div role="alert"><p>Could not load your existing work.</p><Button variant="outline" onClick={()=>{setLoadError(false);setRetry(n=>n+1);}}>Retry imports</Button></div> : candidates===null ? <p role="status">Loading existing work…</p> : candidates.length===0 ? <p className="text-sm text-muted-foreground">No activities or structured resume experience to import yet. You can add a library item directly.</p> : <ul className="divide-y">
       {candidates.map(c=><li key={c.key} className="py-4">

@@ -1,17 +1,18 @@
 // @vitest-environment jsdom
-import React from 'react';
+import React, { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mountComponent, unmountAll, button, change, click, link, get, hasText } from './dom-helpers';
 import type { EvidenceItem } from '@/lib/evidence-items';
-const io=vi.hoisted(()=>({list:vi.fn(),usage:vi.fn(),update:vi.fn(),create:vi.fn(),remove:vi.fn(),links:vi.fn(),unlink:vi.fn(),tailor:vi.fn(),keep:vi.fn(),reset:vi.fn()}));
+const io=vi.hoisted(()=>({imports:vi.fn(),list:vi.fn(),usage:vi.fn(),update:vi.fn(),create:vi.fn(),remove:vi.fn(),links:vi.fn(),unlink:vi.fn(),tailor:vi.fn(),keep:vi.fn(),reset:vi.fn()}));
 vi.mock('@/lib/supabase/client',()=>({supabase:{}}));
 vi.mock('@/lib/evidence-items',async original=>({...await original<typeof import('@/lib/evidence-items')>(),listEvidenceItems:io.list,fetchItemUsage:io.usage,updateEvidenceItem:io.update,createEvidenceItem:io.create,deleteEvidenceItem:io.remove}));
 vi.mock('@/lib/evidence-item-links',async original=>({...await original<typeof import('@/lib/evidence-item-links')>(),fetchItemLinks:io.links,unlinkItem:io.unlink,tailorItem:io.tailor,keepItemTailoring:io.keep,resetItemTailoring:io.reset}));
+vi.mock('@/lib/evidence-imports',async original=>({...await original<typeof import('@/lib/evidence-imports')>(),fetchImportCandidates:io.imports}));
 import { EvidenceLibraryCard } from '@/components/profile/EvidenceLibraryCard';
 import { HubEvidenceItems } from '@/components/applications/hub-evidence-items';
 const source:EvidenceItem={id:'i1',user_id:'u1',kind:'activity',title:'Debate',organisation:'Club',role:'Captain',description:'Source text',start_date:null,end_date:null,is_current:false,origin_key:null,revision:'v2',created_at:'2026-10-24'};
 const linked={id:'l1',applicationId:'a1',itemId:'i1',item:source,revision:'r1',sourceRevision:'v1',tailoredAt:'2026-10-23',tailoredTitle:'My application title',tailoredBody:'My preserved text'};
-beforeEach(()=>{vi.clearAllMocks();io.list.mockResolvedValue([source]);io.usage.mockResolvedValue({});io.links.mockResolvedValue([linked]);});
+beforeEach(()=>{vi.clearAllMocks();io.imports.mockResolvedValue([]);io.list.mockResolvedValue([source]);io.usage.mockResolvedValue({});io.links.mockResolvedValue([linked]);});
 afterEach(unmountAll);
 it('shows unavailable instead of empty and retry recovers',async()=>{
  io.list.mockRejectedValueOnce(new Error('Offline'));
@@ -64,4 +65,29 @@ it('closes an older reset confirmation after keeping the latest tailoring',async
  await click(button('Keep mine'));
  expect(document.querySelector('[aria-label="Reset item tailoring"]')).toBeNull();
  expect(hasText('My preserved text')).toBe(true);
+});
+
+// HTMLElement.click deliberately does not focus the opener, matching Safari pointer activation.
+const settleClose = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); };
+it.each(['Add library item', 'Edit Debate', 'Import existing work'])('returns focus to %s after opening without focus', async name => {
+ await mountComponent(<EvidenceLibraryCard/>);
+ const opener=button(name);expect(document.activeElement).not.toBe(opener);
+ await click(opener);await click(button('Close dialog'));await settleClose();
+ expect(document.activeElement).toBe(opener);
+});
+it.each(['Add from your library', 'Tailor My application title'])('returns focus to %s in the application after opening without focus', async name => {
+ await mountComponent(<HubEvidenceItems applicationId='a1' schoolName='Alpha University'/>);
+ const opener=button(name);expect(document.activeElement).not.toBe(opener);
+ await click(opener);await click(button('Close dialog'));await settleClose();
+ expect(document.activeElement).toBe(opener);
+});
+it('returns focus to the library region when saving moves an edited item out of its filter',async()=>{
+ const c=await mountComponent(<EvidenceLibraryCard/>);
+ await change(c.querySelector('select')!,'activity');
+ const opener=button('Edit Debate');await click(opener);
+ io.update.mockResolvedValue({...source,kind:'award'});
+ const dialog=document.querySelector('[role="dialog"]')!;
+ await change(dialog.querySelector('select')!,'award');await click(button('Save item'));await settleClose();
+ expect(opener.isConnected).toBe(false);
+ expect(document.activeElement).toBe(c.querySelector('[aria-label="Activities, awards and experience library"]'));
 });
