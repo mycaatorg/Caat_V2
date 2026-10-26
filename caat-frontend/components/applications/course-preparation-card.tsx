@@ -10,13 +10,15 @@ import type {CourseOffering} from '@/types/courses';
 import type {PreparationAction,PreparationCheck,PreparationKey} from '@/types/course-preparation';
 import type {Json} from '@/types/database';
 
-function RecordedFacts({snapshot}:{snapshot:Json}) {
+function RecordedFacts({snapshot,schoolId}:{snapshot:Json;schoolId:number}) {
  const s=snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)?snapshot:{};
  const text=(key:string)=>typeof s[key]==='string'?s[key] as string:null;
  return <div className="min-w-0 space-y-1 text-xs">
+  <p className="break-words font-medium">{text('name')??'Course name not recorded'} · {text('program_code')??'Program code not recorded'} · {text('campus')??'Campus not recorded'}</p>
+  <p className="text-muted-foreground">{s.active===true?'Listed as active':'Not currently active'} · {s.school_id===schoolId?'Linked to this application university':'Not linked to this application university'}</p>
   <p className="whitespace-pre-wrap break-words">{text('text')||'No information recorded. Check with the provider; this does not mean there is no requirement.'}</p>
-  <ProviderLink href={text('url')}>View provider details</ProviderLink>
-  <ProviderLink href={text('source_url')}>Course source</ProviderLink>
+  <p><ProviderLink href={text('url')}>Provider details: {text('url')}</ProviderLink></p>
+  <p><ProviderLink href={text('source_url')}>Course source: {text('source_url')}</ProviderLink></p>
   <p className="text-muted-foreground">Source year: {typeof s.source_year==='number'?s.source_year:'not recorded'} · Last checked: {text('verified_at')?new Date(text('verified_at')!).toLocaleDateString('en-AU',{timeZone:'UTC'}):'not recorded'}</p>
  </div>;
 }
@@ -50,16 +52,16 @@ export function CoursePreparationCard({applicationId,schoolId}:{applicationId:st
     const available=course.active&&course.school_id===schoolId;
     const checks=data.checks.filter(c=>c.course_id===course.id);
     return <article key={course.id} className="min-w-0 space-y-3 rounded-lg border p-3">
-     <h3 className="break-words text-sm font-semibold">{course.name}</h3>
+     <h3 className="break-words text-sm font-semibold">{course.name} · {course.program_code}{course.campus?` · ${course.campus}`:''}</h3>
      {!savedSet.has(course.id)&&<p className="text-xs text-muted-foreground">No longer saved</p>}
      {!available&&<p className="text-sm text-amber-800 dark:text-amber-300">This course is unavailable for this application. Your previous preparation and work are preserved; confirm the course with the provider.</p>}
      {PREPARATION_KEYS.filter(key=>checks.some(c=>c.item_key===key)||(savedSet.has(course.id)&&available)).map(key=>{
       const check=checks.find(c=>c.item_key===key),changed=!!check&&(preparationNeedsReview(check,course)||!available);
-      return <div key={key} role="group" aria-label={`${course.name}: ${PREPARATION_LABELS[key]}`} className="min-w-0 space-y-2 border-t pt-3">
+      return <div key={key} role="group" aria-label={`${course.name} · ${course.program_code}${course.campus?` · ${course.campus}`:''}: ${PREPARATION_LABELS[key]}`} className="min-w-0 space-y-2 border-t pt-3">
        <div className="flex flex-wrap items-start justify-between gap-2"><h4 className="text-sm font-medium">{PREPARATION_LABELS[key]}</h4><span className={`text-xs ${changed?'text-amber-800 dark:text-amber-300':'text-muted-foreground'}`}>{changed?'Needs review':check?.reviewed?'Reviewed':check?'In progress':'Not started'}</span></div>
        {key==='assumed_knowledge'&&<p className="text-xs text-muted-foreground">Preparation guidance, not automatically an entry requirement.</p>}
-       {changed&&<div className="space-y-2 rounded-md bg-muted/40 p-2"><p className="text-xs font-medium">Previously saved information</p><RecordedFacts snapshot={check!.snapshot}/><p className="text-xs">Recorded information changed. Compare with the current information below and check the provider before continuing.</p></div>}
-       <RecordedFacts snapshot={snapshotForCourse(course,key)}/>
+       {changed&&<div className="space-y-2 rounded-md bg-muted/40 p-2"><p className="text-xs font-medium">Previously saved information</p><RecordedFacts schoolId={schoolId} snapshot={check!.snapshot}/><p className="text-xs">Recorded information changed. Compare with the current information below and check the provider before continuing.</p></div>}
+       <RecordedFacts schoolId={schoolId} snapshot={snapshotForCourse(course,key)}/>
        <div className="flex flex-wrap gap-2">
         {!check?<Button size="sm" variant="outline" disabled={disabled||!available} onClick={()=>void run(course,key,'start')}>Start check</Button>:<>
          {changed?available&&<Button size="sm" variant="outline" disabled={disabled} onClick={()=>void run(course,key,'acknowledge',check)}>Use current information</Button>:<Button size="sm" variant="outline" disabled={disabled} onClick={()=>void run(course,key,check.reviewed?'reopen':'reviewed',check)}>{check.reviewed?'Reopen check':'Mark reviewed'}</Button>}

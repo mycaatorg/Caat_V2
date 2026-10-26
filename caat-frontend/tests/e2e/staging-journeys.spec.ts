@@ -2154,7 +2154,7 @@ test('course preparation persists, links work without ticking and survives unsav
   draft=await add('essay_drafts',{user_id:session.user.id,prompt_id:crypto.randomUUID(),prompt_slug:'course-preparation',label:title,content:'My maths preparation example'});
   await signInToIsolatedStudent(page);await page.goto(`/applications/${app.id}`);
   const card=page.getByRole('region',{name:'Course preparation',exact:true});
-  const row=card.getByRole('group',{name:`${prepCourse.name}: Review prerequisites`,exact:true});
+  const row=card.getByRole('group',{name:`${prepCourse.name} · E2E175: Review prerequisites`,exact:true});
   await row.getByRole('button',{name:'Start check',exact:true}).click();
   await expect(row.getByText('In progress',{exact:true})).toBeVisible();
   const opener=row.getByRole('button',{name:'Supporting work',exact:true});await opener.focus();await opener.press('Enter');

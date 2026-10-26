@@ -47,3 +47,13 @@ it('ignores an older load that completes after a newer focus refresh',async()=>{
  await act(async()=>old.resolve({checks:[check],courses:[course],savedCourseIds:['c']}));
  expect(c.textContent).toContain('Needs review');expect(c.textContent).toContain('Physics');
 });
+it('shows both course identities for campus/program-only changes before acknowledgement',async()=>{
+ const previous={...course,campus:'City campus'},current={...course,campus:'Regional campus',program_code:'456'};
+ check={...check,snapshot:snapshotForCourse(previous,'prerequisites')};
+ state.fetch.mockResolvedValue({checks:[check],courses:[current],savedCourseIds:['c']});
+ const c=await mountComponent(<CoursePreparationCard applicationId="a" schoolId={1}/>);
+ expect(c.textContent).toContain('City campus');expect(c.textContent).toContain('Regional campus');expect(c.textContent).toContain('123');expect(c.textContent).toContain('456');
+ expect(c.querySelector('[role="group"]')?.getAttribute('aria-label')).toContain('456');
+ expect(c.querySelector('[role="group"]')?.getAttribute('aria-label')).toContain('Regional campus');
+ expect(button('Use current information',c)).toBeDefined();
+});
