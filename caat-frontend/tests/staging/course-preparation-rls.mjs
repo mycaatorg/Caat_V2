@@ -6,6 +6,7 @@ assertLocalApiUrl(process.env.SUPABASE_URL);
 const opts={auth:{persistSession:false,autoRefreshToken:false}},admin=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,opts),anon=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_ANON_KEY,opts);
 const ok=r=>{assert.ifError(r.error);return r.data;},users=[],courseId=`prep-${randomUUID()}`;
 async function user(){const email=`e2e.prep.${randomUUID()}@caat.local.test`;const u=ok(await admin.auth.admin.createUser({email,password:process.env.E2E_TEST_PASSWORD,email_confirm:true})).user;users.push(u.id);const c=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_ANON_KEY,opts);ok(await c.auth.signInWithPassword({email,password:process.env.E2E_TEST_PASSWORD}));return{id:u.id,c};}
+const conflict=(result,label)=>{assert.equal(result.error?.code,'PT409',label);assert.equal(result.status,409,label);};
 const snapshot=c=>({name:c.name,program_code:c.program_code,campus:c.campus,school_id:c.school_id,active:c.active,text:c.prerequisites,url:c.prerequisites_url,source_url:c.source_url,source_year:c.source_year,verified_at:c.verified_at});
 try{
  const owner=await user(),peer=await user();
@@ -18,7 +19,7 @@ try{
  ok(await owner.c.from('user_course_bookmarks').insert({user_id:owner.id,course_id:courseId}));
  let check=ok(await save())[0];
  assert.equal(check.reviewed,false);
- assert.ok((await save()).error,'duplicate start cannot overwrite');
+ conflict(await save(),'duplicate start cannot overwrite');
  assert.ok((await save({p_application_id:b.id})).error,'foreign application');
  assert.ok((await save({},peer.c)).error,'foreign caller');
  assert.ok((await save({p_item_key:'invented'})).error,'invalid key');
@@ -29,11 +30,11 @@ try{
  const oldRevision=check.revision;
  check=ok(await save({p_action:'reviewed',p_expected_revision:check.revision}))[0];
  assert.equal(check.reviewed,true);
- assert.ok((await save({p_action:'reopen',p_expected_revision:oldRevision})).error,'stale revision');
+ conflict(await save({p_action:'reopen',p_expected_revision:oldRevision}),'stale revision');
  course=ok(await admin.from('course_offerings').update({prerequisites:'Physics'}).eq('id',courseId).select('*').single());
- assert.ok((await save({p_action:'reviewed',p_expected_revision:check.revision})).error,'unseen current facts');
+ conflict(await save({p_action:'reviewed',p_expected_revision:check.revision}),'unseen current facts');
  args.p_expected_snapshot=snapshot(course);
- assert.ok((await save({p_action:'reviewed',p_expected_revision:check.revision})).error,'must explicitly acknowledge changed snapshot');
+ conflict(await save({p_action:'reviewed',p_expected_revision:check.revision}),'must explicitly acknowledge changed snapshot');
  check=ok(await save({p_action:'reopen',p_expected_revision:check.revision}))[0];
  assert.equal(check.snapshot.text,'Maths','reopen retains previous facts');
  check=ok(await save({p_action:'acknowledge',p_expected_revision:check.revision}))[0];

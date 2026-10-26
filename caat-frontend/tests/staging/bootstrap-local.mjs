@@ -42,4 +42,5 @@ runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, 'seed-opportuniti
 runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261025010000_requirement_evidence_links.sql')]);
 runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261025020000_edit_personal_task.sql')]);
 runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261026010000_course_preparation.sql')]);
+runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261026020000_course_preparation_conflicts.sql')]);
 console.log('Local-only CAAT schema and synthetic catalog fixtures installed.');

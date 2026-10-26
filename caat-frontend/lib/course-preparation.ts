@@ -23,7 +23,7 @@ export async function fetchCoursePreparation(applicationId?:string, schoolId?:nu
 export async function saveCoursePreparation(input:{applicationId:string;course:CourseOffering;key:PreparationKey;action:PreparationAction;check?:PreparationCheck}):Promise<PreparationCheck> {
  await evidenceUserId();
  const {data,error}=await supabase.rpc('save_course_preparation',{p_application_id:input.applicationId,p_course_id:input.course.id,p_item_key:input.key,p_action:input.action,p_expected_revision:input.check?.revision??null,p_expected_snapshot:snapshotForCourse(input.course,input.key)});
- if(error||data?.length!==1) throw new Error(error?.code==='40001'||error?.code==='23505'?'Preparation or course information changed elsewhere. Refresh and review it before saving again.':'Could not save preparation. Refresh to check this course and application are still available.');
+ if(error||data?.length!==1) throw new Error(error?.code==='PT409'||error?.code==='40001'||error?.code==='23505'?'Preparation or course information changed elsewhere. Refresh and review it before saving again.':'Could not save preparation. Refresh to check this course and application are still available.');
  return data[0];
 }
 export async function fetchCoursePreparationWork(applicationId:string):Promise<PreparationWork[]> {
