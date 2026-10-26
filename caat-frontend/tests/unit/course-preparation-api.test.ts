@@ -21,3 +21,9 @@ it('fails closed if saved courses cannot be read',async()=>{
 it('rejects an empty RPC response rather than reporting a completed check',async()=>{
  await expect(saveCoursePreparation({applicationId:'app',course:{id:'c'} as CourseOffering,key:'prerequisites',action:'start'})).rejects.toThrow(/save/i);
 });
+
+it.each(['PT409','40001','23505'])('shows refresh guidance for conflict %s without retrying the write',async(code)=>{
+ const client=createMockSupabase({rpc:()=>({error:{message:'Conflict',code}})});io.client=client;
+ await expect(saveCoursePreparation({applicationId:'app',course:{id:'c'} as CourseOffering,key:'prerequisites',action:'start'})).rejects.toThrow('changed elsewhere. Refresh and review');
+ expect(client.rpc).toHaveBeenCalledTimes(1);
+});

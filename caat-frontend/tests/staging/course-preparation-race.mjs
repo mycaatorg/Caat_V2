@@ -10,7 +10,7 @@ const ok=r=>{assert.ifError(r.error);return r.data;};
 const user=ok(await admin.auth.admin.createUser({email:`e2e.prep-race.${randomUUID()}@caat.local.test`,email_confirm:true})).user.id;
 const courseId=`race-${randomUUID()}`,sessions=[];
 function session() {
-  const child = spawn('psql', ['-X', '-q', '-A', '-t', '-h', db.hostname, '-p', db.port, '-U', decodeURIComponent(db.username), '-d', db.pathname.slice(1), '-v', 'ON_ERROR_STOP=1'], {
+  const child = spawn('psql', ['-X', '-q', '-A', '-t', '-h', db.hostname, '-p', db.port, '-U', decodeURIComponent(db.username), '-d', db.pathname.slice(1), '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose'], {
     env: { ...process.env, PGPASSWORD: decodeURIComponent(db.password), PGSSLMODE: 'disable' },
   });
   let stdout = '', stderr = '', pending;
@@ -46,13 +46,13 @@ try {
  const first=session(),second=session();await first.exec(auth+rpc('reviewed',check.revision));
  second.child.stdin.end(auth+rpc('reopen',check.revision)+'COMMIT;');
  await first.exec('COMMIT;');first.child.stdin.end();assert.equal((await first.done).code,0);
- const stale=await second.done;assert.notEqual(stale.code,0);assert.match(stale.stderr,/Preparation changed elsewhere/);
+ const stale=await second.done;assert.notEqual(stale.code,0);assert.match(stale.stderr,/PT409:.*Preparation changed elsewhere/);
  const next=ok(await admin.from('course_preparation_checks').select('*').eq('id',check.id).single());
  // A provider update holds the row; queued reviewed action sees its new facts.
  const edit=session(),mark=session();await edit.exec(`BEGIN; UPDATE public.course_offerings SET prerequisites='Physics' WHERE id='${courseId}';`);
  mark.child.stdin.end(auth+rpc('reviewed',next.revision)+'COMMIT;');
  await edit.exec('COMMIT;');edit.child.stdin.end();assert.equal((await edit.done).code,0);
- const changed=await mark.done;assert.notEqual(changed.code,0);assert.match(changed.stderr,/Course information changed/);
+ const changed=await mark.done;assert.notEqual(changed.code,0);assert.match(changed.stderr,/PT409:.*Course information changed/);
  assert.equal(ok(await admin.from('course_preparation_checks').select('*').eq('id',check.id).single()).snapshot.text,'Maths');
  console.log('Concurrent preparation writes reject stale revision and unseen source facts; prior snapshot preserved.');
 } finally {
