@@ -57,3 +57,29 @@ it('shows both course identities for campus/program-only changes before acknowle
  expect(c.querySelector('[role="group"]')?.getAttribute('aria-label')).toContain('Regional campus');
  expect(button('Use current information',c)).toBeDefined();
 });
+
+it('keeps keyboard focus on the next action and announces the refreshed status',async()=>{
+ const c=await mountComponent(<CoursePreparationCard applicationId="a" schoolId={1}/>);
+ const opener=button('Reopen check',c);opener.focus();
+ state.save.mockImplementation(async()=>{check={...check,reviewed:false};state.fetch.mockResolvedValue({checks:[check],courses:[course],savedCourseIds:['c']});return check;});
+ await click(opener);expect(document.activeElement).toBe(button('Mark reviewed',c));expect(c.querySelector('[aria-live="polite"]')?.textContent).toContain('In progress');
+ state.save.mockImplementation(async()=>{check={...check,reviewed:true};state.fetch.mockResolvedValue({checks:[check],courses:[course],savedCourseIds:['c']});return check;});
+ await click(button('Mark reviewed',c));expect(document.activeElement).toBe(button('Reopen check',c));expect(c.querySelector('[aria-live="polite"]')?.textContent).toContain('Reviewed');
+});
+it('focuses the changed-source row action after acknowledgement',async()=>{
+ const current={...course,prerequisites:'Physics'};state.fetch.mockResolvedValue({checks:[check],courses:[current],savedCourseIds:['c']});
+ const c=await mountComponent(<CoursePreparationCard applicationId="a" schoolId={1}/>);state.save.mockImplementation(async()=>{check={...check,reviewed:false,snapshot:snapshotForCourse(current,'prerequisites')};state.fetch.mockResolvedValue({checks:[check],courses:[current],savedCourseIds:['c']});return check;});
+ await click(button('Use current information',c));expect(document.activeElement).toBe(button('Mark reviewed',c));expect(c.querySelector('[aria-live="polite"]')?.textContent).toContain('In progress');
+});
+it('keeps failed-write focus on the row and never announces a successful status',async()=>{
+ state.save.mockRejectedValue(new Error('Could not confirm. Refresh.'));const c=await mountComponent(<CoursePreparationCard applicationId="a" schoolId={1}/>);
+ const row=c.querySelector('[role="group"]');await click(button('Reopen check',c));expect(document.activeElement).toBe(row);expect(c.querySelector('[role="alert"]')?.textContent).toContain('Could not confirm');expect(c.querySelector('[aria-live="polite"]')?.textContent).not.toContain('In progress');
+});
+it('falls back to the preparation section when the acted-on row disappears',async()=>{
+ const c=await mountComponent(<CoursePreparationCard applicationId="a" schoolId={1}/>);state.save.mockImplementation(async()=>{state.fetch.mockResolvedValue({checks:[],courses:[],savedCourseIds:[]});return check;});
+ await click(button('Reopen check',c));expect(document.activeElement).toBe(c.querySelector('section'));expect(c.querySelector('[aria-live="polite"]')?.textContent).toContain('no longer shown');
+});
+it('does not steal focus if the user moves elsewhere during a write',async()=>{
+ const pending=deferred<PreparationCheck>();state.save.mockReturnValue(pending.promise);const c=await mountComponent(<CoursePreparationCard applicationId="a" schoolId={1}/>);const elsewhere=document.createElement('button');elsewhere.textContent='Elsewhere';document.body.append(elsewhere);
+ await click(button('Reopen check',c));elsewhere.focus();await act(async()=>pending.resolve(check));expect(document.activeElement).toBe(elsewhere);
+});

@@ -1,5 +1,5 @@
 'use client';
-import {useCallback,useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {Card,CardHeader,CardTitle,CardContent} from '@/components/ui/card';
 import {Button} from '@/components/ui/button';
 import {ProviderLink} from '@/components/courses/course-source';
@@ -24,20 +24,41 @@ function RecordedFacts({snapshot,schoolId}:{snapshot:Json;schoolId:number}) {
 }
 export function CoursePreparationCard({applicationId,schoolId}:{applicationId:string;schoolId:number}) {
  const [data,setData]=useState<CoursePreparation|null>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
+ const [announcement,setAnnouncement]=useState('');
+ const rows=useRef(new Map<string,HTMLDivElement>());
+ const returnFocus=useRef<{key:string;origin:Element|null}|null>(null);
  const generation=useRef(0),writing=useRef(false),region=useRef<HTMLElement>(null);
  const load=useCallback(async()=>{
   const request=++generation.current;setLoading(true);
-  try{const next=await fetchCoursePreparation(applicationId,schoolId);if(request===generation.current){setData(next);setError(null);}}
+  try{const next=await fetchCoursePreparation(applicationId,schoolId);if(request===generation.current){setData(next);setError(null);return next;}}
   catch{if(request===generation.current){setData(null);setError('Could not load course preparation. Refresh to try again.');}}
   finally{if(request===generation.current)setLoading(false);}
  },[applicationId,schoolId]);
- const cancelPending=useCallback(()=>{generation.current++;},[]);
+ const cancelPending=useCallback(()=>{generation.current++;returnFocus.current=null;},[]);
  useEffect(()=>{void load();const refresh=()=>{if(!writing.current)void load();};window.addEventListener('focus',refresh);return()=>{cancelPending();window.removeEventListener('focus',refresh);};},[load,cancelPending]);
+ useLayoutEffect(()=>{
+  if(busy||loading||!returnFocus.current)return;
+  const target=returnFocus.current;returnFocus.current=null;
+  const row=rows.current.get(target.key),active=document.activeElement;
+  // A user who moved to another control while saving keeps their place there.
+  if(active!==document.body&&active!==target.origin&&!row?.contains(active))return;
+  const action=row?.querySelector<HTMLButtonElement>('[data-preparation-action]');
+  if(action&&!action.disabled)action.focus();else (row??region.current)?.focus();
+ },[busy,loading,data,error]);
  const run=async(course:CourseOffering,key:PreparationKey,action:PreparationAction,check?:PreparationCheck)=>{
-  if(writing.current)return;writing.current=true;setBusy(true);setError(null);
-  try{await saveCoursePreparation({applicationId,course,key,action,check});await load();}
+  if(writing.current)return;writing.current=true;returnFocus.current={key:`${course.id}:${key}`,origin:document.activeElement};setBusy(true);setError(null);setAnnouncement('');
+  try{
+   await saveCoursePreparation({applicationId,course,key,action,check});
+   const next=await load();
+   if(next){
+    const current=next.courses.find(c=>c.id===course.id),saved=next.checks.find(c=>c.course_id===course.id&&c.item_key===key);
+    const label=`${course.name} · ${course.program_code}: ${PREPARATION_LABELS[key]}`;
+    if(!current||!saved)setAnnouncement(`${label} is no longer shown. Preparation refreshed.`);
+    else{const changed=preparationNeedsReview(saved,current)||!current.active||current.school_id!==schoolId;setAnnouncement(`${label} — ${changed?'Needs review':saved.reviewed?'Reviewed':'In progress'}.`);}
+   }
+  }
   catch(e){setError(e instanceof Error?e.message:'Could not save preparation. Refresh to try again.');}
-  finally{writing.current=false;setBusy(false);region.current?.focus();}
+  finally{writing.current=false;setBusy(false);}
  };
  const savedSet=new Set(data?.savedCourseIds??[]);
  const disabled=loading||busy||!data||!!error;
@@ -45,6 +66,7 @@ export function CoursePreparationCard({applicationId,schoolId}:{applicationId:st
   <Card><CardHeader><CardTitle className="text-base">Course preparation</CardTitle></CardHeader><CardContent className="space-y-4">
    <p className="text-sm text-muted-foreground">Review the recorded information and connect your supporting work. These are your preparation checks, not confirmation of eligibility or a submitted application.</p>
    <Button size="sm" variant="outline" disabled={loading||busy} onClick={()=>void load()}>Refresh preparation</Button>
+   <p role="status" aria-live="polite" className="sr-only">{announcement}</p>
    {loading&&<p role="status" className="text-sm">Loading preparation…</p>}
    {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
    {data&&!data.courses.length&&<p className="text-sm text-muted-foreground">Save a course at this university to start preparing.</p>}
@@ -57,14 +79,14 @@ export function CoursePreparationCard({applicationId,schoolId}:{applicationId:st
      {!available&&<p className="text-sm text-amber-800 dark:text-amber-300">This course is unavailable for this application. Your previous preparation and work are preserved; confirm the course with the provider.</p>}
      {PREPARATION_KEYS.filter(key=>checks.some(c=>c.item_key===key)||(savedSet.has(course.id)&&available)).map(key=>{
       const check=checks.find(c=>c.item_key===key),changed=!!check&&(preparationNeedsReview(check,course)||!available);
-      return <div key={key} role="group" aria-label={`${course.name} · ${course.program_code}${course.campus?` · ${course.campus}`:''}: ${PREPARATION_LABELS[key]}`} className="min-w-0 space-y-2 border-t pt-3">
+      return <div key={key} ref={node=>{const id=`${course.id}:${key}`;if(node)rows.current.set(id,node);else rows.current.delete(id);}} tabIndex={-1} role="group" aria-label={`${course.name} · ${course.program_code}${course.campus?` · ${course.campus}`:''}: ${PREPARATION_LABELS[key]}`} className="min-w-0 space-y-2 border-t pt-3">
        <div className="flex flex-wrap items-start justify-between gap-2"><h4 className="text-sm font-medium">{PREPARATION_LABELS[key]}</h4><span className={`text-xs ${changed?'text-amber-800 dark:text-amber-300':'text-muted-foreground'}`}>{changed?'Needs review':check?.reviewed?'Reviewed':check?'In progress':'Not started'}</span></div>
        {key==='assumed_knowledge'&&<p className="text-xs text-muted-foreground">Preparation guidance, not automatically an entry requirement.</p>}
        {changed&&<div className="space-y-2 rounded-md bg-muted/40 p-2"><p className="text-xs font-medium">Previously saved information</p><RecordedFacts schoolId={schoolId} snapshot={check!.snapshot}/><p className="text-xs">Recorded information changed. Compare with the current information below and check the provider before continuing.</p></div>}
        <RecordedFacts schoolId={schoolId} snapshot={snapshotForCourse(course,key)}/>
        <div className="flex flex-wrap gap-2">
-        {!check?<Button size="sm" variant="outline" disabled={disabled||!available} onClick={()=>void run(course,key,'start')}>Start check</Button>:<>
-         {changed?available&&<Button size="sm" variant="outline" disabled={disabled} onClick={()=>void run(course,key,'acknowledge',check)}>Use current information</Button>:<Button size="sm" variant="outline" disabled={disabled} onClick={()=>void run(course,key,check.reviewed?'reopen':'reviewed',check)}>{check.reviewed?'Reopen check':'Mark reviewed'}</Button>}
+        {!check?<Button data-preparation-action size="sm" variant="outline" disabled={disabled||!available} onClick={()=>void run(course,key,'start')}>Start check</Button>:<>
+         {changed?available&&<Button data-preparation-action size="sm" variant="outline" disabled={disabled} onClick={()=>void run(course,key,'acknowledge',check)}>Use current information</Button>:<Button data-preparation-action size="sm" variant="outline" disabled={disabled} onClick={()=>void run(course,key,check.reviewed?'reopen':'reviewed',check)}>{check.reviewed?'Reopen check':'Mark reviewed'}</Button>}
          <CoursePreparationWork check={check} disabled={disabled}/>
         </>}
        </div>
