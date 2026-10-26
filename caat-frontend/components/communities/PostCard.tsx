@@ -278,7 +278,7 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
               <DropdownMenuContent align="end">
                 {isOwnPost ? (
                   <>
-                    {canEdit && (
+                    {canEdit && !post.is_removed && (
                       <DropdownMenuItem className="gap-2" onClick={() => { setEditContent(displayContent); setIsEditing(true); }}>
                         <Pencil className="size-4" />
                         Edit post
