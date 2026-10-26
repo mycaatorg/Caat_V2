@@ -14,3 +14,5 @@ export * from "./actions/notifications";
 export * from "./actions/profiles";
 
 export * from "./actions/resumes";
+
+export * from "./actions/owned-content";

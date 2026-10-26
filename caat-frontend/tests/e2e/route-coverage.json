@@ -290,6 +290,13 @@
       "kind": "static",
       "coverage": "authenticated-content",
       "expected": "Your shared resumes"
+    },
+    {
+      "route": "/communities/your-content",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Your community content"
     }
   ],
   "writeJourneys": [
