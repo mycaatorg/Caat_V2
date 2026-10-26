@@ -5,18 +5,20 @@ import { snapshotForCourse } from '@/lib/course-preparation-model';
 import type { CourseOffering } from '@/types/courses';
 import type { PreparationCheck, PreparationWork, PreparationAction, PreparationKey } from '@/types/course-preparation';
 import type { WorkSource } from '@/lib/requirement-evidence';
-export type CoursePreparation = { checks:PreparationCheck[]; courses:CourseOffering[] };
+export type CoursePreparation = { checks:PreparationCheck[]; courses:CourseOffering[]; savedCourseIds:string[] };
 const LOAD_ERROR='Could not load course preparation. Refresh to try again.';
-export async function fetchCoursePreparation(applicationId?:string):Promise<CoursePreparation> {
+export async function fetchCoursePreparation(applicationId?:string, schoolId?:number):Promise<CoursePreparation> {
  const userId=await evidenceUserId();
  const checks=await evidencePages((from,to)=>{
   let q=supabase.from('course_preparation_checks').select('*').eq('user_id',userId);
   if(applicationId) q=q.eq('application_id',applicationId);
   return q.order('id').range(from,to);
  },LOAD_ERROR);
- const ids=[...new Set(checks.map(c=>c.course_id))],courses:CourseOffering[]=[];
+ const bookmarks=schoolId===undefined?[]:await evidencePages((from,to)=>supabase.from('user_course_bookmarks').select('course_id, course_offerings!inner(school_id)').eq('user_id',userId).eq('course_offerings.school_id',schoolId).order('course_id').range(from,to),LOAD_ERROR);
+ const savedCourseIds=bookmarks.map(b=>b.course_id);
+ const ids=[...new Set([...checks.map(c=>c.course_id),...savedCourseIds])],courses:CourseOffering[]=[];
  for(let i=0;i<ids.length;i+=100) courses.push(...await evidencePages((from,to)=>supabase.from('course_offerings').select('*').in('id',ids.slice(i,i+100)).order('id').range(from,to),LOAD_ERROR));
- return {checks,courses};
+ return {checks,courses,savedCourseIds};
 }
 export async function saveCoursePreparation(input:{applicationId:string;course:CourseOffering;key:PreparationKey;action:PreparationAction;check?:PreparationCheck}):Promise<PreparationCheck> {
  await evidenceUserId();

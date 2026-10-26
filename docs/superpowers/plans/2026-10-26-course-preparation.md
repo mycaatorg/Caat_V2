@@ -32,7 +32,7 @@
 
 ### Task 2: Application preparation, evidence and Today review
 **Files:** components/applications/course-preparation-card.tsx; components/applications/course-preparation-work.tsx; components/today/course-preparation-review.tsx; application client and Today page; lib/requirement-evidence.ts (extract source loader only); tests/unit/course-preparation-card.test.tsx; tests/e2e/staging-journeys.spec.ts.
-**Interfaces:** Consumes Task 1 API/types and existing WorkSource; preparation card receives applicationId, schoolId, saved courses. Existing tracked courses loaded even when unsaved. Today consumes same owner-scoped read helper.
+**Interfaces:** Consumes Task 1 API/types and existing WorkSource; preparation card receives applicationId and schoolId; refresh independently reads current bookmarks. Existing tracked courses loaded even when unsaved. Today consumes same owner-scoped read helper.
 - [ ] Write UI/browser tests for start/review/reopen, explicit source acknowledgement resetting reviewed, evidence links not ticking, unsave persistence, inactive warning, retryable loads, mobile/keyboard dialog use.
 - [ ] Run tests before UI. Expected: missing preparation section/actions.
 - [ ] Implement accessible card/rows with previous/current facts, explicit action labels, latest request guards, no optimistic false success. Supporting picker shows current work. Add Today needs-review links and refresh on focus.

@@ -11,7 +11,7 @@ type Requirement = { key: string; label: string };
 type Target = { scholarshipId: string; item: Requirement };
 type Context = {
   work: RequirementWork | null; disabled: boolean;
-  open: (target: Target) => void; remove: (link: RequirementWorkLink) => void;
+  open: (target: Target, opener: HTMLElement) => void; remove: (link: RequirementWorkLink) => void;
 };
 const WorkContext = createContext<Context | null>(null);
 const sourceKey = (source: WorkSource) => `${source.kind}:${source.id}`;
@@ -54,17 +54,8 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
     window.addEventListener(REQUIREMENT_WORK_CHANGED, knownChange);
     return () => { cancelPending(); window.removeEventListener('focus', refresh); window.removeEventListener(REQUIREMENT_WORK_CHANGED, knownChange); };
   }, [load, cancelPending]);
-  // Dialog unmount effects can run before the opener's disabled attribute is
-  // removed. Restore after the commit, with a stable fallback during load errors.
-  useEffect(() => {
-    if (target || !returnFocus.current) return;
-    const opener = returnFocus.current;
-    returnFocus.current = null;
-    if (opener.isConnected) opener.focus();
-    if (document.activeElement !== opener) supportRegion.current?.focus();
-  }, [target]);
-  const open = (next: Target) => {
-    returnFocus.current = document.activeElement as HTMLElement;
+  const open = (next: Target, opener: HTMLElement) => {
+    returnFocus.current = opener;
     setTarget(next); setSelected(''); setQuery(''); setError(null); void load();
   };
   const run = async (action: () => Promise<void>, onSuccess?: () => void) => {
@@ -89,7 +80,7 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
       {error && !target && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
     {children}
-    {target && <LibraryDialog title="Link supporting work" description={target.item.label} busy={busy} onClose={() => { setTarget(null); setError(null); }}>
+    {target && <LibraryDialog returnFocusRef={returnFocus} fallbackFocusRef={supportRegion} title="Link supporting work" description={target.item.label} busy={busy} onClose={() => { setTarget(null); setError(null); }}>
       <p className="text-sm text-muted-foreground">Choose a document or library item already linked to this application, or one of your saved essay drafts. Linking does not complete the requirement or send anything to the provider.</p>
       <p className="mt-2 text-xs text-muted-foreground">To add more choices, use this application&apos;s Documents or Activities, awards &amp; experience card, or save a draft in <Link href="/essays" className="underline">Essays</Link>.</p>
       {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
@@ -146,7 +137,7 @@ export function RequirementSupportingWork({ scholarshipId, item }: Target) {
   const links = context.work?.links.filter(link => link.scholarship_id === scholarshipId && link.item_key === item.key) ?? [];
   return <div className="mt-2 min-w-0">
     {!!links.length && <ul className="space-y-2">{links.map(link => <LinkedWork key={link.id} link={link} changed={requirementReview(link, [item]) === 'changed'} />)}</ul>}
-    <Button size="sm" variant="ghost" className="h-auto max-w-full whitespace-normal px-0 py-2 text-xs" disabled={context.disabled} aria-label={`Link supporting work: ${item.label}`} onClick={() => context.open({ scholarshipId, item })}>+ Link supporting work{links.length ? ` (${links.length} linked)` : ''}</Button>
+    <Button size="sm" variant="ghost" className="h-auto max-w-full whitespace-normal px-0 py-2 text-xs" disabled={context.disabled} aria-label={`Link supporting work: ${item.label}`} onClick={e => context.open({ scholarshipId, item }, e.currentTarget)}>+ Link supporting work{links.length ? ` (${links.length} linked)` : ''}</Button>
   </div>;
 }
 export function RemovedRequirementWork({ scholarshipId, items }: { scholarshipId: string; items: Requirement[] }) {
