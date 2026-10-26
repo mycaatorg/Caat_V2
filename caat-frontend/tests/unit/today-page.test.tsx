@@ -10,6 +10,7 @@ vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "A
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: io.refresh }), redirect: vi.fn() }));
 vi.mock("@/components/PageHeader", () => ({ PageHeader: () => null }));
 vi.mock("@/components/dashboard/api", () => ({ toggleTodo: vi.fn() }));
+vi.mock("@/lib/course-preparation", () => ({ fetchCoursePreparation: async () => ({checks:[],courses:[]}) }));
 vi.mock("@/lib/onboarding", () => ({ dismissOnboarding: vi.fn() }));
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
 

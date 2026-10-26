@@ -1,0 +1,21 @@
+# Course preparation with source review — PROD-175
+
+Students can prepare for each saved course in their application workspace, connect work they already own, and see when the information they reviewed changes. Three stable checks identify review of prerequisites, assumed knowledge and application route. These are review actions over provider prose, not parsed eligibility rules.
+
+## Product behavior
+Each check starts as unstarted. Starting stores the exact recorded course identity, field text/link, source URL/year/check date and availability. A student can mark it reviewed or reopen it. No action implies eligibility, acceptance or submission. Missing information stays explicitly unknown, and assumed knowledge stays guidance.
+
+A changed snapshot makes a saved check Needs review regardless of its old reviewed flag. Show previous and current information, retaining supporting work. The explicit Use current information action replaces the snapshot and reopens preparation; the student then separately marks reviewed. Reopen does not acknowledge a source change. Inactive courses or courses remapped away from the application remain visible with their last snapshot and links, but cannot be marked reviewed. Unsave does not erase work: existing plans remain visible and editable with a no-longer-saved label. Starting a new check requires the course still be saved at the application's school. Acknowledging replaces the prior snapshot; this is current preparation context, not an immutable full audit log.
+
+Documents and library items must already be linked to the same owned application. Owned essay drafts can also be linked. Links reference current work, never copy it; source removal cascades just the association. Linking never ticks a check. The existing scholarship workflow is unchanged. Today shows changed/unavailable preparation that needs review with a link back to its application.
+
+## Data and concurrency
+New course_preparation_checks: UUID identity; owner/application/school/course/key; JSONB snapshot; reviewed boolean; UUID revision and timestamps. Unique application/course/key. Composite owner/application FK, course FK restrict, owner account cascade. No bookmark FK: preserve plans when unsaved. Clients have SELECT only; security-definer RPC enforces ownership, key, current school, active status and bookmark for start. Lock catalogue and application rows and existing check, compare expected revision and exact expected current snapshot before mutation. Start races reject duplicates; source update races serialize on the catalogue lock. Reopen preserves the stored snapshot; acknowledgement stores current snapshot and clears reviewed.
+
+New course_preparation_work: owner/application/check plus exactly one owned application evidence link or owned essay draft. Composite FKs enforce ownership and application identity; unique per check/source, owner SELECT/INSERT/DELETE only. Source/app/account deletion cascades; no source work is deleted by unlinking. Both tables included in paginated account export and fresh CI bootstrap.
+
+## Architecture / choices made autonomously
+Use the existing Next.js, typed Supabase client, UI primitives and native inline execution. Add focused model/API, preparation card and supporting-work dialog, plus a Today review card. Reuse the existing work-source loader after extracting it from scholarship link loading; avoid broad UI refactors. No new dependencies or catalogue fact edits. Preserve all source metadata including verified_at in snapshot comparison so a recheck is visible. The current recorded source is not live-provider validation.
+
+## Verification and release
+Unit tests for change detection/unknown data, server API conflicts and export. Real local RLS/grant/cascade tests and concurrent RPC/source change tests. Browser start/review/reopen, link draft/evidence, change acknowledgement, unsave persistence and failed-load recovery on desktop, Pixel and WebKit phone. Existing baseline 1,211 unit tests passed. Fresh CI must actually install the migration. Independent whole-branch and actual Claude review before merge; production schema preflight/apply/postflight, exact-head CI and auth health, both production domains. Human student pilot remains PROD-81.

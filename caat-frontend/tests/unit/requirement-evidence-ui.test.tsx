@@ -58,7 +58,7 @@ it('keeps the successful-save dialog open until refresh finishes so focus can re
  await click(button('Link selected work'));
  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
  const {act}=await import('react');await act(async()=>{resolve({links:[linked],sources:[source]});});
- expect(document.querySelector('[role="dialog"]')).toBeNull();expect(document.activeElement).toBe(opener);
+ expect(document.querySelector('[role="dialog"]')).toBeNull();await vi.waitFor(()=>expect(document.activeElement).toBe(opener));
 });
 it('refreshes known same-page source changes and cascaded removals immediately',async()=>{
  io.load.mockResolvedValue({links:[linked],sources:[source]});await mountComponent(<Screen/>);
@@ -66,4 +66,13 @@ it('refreshes known same-page source changes and cascaded removals immediately',
  io.load.mockResolvedValue({links:[],sources:[]});
  const {act}=await import('react');await act(async()=>{window.dispatchEvent(new Event('caat:requirement-work-changed'));});
  expect(document.querySelector('[data-requirement-link="r1"]')).toBeNull();
+});
+it('returns focus to a pointer opener even when Safari did not focus it on click (PROD-176)',async()=>{
+ await mountComponent(<Screen/>);
+ const opener=button('Link supporting work: Essay required');
+ expect(document.activeElement).not.toBe(opener);
+ await click(opener);await click(document.querySelector('input[type="radio"]')!);
+ io.add.mockResolvedValue(linked);io.load.mockResolvedValue({links:[linked],sources:[source]});
+ await click(button('Link selected work'));
+ await vi.waitFor(()=>expect(document.activeElement).toBe(opener));
 });

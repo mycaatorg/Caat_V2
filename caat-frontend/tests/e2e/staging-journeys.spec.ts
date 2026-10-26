@@ -2135,3 +2135,50 @@ test("Today task editing preserves other fields and recovers from conflicts and 
   expect((await request.delete(url,{headers})).ok()).toBe(true);
  }
 });
+
+// PROD-175: real persisted preparation and owned work, including unsave and export.
+test('course preparation persists, links work without ticking and survives unsaving (PROD-175)', {tag:'@phone'}, async({page,request},testInfo)=>{
+ test.setTimeout(120_000);page.setDefaultTimeout(15_000);
+ const prepSchool=900175,prepCourse={id:"e2e-preparation-course",name:"E2E Preparation Course"};
+ const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin,key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ const auth=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:STUDENT_EMAIL,password:process.env.E2E_TEST_PASSWORD}});expect(auth.ok()).toBe(true);
+ const session=await auth.json(),own=`user_id=eq.${session.user.id}`,headers={apikey:key,Authorization:`Bearer ${session.access_token}`,Prefer:'return=representation'};
+ const read=async(table:string,query:string)=>{const r=await request.get(`${api}/rest/v1/${table}?${query}`,{headers});expect(r.ok()).toBe(true);return r.json();};
+ const add=async(table:string,data:unknown)=>{const r=await request.post(`${api}/rest/v1/${table}`,{headers,data});expect(r.ok()).toBe(true);return(await r.json())[0];};
+ let app=(await read('user_school_applications',`${own}&school_id=eq.${prepSchool}`))[0];const created=!app;
+ const hadBookmark=(await read('user_course_bookmarks',`${own}&course_id=eq.${prepCourse.id}`)).length>0;
+ const title=marker(`Course preparation draft ${testInfo.project.name}`);let draft: {id:string}|undefined;
+ try{
+  if(!app)app=await add('user_school_applications',{user_id:session.user.id,school_id:prepSchool,status:'researching'});
+  if(!hadBookmark)await add('user_course_bookmarks',{user_id:session.user.id,course_id:prepCourse.id});
+  draft=await add('essay_drafts',{user_id:session.user.id,prompt_id:crypto.randomUUID(),prompt_slug:'course-preparation',label:title,content:'My maths preparation example'});
+  await signInToIsolatedStudent(page);await page.goto(`/applications/${app.id}`);
+  const card=page.getByRole('region',{name:'Course preparation',exact:true});
+  const row=card.getByRole('group',{name:`${prepCourse.name} · E2E175: Review prerequisites`,exact:true});
+  await row.getByRole('button',{name:'Start check',exact:true}).click();
+  await expect(row.getByText('In progress',{exact:true})).toBeVisible();
+  const opener=row.getByRole('button',{name:'Supporting work',exact:true});await opener.focus();await opener.press('Enter');
+  const dialog=page.getByRole('dialog',{name:'Course supporting work',exact:true});
+  await dialog.getByLabel('Find supporting work').fill(title);
+  await dialog.getByRole('radio',{name:new RegExp(title)}).check();await dialog.getByRole('button',{name:'Link selected work',exact:true}).click();
+  await expect(dialog.getByText('My maths preparation example',{exact:true})).toBeVisible();
+  const box=await dialog.boundingBox();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await dialog.getByRole('button',{name:'Close dialog'}).click();await expect(opener).toBeFocused();
+  await expect(row.getByText('In progress',{exact:true})).toBeVisible();
+  await row.getByRole('button',{name:'Mark reviewed',exact:true}).click();await expect(row.getByText('Reviewed',{exact:true})).toBeVisible();
+  await page.reload();await expect(row.getByText('Reviewed',{exact:true})).toBeVisible();
+  await row.getByRole('button',{name:'Reopen check',exact:true}).click();await expect(row.getByText('In progress',{exact:true})).toBeVisible();
+  expect((await request.delete(`${api}/rest/v1/user_course_bookmarks?${own}&course_id=eq.${prepCourse.id}`,{headers})).ok()).toBe(true);
+  await page.reload();await expect(card.getByText('No longer saved',{exact:true})).toBeVisible();await expect(row.getByText('In progress',{exact:true})).toBeVisible();
+  await row.getByRole('button',{name:'Supporting work',exact:true}).click();await expect(dialog.getByText(title,{exact:true})).toBeVisible();await dialog.getByRole('button',{name:'Close dialog'}).click();
+  const exportResponse=await page.request.get('/settings/export');expect(exportResponse.ok()).toBe(true);const exported=await exportResponse.json();
+  expect(exported.data.course_preparation_checks.some((c:{course_id:string})=>c.course_id===prepCourse.id)).toBe(true);
+  expect(exported.data.course_preparation_work.some((w:{essay_draft_id:string})=>w.essay_draft_id===draft!.id)).toBe(true);
+  await testInfo.attach('course-preparation',{body:await page.screenshot(),contentType:'image/png'});
+ }finally{
+  if(draft)expect.soft((await request.delete(`${api}/rest/v1/essay_drafts?${own}&id=eq.${draft.id}`,{headers})).ok()).toBe(true);
+  if(created&&app)expect.soft((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${app.id}`,{headers})).ok()).toBe(true);
+  if(hadBookmark&&!(await read('user_course_bookmarks',`${own}&course_id=eq.${prepCourse.id}`)).length)await add('user_course_bookmarks',{user_id:session.user.id,course_id:prepCourse.id});
+  if(!hadBookmark)await request.delete(`${api}/rest/v1/user_course_bookmarks?${own}&course_id=eq.${prepCourse.id}`,{headers});
+ }
+});
