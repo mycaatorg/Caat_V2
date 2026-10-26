@@ -1,10 +1,11 @@
 "use client";
 
 import React from "react";
+import { educationToHtml } from "@/lib/resume-guided-html";
+export { educationToHtml } from "@/lib/resume-guided-html";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import RichTextEditor from "@/components/RichTextEditor";
-import { isEmptyHtml } from "../publishedHtml";
 
 export type EducationEntry = {
   id: string;
@@ -32,36 +33,6 @@ function emptyEntry(): EducationEntry {
   };
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-export function educationToHtml(entries: EducationEntry[]): string {
-  return entries
-    .filter((e) => e.institution || e.degree)
-    .map((e) => {
-      const titleLine = [e.degree, e.field].filter(Boolean).map(escapeHtml).join(" in ");
-      const datePart = e.current
-        ? `${escapeHtml(e.startDate)} – Present`
-        : [e.startDate, e.endDate].filter(Boolean).map(escapeHtml).join(" – ");
-      const metaParts = [datePart, e.gpa ? `GPA: ${escapeHtml(e.gpa)}` : ""].filter(Boolean).join(" · ");
-      const lines: string[] = [];
-      if (e.institution)
-        lines.push(`<p><strong>${escapeHtml(e.institution)}</strong>${titleLine ? ` — ${titleLine}` : ""}</p>`);
-      if (metaParts) lines.push(`<p>${metaParts}</p>`);
-      // description is rich-text HTML from the Notes editor — embed as-is.
-      if (e.description && !isEmptyHtml(e.description)) {
-        lines.push(e.description);
-      }
-      return lines.join("");
-    })
-    .join("<p>&nbsp;</p>");
-}
 
 export type EducationValue = { entries?: EducationEntry[] };
 

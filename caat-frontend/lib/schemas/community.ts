@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ResumeShareInputSchema } from "@/lib/community-resume-share-schema";
 
 // P2.7 — Zod schemas for the Communities feature. Replaces hand-rolled
 // validation in server actions; runs before any DB call.
@@ -40,6 +41,7 @@ export const PostInputSchema = z.object({
   result_card: ResultCardSchema.nullable().optional(),
   score_card: ScoreCardSchema.nullable().optional(),
   resume_id: z.string().uuid().nullable().optional(),
+  resume_share: ResumeShareInputSchema.nullable().optional(),
   is_anonymous: z.boolean().optional(),
   university_id: z.number().int().positive().nullable().optional(),
   poll_options: z.array(PollOptionSchema).min(2).max(10).nullable().optional(),

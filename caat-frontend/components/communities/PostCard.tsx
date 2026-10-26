@@ -400,7 +400,7 @@ export function PostCard({ post, currentUser, initialIsLiked, initialIsSaved, on
 
         {/* Resume inline preview */}
         {post.resume_id && (
-          <ResumeInlinePreview resumeId={post.resume_id} resumeTitle={post.resume_title} />
+          <ResumeInlinePreview postId={post.id} isOwner={isOwnPost} />
         )}
       </CardContent>
 

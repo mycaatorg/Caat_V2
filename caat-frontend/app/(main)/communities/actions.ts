@@ -12,3 +12,5 @@ export * from "./actions/groups";
 export * from "./actions/moderation";
 export * from "./actions/notifications";
 export * from "./actions/profiles";
+
+export * from "./actions/resumes";

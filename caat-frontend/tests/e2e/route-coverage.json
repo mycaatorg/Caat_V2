@@ -283,6 +283,13 @@
       "kind": "static",
       "coverage": "public-content",
       "expected": "A shortlist to consider"
+    },
+    {
+      "route": "/communities/shared-resumes",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Your shared resumes"
     }
   ],
   "writeJourneys": [

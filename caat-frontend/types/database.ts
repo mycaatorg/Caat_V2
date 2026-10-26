@@ -18,6 +18,7 @@ export type Database = {
   }
   public: {
     Tables: {
+      community_resume_shares: { Row: {post_id:string;user_id:string;snapshot:Json;request_hash:string;created_at:string}; Insert:never; Update:never; Relationships:[] }
       shortlist_shares: { Row: ShareRecord; Insert: never; Update: never; Relationships: [] }
       course_preparation_checks: {
         Row: PreparationCheck
@@ -1880,6 +1881,9 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      read_community_resume: { Args: {p_post_id:string}; Returns:Json }
+      create_community_resume_post: { Args: {p_post_id:string;p_post:Json;p_snapshot:Json}; Returns:Json }
+
       preview_shortlist_share: {Args:{p_selection:Json};Returns:Json}
       create_shortlist_share: {Args:{p_selection:Json;p_expected_items:Json;p_token:string};Returns:ShareRecord[]}
       replace_shortlist_share: {Args:{p_id:string;p_expected_revision:string;p_token:string};Returns:ShareRecord[]}
