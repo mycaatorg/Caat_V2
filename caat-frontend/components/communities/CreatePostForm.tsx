@@ -30,6 +30,9 @@ import type { CommunityPost, PostAuthor, TopicTag, ResultCard, ScoreCard, PollOp
 import { TOPIC_LABELS } from "@/types/community";
 import { createPostAction, fetchUserResumesAction, searchSchoolsAction } from "@/app/(main)/communities/actions";
 
+import { ResumeSharePicker } from "./ResumeSharePicker";
+import type { ResumeShareInput } from "@/lib/community-resume-share-schema";
+
 const TOPIC_TAGS = Object.keys(TOPIC_LABELS) as TopicTag[];
 const EXAM_OPTIONS = ["SAT", "ACT", "IB", "A-Levels", "ATAR", "AP"] as const;
 const OUTCOME_OPTIONS = [
@@ -66,6 +69,8 @@ export function CreatePostForm({ currentUser, onPostCreated, groupId }: CreatePo
   const [showResume, setShowResume] = useState(false);
   const [selectedResumeId, setSelectedResumeId] = useState("");
   const [resumes, setResumes] = useState<{ id: string; title: string }[]>([]);
+
+  const [resumeShare,setResumeShare] = useState<ResumeShareInput|null>(null);
 
   // School
   const [showSchool, setShowSchool] = useState(false);
@@ -143,7 +148,7 @@ export function CreatePostForm({ currentUser, onPostCreated, groupId }: CreatePo
     setContent(""); setTopicTag(""); setIsAnonymous(false); setShowDiscardConfirm(false);
     setShowResult(false); setResultOutcome(""); setResultUniversity(""); setResultProgram("");
     setShowScore(false); setScoreExam(""); setScoreValue("");
-    setShowResume(false); setSelectedResumeId("");
+    setShowResume(false); setSelectedResumeId(""); setResumeShare(null);
     setShowSchool(false); setSchoolQuery(""); setSelectedSchool(null); setSchoolSuggestions([]);
     setShowPoll(false); setPollOptions(["", ""]);
     setIsExpanded(false);
@@ -186,6 +191,7 @@ export function CreatePostForm({ currentUser, onPostCreated, groupId }: CreatePo
   function handleSubmit() {
     const hasAttachment = showScore || showResult || (showResume && selectedResumeId) || showPoll;
     if (!plainContent.trim() && !hasAttachment) return toast.error("Add some text, a score, result, resume, or poll.");
+    if (showResume && (!selectedResumeId || !resumeShare)) return toast.error("Preview your resume and confirm the shared copy first.");
     if (!topicTag) return toast.error("Select a topic for your post.");
     if (showResult && (!resultOutcome || !resultUniversity.trim())) return toast.error("Fill in the result card or remove it.");
     if (showScore && (!scoreExam || !scoreValue.trim())) return toast.error("Fill in the score card or remove it.");
@@ -215,6 +221,7 @@ export function CreatePostForm({ currentUser, onPostCreated, groupId }: CreatePo
           result_card: resultCard,
           score_card: scoreCard,
           resume_id: showResume && selectedResumeId ? selectedResumeId : null,
+          resume_share: showResume ? resumeShare : null,
           is_anonymous: isAnonymous,
           university_id: showSchool && selectedSchool ? selectedSchool.id : null,
           poll_options: pollOptionsFinal,
@@ -313,7 +320,7 @@ export function CreatePostForm({ currentUser, onPostCreated, groupId }: CreatePo
             {[
               { key: "result",  show: showResult, setShow: setShowResult,  Icon: CheckCircle, label: "Result"  },
               { key: "score",   show: showScore,  setShow: setShowScore,   Icon: null,        label: "Score"   },
-              { key: "resume",  show: showResume, setShow: (v: boolean) => { setShowResume(v); if (!v) setSelectedResumeId(""); }, Icon: FileText, label: "Resume" },
+              { key: "resume",  show: showResume, setShow: (v: boolean) => { setShowResume(v); if (!v) {setSelectedResumeId("");setResumeShare(null);} }, Icon: FileText, label: "Resume" },
               { key: "school",  show: showSchool, setShow: (v: boolean) => { setShowSchool(v); if (!v) { setSelectedSchool(null); setSchoolQuery(""); }}, Icon: School, label: "School" },
               { key: "poll",    show: showPoll,   setShow: (v: boolean) => { setShowPoll(v); if (!v) setPollOptions(["", ""]); }, Icon: BarChart2, label: "Poll" },
             ].map(({ key, show, setShow, Icon, label }) => (
@@ -402,13 +409,14 @@ export function CreatePostForm({ currentUser, onPostCreated, groupId }: CreatePo
                   <a href="/resume-builder" className="underline" target="_blank" rel="noreferrer">Build one</a>.
                 </p>
               ) : (
-                <Select value={selectedResumeId} onValueChange={setSelectedResumeId}>
+                <Select value={selectedResumeId} disabled={isPending} onValueChange={id=>{setSelectedResumeId(id);setResumeShare(null);}}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select a resume" /></SelectTrigger>
                   <SelectContent>
                     {resumes.map((r) => (<SelectItem key={r.id} value={r.id}>{r.title}</SelectItem>))}
                   </SelectContent>
                 </Select>
               )}
+              {selectedResumeId && <ResumeSharePicker key={selectedResumeId} resumeId={selectedResumeId} onChange={setResumeShare} anonymous={isAnonymous} disabled={isPending}/>}
             </div>
           )}
 
@@ -488,7 +496,7 @@ export function CreatePostForm({ currentUser, onPostCreated, groupId }: CreatePo
 
         <CardFooter className="pt-3 gap-2 justify-end border-t">
           <Button variant="ghost" size="sm" onClick={handleTryClose} disabled={isPending}>Cancel</Button>
-          <Button size="sm" onClick={handleSubmit} disabled={isPending || isOverLimit || (!plainContent.trim() && !showScore && !showResult && !(showResume && selectedResumeId) && !showPoll) || !topicTag} className="bg-[#9a1a27] hover:bg-[#7d1520] text-white disabled:opacity-50">
+          <Button size="sm" onClick={handleSubmit} disabled={isPending || (showResume && !resumeShare) || isOverLimit || (!plainContent.trim() && !showScore && !showResult && !(showResume && selectedResumeId) && !showPoll) || !topicTag} className="bg-[#9a1a27] hover:bg-[#7d1520] text-white disabled:opacity-50">
             {isPending ? "Posting…" : "Post"}
           </Button>
         </CardFooter>

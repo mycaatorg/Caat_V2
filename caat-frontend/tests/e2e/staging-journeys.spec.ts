@@ -2238,3 +2238,43 @@ test('shortlist sharing previews selected items and revokes anonymous access (PR
   if(!existing.length)expect.soft((await request.delete(bookmarkUrl,{headers})).ok()).toBe(true);
  }
 });
+
+test('@phone shared community resume requires consent, preserves its copy and revokes for peers', async ({page,browser,request},testInfo)=>{
+ test.setTimeout(120000);
+ const api=process.env.NEXT_PUBLIC_SUPABASE_URL!,key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ const auth=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:STUDENT_EMAIL,password:process.env.E2E_TEST_PASSWORD}});expect(auth.ok()).toBe(true);
+ const session=await auth.json(),headers={apikey:key,Authorization:`Bearer ${session.access_token}`,Prefer:'return=representation'};
+ const resumeId=crypto.randomUUID(),content=marker(`ResumeShare-${testInfo.project.name}`),title=`Resume ${resumeId.slice(0,8)}`;
+ const peerContext=await browser.newContext({viewport:page.viewportSize(),isMobile:!!testInfo.project.use.isMobile,hasTouch:!!testInfo.project.use.hasTouch});
+ let postId:string|undefined;
+ try{
+  expect((await request.post(`${api}/rest/v1/resumes`,{headers,data:{id:resumeId,user_id:session.user.id,title}})).ok()).toBe(true);
+  const sections=[{resume_id:resumeId,section_key:'personal',label:'Personal details',mode:'free',sort_order:0,content_html:'<p>Synthetic Student</p>'},
+   {resume_id:resumeId,section_key:'education',label:'Education',mode:'guided',sort_order:1,content_html:'<p>PRIVATE INACTIVE DRAFT</p>',structured_data:{entries:[{institution:'Synthetic University',degree:'BSc',startDate:'2024',current:true,description:'<p>Published study</p><img src=x onerror="document.documentElement.dataset.resumeXss=1">'}]}},
+   {resume_id:resumeId,section_key:'custom',label:'Projects',mode:'free',sort_order:2,content_html:Array.from({length:24},(_,i)=>`<p>Project example ${i+1}: a completed synthetic learning project.</p>`).join('')+'<p>FINAL RESUME SECTION</p>'}];
+  const seeded=await request.post(`${api}/rest/v1/resume_sections`,{headers,data:sections.map(s=>({structured_data:null,...s}))});expect(seeded.ok(),await seeded.text()).toBe(true);
+  await signInToIsolatedStudent(page);await expect(page.getByText('Your next step',{exact:true})).toBeVisible();await page.goto('/communities');
+  await page.locator('div.cursor-text:visible').filter({hasText:'Share your experience, results, or advice'}).first().click();
+  await page.locator('.ProseMirror').first().fill(content);await page.getByText('Select a topic').click();await page.getByRole('option',{name:'Advice',exact:true}).click();
+  await page.getByRole('button',{name:'Resume',exact:true}).click();await page.getByText('Select a resume',{exact:true}).click();await page.getByRole('option',{name:title,exact:true}).click();
+  await expect(page.getByRole('button',{name:'Post',exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:'Preview shared copy'}).click();
+  const preview=page.getByRole('article',{name:'Shared resume content'});await expect(preview).toContainText('Synthetic University');await expect(preview).not.toContainText('PRIVATE INACTIVE DRAFT');
+  await expect(preview.locator('img,script,[onerror]')).toHaveCount(0);await expect(preview).toContainText('FINAL RESUME SECTION');
+  await page.getByRole('checkbox',{name:/I reviewed this copy/}).check();await page.getByRole('button',{name:'Post',exact:true}).click();
+  const card=page.locator('[data-slot="card"]').filter({hasText:content}).first();await expect(card.getByRole('button',{name:'Read shared resume'})).toBeVisible({timeout:15000});
+  const posts=await(await request.get(`${api}/rest/v1/community_posts?resume_link=eq.${resumeId}&user_id=eq.${session.user.id}&select=id`,{headers})).json();expect(posts.length).toBe(1);postId=posts[0].id;
+  expect((await request.patch(`${api}/rest/v1/resume_sections?resume_id=eq.${resumeId}&section_key=eq.education`,{headers,data:{structured_data:{entries:[{institution:'PRIVATE LATER EDIT',degree:'BSc'}]}}})).ok()).toBe(true);
+  const peer=await peerContext.newPage();await peer.goto(`${process.env.PLAYWRIGHT_BASE_URL}/login`);await peer.getByLabel('Email',{exact:true}).fill('e2e.peer@caat.local.test');await peer.getByLabel('Password',{exact:true}).fill(process.env.E2E_TEST_PASSWORD!);await peer.getByRole('button',{name:/sign in/i}).click();await peer.waitForURL(/\/today(?:$|\?)/,{timeout:20000});await expect(peer.getByText('Your next step',{exact:true})).toBeVisible();
+  await peer.goto(`${process.env.PLAYWRIGHT_BASE_URL}/communities/${postId}`);await peer.getByRole('button',{name:'Read shared resume'}).click();
+  const read=peer.getByRole('article',{name:'Shared resume content'});await expect(read).toContainText('Synthetic University');await expect(read).not.toContainText('PRIVATE LATER EDIT');await expect(read).not.toContainText('PRIVATE INACTIVE DRAFT');await read.getByText('FINAL RESUME SECTION',{exact:true}).scrollIntoViewIfNeeded();await expect(read.getByText('FINAL RESUME SECTION',{exact:true})).toBeVisible();
+  expect(await peer.evaluate(()=>document.documentElement.dataset.resumeXss)).toBeUndefined();
+  await testInfo.attach('shared-resume-reader',{body:await peer.screenshot({fullPage:true}),contentType:'image/png'});
+  await peer.getByRole('button',{name:'Close',exact:true}).click();
+  await page.goto('/communities/shared-resumes');await expect(page.getByRole('heading',{name:'Your shared resumes',exact:true})).toBeVisible();const managed=page.getByRole('listitem').filter({hasText:title});await managed.getByRole('button',{name:'Remove shared copy'}).click();await managed.getByRole('button',{name:'Confirm removal'}).click();await expect(page.getByText('Shared copy removed.',{exact:true})).toBeVisible();
+  await peer.reload();await expect(peer.getByText(/This shared resume is unavailable/)).toBeVisible();await expect(peer.getByRole('button',{name:'Read shared resume'})).toHaveCount(0);
+  const drafts=await(await request.get(`${api}/rest/v1/resumes?id=eq.${resumeId}&select=id`,{headers})).json();expect(drafts.length).toBe(1);
+ }finally{
+  await peerContext.close();await request.delete(`${api}/rest/v1/community_posts?resume_link=eq.${resumeId}&user_id=eq.${session.user.id}`,{headers});await request.delete(`${api}/rest/v1/resumes?id=eq.${resumeId}&user_id=eq.${session.user.id}`,{headers});
+ }
+});

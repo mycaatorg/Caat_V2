@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { skillsToHtml } from "@/lib/resume-guided-html";
+export { skillsToHtml } from "@/lib/resume-guided-html";
 import { Input } from "@/components/ui/input";
 
 export type SkillCategory = {
@@ -17,26 +19,6 @@ function emptyCategory(): SkillCategory {
   };
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-export function skillsToHtml(categories: SkillCategory[]): string {
-  return categories
-    .filter((c) => c.skills.trim())
-    .map((c) => {
-      if (c.name.trim()) {
-        return `<p><strong>${escapeHtml(c.name)}:</strong> ${escapeHtml(c.skills)}</p>`;
-      }
-      return `<p>${escapeHtml(c.skills)}</p>`;
-    })
-    .join("");
-}
 
 export type SkillsValue = { categories?: SkillCategory[] };
 

@@ -46,6 +46,7 @@ export default async function CommunitiesPage() {
                 Browse and manage communities
               </Link>
             </Button>
+            <Button asChild variant="outline"><Link href="/communities/shared-resumes">Manage shared resumes</Link></Button>
             <CommunityFeedClient
               initialPosts={posts}
               initialCursor={nextCursor}

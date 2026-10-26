@@ -1,6 +1,7 @@
-import { educationToHtml, type EducationValue } from "./editors/EducationGuided";
-import { experienceToHtml, type ExperienceValue } from "./editors/ExperienceGuided";
-import { skillsToHtml, type SkillsValue } from "./editors/SkillsGuided";
+import { educationToHtml, experienceToHtml, skillsToHtml } from "@/lib/resume-guided-html";
+import type { EducationValue } from "./editors/EducationGuided";
+import type { ExperienceValue } from "./editors/ExperienceGuided";
+import type { SkillsValue } from "./editors/SkillsGuided";
 
 type SectionLike = {
   type: string;
@@ -41,8 +42,4 @@ export function publishedHtml(section: SectionLike): string {
   return section.contentHtml || "";
 }
 
-// True when an HTML draft has no visible content (used for empty-state hints).
-export function isEmptyHtml(html: string | undefined): boolean {
-  if (!html) return true;
-  return !html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
-}
+export { isEmptyHtml } from "@/lib/resume-guided-html";
