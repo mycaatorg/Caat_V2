@@ -1,5 +1,8 @@
 "use server";
 
+import { sanitizeResumeSnapshot } from "@/lib/community-resume-snapshot";
+import type { ResumeShareInput } from "@/lib/community-resume-share-schema";
+import type { Json } from "@/types/database";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import { containsProfanity } from "@/lib/profanity-filter";
@@ -30,56 +33,6 @@ export async function fetchUserResumesAction(): Promise<
 }
 
 
-export async function fetchResumeForViewAction(resumeId: string): Promise<{
-  title: string | null;
-  sections:
-    | {
-        id: string;
-        type: string;
-        label: string;
-        mode: string;
-        contentHtml: string;
-        structuredData?: Record<string, unknown>;
-      }[]
-    | null;
-  error: string | null;
-}> {
-  const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { title: null, sections: null, error: "Not signed in" };
-
-  const { data: resume } = await supabase
-    .from("resumes")
-    .select("id, title")
-    .eq("id", resumeId)
-    .maybeSingle();
-  if (!resume)
-    return { title: null, sections: null, error: "Resume not found" };
-
-  const { data: rows } = await supabase
-    .from("resume_sections")
-    .select("*")
-    .eq("resume_id", resumeId)
-    .order("sort_order", { ascending: true });
-
-  return {
-    title: resume.title,
-    sections: (rows ?? []).map((row) => ({
-      id: row.id as string,
-      type: row.section_key as string,
-      label: row.label as string,
-      mode: row.mode as string,
-      contentHtml: row.content_html as string,
-      structuredData:
-        (row.structured_data as Record<string, unknown>) ?? undefined,
-    })),
-    error: null,
-  };
-}
-
-
 // ─── School search ────────────────────────────────────────────────────────────
 
 export async function searchSchoolsAction(
@@ -106,6 +59,7 @@ export async function createPostAction(input: {
   result_card?: ResultCard | null;
   score_card?: ScoreCard | null;
   resume_id?: string | null;
+  resume_share?: ResumeShareInput | null;
   is_anonymous?: boolean;
   university_id?: number | null;
   poll_options?: PollOption[] | null;
@@ -170,6 +124,8 @@ export async function createPostAction(input: {
   if (containsProfanity(plain))
     return { post: null, error: "Post contains prohibited language" };
 
+  if (data.resume_id && !data.resume_share) return {post:null,error:"Preview your resume and confirm the shared copy before posting."};
+  if (data.resume_share && !data.resume_id) return {post:null,error:"Choose the resume for this preview."};
   if (data.resume_id) {
     const { data: resume } = await supabase
       .from("resumes")
@@ -187,24 +143,26 @@ export async function createPostAction(input: {
       return { post: null, error: "Not authorized to post in this community" };
   }
 
-  const { data: row, error: insertError } = await supabase
-    .from("community_posts")
-    .insert({
-      user_id: user.id,
-      content,
-      topic_tag: data.topic_tag,
-      result_card: data.result_card ?? null,
-      score_card: data.score_card ?? null,
-      resume_link: data.resume_id ?? null,
-      is_anonymous: data.is_anonymous ?? false,
-      university_id: data.university_id ?? null,
-      poll_options: data.poll_options ?? null,
-      group_id: data.group_id ?? null,
-    })
-    .select(
-      "*, likes:community_likes(count), comments:community_comments(count)",
-    )
-    .single();
+  const payload = {
+    user_id:user.id, content, topic_tag:data.topic_tag,
+    result_card:data.result_card ?? null, score_card:data.score_card ?? null,
+    resume_link:data.resume_id ?? null, is_anonymous:data.is_anonymous ?? false,
+    university_id:data.university_id ?? null, poll_options:data.poll_options ?? null,
+    group_id:data.group_id ?? null,
+  };
+  let publication;
+  if (data.resume_share) {
+    let snapshot;
+    try { snapshot = sanitizeResumeSnapshot(data.resume_share.snapshot); }
+    catch { return {post:null,error:"Preview a valid resume before posting."}; }
+    publication = await supabase.rpc("create_community_resume_post", {
+      p_post_id:data.resume_share.post_id,p_post:payload as Json,p_snapshot:snapshot as Json,
+    }).abortSignal(AbortSignal.timeout(12000));
+  } else {
+    publication = await supabase.from("community_posts").insert(payload)
+      .select("*, likes:community_likes(count), comments:community_comments(count)").single();
+  }
+  const {data:row,error:insertError} = publication;
 
   if (insertError || !row)
     return { post: null, error: "Failed to create post" };

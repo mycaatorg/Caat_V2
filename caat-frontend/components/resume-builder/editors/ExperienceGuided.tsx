@@ -1,10 +1,11 @@
 "use client";
 
 import React from "react";
+import { experienceToHtml, entryDescriptionHtml } from "@/lib/resume-guided-html";
+export { experienceToHtml, entryDescriptionHtml } from "@/lib/resume-guided-html";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import RichTextEditor from "@/components/RichTextEditor";
-import { isEmptyHtml } from "../publishedHtml";
 
 export type ExperienceEntry = {
   id: string;
@@ -31,49 +32,6 @@ function emptyEntry(): ExperienceEntry {
   };
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-// The entry's description as HTML: prefer the rich `description`, else derive
-// from the legacy `bullets` array so existing resumes keep their content.
-export function entryDescriptionHtml(e: ExperienceEntry): string {
-  if (typeof e.description === "string") return e.description;
-  const bullets = (e.bullets ?? []).map((b) => b.trim()).filter(Boolean);
-  return bullets.length > 0
-    ? `<ul>${bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`
-    : "";
-}
-
-export function experienceToHtml(entries: ExperienceEntry[]): string {
-  return entries
-    .filter((e) => e.company || e.title)
-    .map((e) => {
-      const datePart = e.current
-        ? `${escapeHtml(e.startDate)} – Present`
-        : [e.startDate, e.endDate].filter(Boolean).map(escapeHtml).join(" – ");
-      const metaParts = [datePart, escapeHtml(e.location)].filter(Boolean).join(" · ");
-      const lines: string[] = [];
-
-      if (e.company || e.title) {
-        lines.push(
-          `<p><strong>${escapeHtml(e.company)}</strong>${e.title ? ` — ${escapeHtml(e.title)}` : ""}</p>`
-        );
-      }
-      if (metaParts) lines.push(`<p>${metaParts}</p>`);
-
-      const desc = entryDescriptionHtml(e);
-      if (desc && !isEmptyHtml(desc)) lines.push(desc);
-
-      return lines.join("");
-    })
-    .join("<p>&nbsp;</p>");
-}
 
 export type ExperienceValue = { entries?: ExperienceEntry[] };
 

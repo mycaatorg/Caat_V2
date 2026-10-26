@@ -129,9 +129,6 @@ export async function enrichPosts(
   if (!rows.length) return [];
 
   const userIds = [...new Set(rows.map((r) => r.user_id as string))];
-  const resumeIds = rows
-    .map((r) => r.resume_link as string | null)
-    .filter((id): id is string => !!id);
   const universityIds = rows
     .map((r) => r.university_id as number | null)
     .filter((id): id is number => id != null);
@@ -143,7 +140,6 @@ export async function enrichPosts(
 
   const [
     profilesRes,
-    resumesRes,
     schoolsRes,
     pollVotesRes,
     userVotesRes,
@@ -157,9 +153,6 @@ export async function enrichPosts(
     // to the null-author branch in PostCard and render as "Anonymous". The
     // RPC is SECURITY DEFINER and exposes only the public-display columns.
     supabase.rpc("get_public_profiles", { user_ids: userIds }),
-    resumeIds.length
-      ? supabase.from("resumes").select("id, title").in("id", resumeIds)
-      : Promise.resolve({ data: [] as { id: string; title: string }[] }),
     universityIds.length
       ? supabase.from("schools").select("id, name").in("id", universityIds)
       : Promise.resolve({ data: [] as { id: number; name: string }[] }),
@@ -215,12 +208,6 @@ export async function enrichPosts(
   };
   const profileMap = new Map<string, ProfileRow>(
     ((profilesRes.data ?? []) as ProfileRow[]).map((p) => [p.id, p]),
-  );
-  const resumeTitleMap = new Map(
-    ((resumesRes.data ?? []) as { id: string; title: string }[]).map((r) => [
-      r.id,
-      r.title,
-    ]),
   );
   const schoolNameMap = new Map(
     ((schoolsRes.data ?? []) as { id: number; name: string }[]).map((s) => [
@@ -283,9 +270,7 @@ export async function enrichPosts(
       result_card: (row.result_card as ResultCard | null) ?? null,
       score_card: (row.score_card as ScoreCard | null) ?? null,
       resume_id: (row.resume_link as string | null) ?? null,
-      resume_title: row.resume_link
-        ? (resumeTitleMap.get(row.resume_link as string) ?? null)
-        : null,
+      resume_title: null, // Shared title comes from the authorized frozen copy.
       is_anonymous: isAnon,
       is_hidden: (row.is_hidden as boolean) ?? false,
       edited_at: (row.edited_at as string | null) ?? null,

@@ -180,6 +180,7 @@ it("paginates existing collections and fails rather than downloading a partial l
 it("uses stable complete composite ordering and bounds every page", async () => {
   await GET();
   const keys: Record<string,string[]> = {
+    community_resume_shares:["post_id"],
     user_scholarship_prep_checks:["user_id","scholarship_id","item_key"],
     community_blocks:["blocker_id","blocked_id"], community_follows:["follower_id","followee_id"],
     community_group_members:["group_id","user_id"], community_group_requests:["group_id","user_id"],
