@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Playfair_Display, Source_Serif_4, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
+import { SiteTelemetry } from "@/components/site-telemetry";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
@@ -85,8 +84,7 @@ export default function RootLayout({
           {children}
           <Toaster richColors position="bottom-right" />
         </ThemeProvider>
-        <Analytics />
-        <SpeedInsights />
+        <SiteTelemetry />
       </body>
     </html>
   );
