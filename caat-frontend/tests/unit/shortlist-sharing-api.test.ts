@@ -31,3 +31,7 @@ it('bounds a stalled creation and makes ambiguous success explicit',async()=>{
 it('rejects zero-row removal instead of reporting success',async()=>{await expect(removeShare('missing')).rejects.toThrow(/remove/i);});
 
 it('stops signed-out reads before fetching account data',async()=>{io.user=null;await expect(loadShares()).rejects.toThrow(/Sign in/i);await expect(loadShareCandidates()).rejects.toThrow(/Sign in/i);});
+it('loads current scholarship availability and offers only active bookmarked scholarships',async()=>{
+ const client=createMockSupabase({resolver:ctx=>({data:ctx.table==='user_bookmarked_scholarships'?[{scholarships:{id:'open',title:'Open award',is_active:true}},{scholarships:{id:'closed',title:'Retired award',is_active:false}}]:[]})});io.client=client;
+ expect((await loadShareCandidates()).map(c=>c.id)).toEqual(['open']);expect(String(client.queries.find(q=>q.table==='user_bookmarked_scholarships')?.calls[0].args[0])).toContain('is_active');
+});

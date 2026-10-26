@@ -8,6 +8,8 @@ import type { ScholarshipStatus } from "@/lib/scholarship-tracking";
 import { removeCourseBookmark } from "@/lib/course-bookmarks";
 
 export interface ShortlistScholarship {
+  /** Current catalogue availability; older cached snapshots may omit it. */
+  active?: boolean;
   id: string;
   title: string;
   provider: string | null;
@@ -57,7 +59,7 @@ export async function loadShortlist(supabase: SupabaseClient, userId: string, si
   const [schRes, schoolRes, majorRes, appRes, courseRes] = await Promise.all([
     supabase
       .from("user_bookmarked_scholarships")
-      .select("scholarship_id, status, school_id, created_at, schools(name), scholarships(id, title, provider_name, amount_display, deadline_at)")
+      .select("scholarship_id, status, school_id, created_at, schools(name), scholarships(id, title, provider_name, amount_display, deadline_at, is_active)")
       .eq("user_id", userId)
       .order("created_at", { ascending: false }).abortSignal(signal),
     supabase
@@ -103,6 +105,7 @@ export async function loadShortlist(supabase: SupabaseClient, userId: string, si
       return [{
         id: s.id as string,
         title: s.title as string,
+        active: s.is_active === true,
         provider: (s.provider_name as string | null) ?? null,
         amount: (s.amount_display as string | null) ?? null,
         deadlineAt: (s.deadline_at as string | null) ?? null,

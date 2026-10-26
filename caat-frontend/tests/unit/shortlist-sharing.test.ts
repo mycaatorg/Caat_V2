@@ -19,3 +19,7 @@ describe('recipient boundary',()=>{
   expect(shareCandidates(list)).toEqual([{kind:'school',id:'1',label:'School',description:'AU'}]);
  });
 });
+it('omits unavailable scholarship choices without removing active saved choices',()=>{
+ const list={courses:[],majors:[],schools:[],scholarships:[{id:'active',title:'Open scholarship',active:true,provider:'Foundation'},{id:'inactive',title:'Retired scholarship',active:false,provider:'Foundation'}]} as unknown as Shortlist;
+ expect(shareCandidates(list).map(c=>c.id)).toEqual(['active']);
+});

@@ -47,3 +47,15 @@ it('clears the snapshot at expiry without waiting for a poll',async()=>{
 it('ignores a refresh result from history started before revocation',async()=>{
  api.loadShares.mockResolvedValue([record]);api.revokeShare.mockResolvedValue({...record,revoked_at:new Date().toISOString()});await mountComponent(<ShareManager/>);const stale=deferred<typeof record[]>();api.loadShares.mockReturnValue(stale.promise);await click(button('Refresh links'));await click(button('Revoke link'));await act(async()=>stale.resolve([record]));expect(document.body.textContent).toContain('Revoked');expect(document.body.textContent).not.toContain('Active until');
 });
+it('does not leave a previous capability beside a new selection or preview',async()=>{
+ const other={...item,id:'course-2',title:'Medicine'};
+ api.loadShareCandidates.mockResolvedValue([item,other].map(i=>({kind:i.kind,id:i.id,label:i.title,description:''})));
+ await mountComponent(<ShareManager/>);await preview();await click(button('Create shared link'));expect(document.querySelector('[aria-label="Shared link"]')).not.toBeNull();
+ await click(document.querySelectorAll('input[type=checkbox]')[0] as HTMLElement);await click(document.querySelectorAll('input[type=checkbox]')[1] as HTMLElement);api.previewShare.mockResolvedValue([other]);await click(button('Preview selected items'));
+ expect(document.querySelector('[data-share-preview]')?.textContent).toContain('Medicine');expect(document.querySelector('[aria-label="Shared link"]')).toBeNull();
+});
+it('binds a replacement copy link to its actual saved items, not an unrelated selection',async()=>{
+ const other={...item,id:'course-2',title:'Medicine'};const old={...record,id:'old',items:[other]};api.loadShares.mockResolvedValue([old]);api.replaceShare.mockResolvedValue({...old,revision:'next'});
+ await mountComponent(<ShareManager/>);await preview();await click(button('Replace link'));await click(button('Confirm replacement'));
+ const copy=document.querySelector('[aria-labelledby="copy-link"]');expect(copy?.textContent).toContain('Medicine');expect(document.querySelector('[aria-labelledby="preview-items"]')).toBeNull();
+});

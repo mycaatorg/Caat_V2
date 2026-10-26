@@ -24,7 +24,7 @@ export function shareCandidates(list:Shortlist):{kind:ShareKind;id:string;label:
   ...list.courses.filter(c=>c.active).map(c=>({kind:'course' as const,id:c.id,label:c.name,description:[c.institutionName,c.campus].filter(Boolean).join(' · ')})),
   ...list.schools.map(s=>({kind:'school' as const,id:String(s.id),label:s.name,description:s.country??''})),
   ...list.majors.map(m=>({kind:'major' as const,id:m.id,label:m.name,description:m.category??''})),
-  ...list.scholarships.map(s=>({kind:'scholarship' as const,id:s.id,label:s.title,description:s.provider??''})),
+  ...list.scholarships.filter(s=>s.active===true).map(s=>({kind:'scholarship' as const,id:s.id,label:s.title,description:s.provider??''})),
  ];
 }
 export const shareKey=(item:{kind:ShareKind;id:string})=>`${item.kind}:${item.id}`;
