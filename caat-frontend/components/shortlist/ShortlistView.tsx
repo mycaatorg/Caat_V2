@@ -282,6 +282,7 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
         <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
           Scholarships, universities, majors and courses you are considering, each with what to do next.
         </p>
+        <Button asChild variant="outline" className="mt-4 rounded-none"><Link href="/shortlist/share">Share selected items</Link></Button>
       </header>
 
       {restored && restoredIndex >= 0 ? (

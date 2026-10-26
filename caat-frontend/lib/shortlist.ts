@@ -8,6 +8,8 @@ import type { ScholarshipStatus } from "@/lib/scholarship-tracking";
 import { removeCourseBookmark } from "@/lib/course-bookmarks";
 
 export interface ShortlistScholarship {
+  /** Current catalogue availability; older cached snapshots may omit it. */
+  active?: boolean;
   id: string;
   title: string;
   provider: string | null;
@@ -53,25 +55,25 @@ export interface Shortlist {
 
 type Row = Record<string, unknown>;
 
-export async function loadShortlist(supabase: SupabaseClient, userId: string): Promise<Shortlist> {
+export async function loadShortlist(supabase: SupabaseClient, userId: string, signal: AbortSignal = new AbortController().signal): Promise<Shortlist> {
   const [schRes, schoolRes, majorRes, appRes, courseRes] = await Promise.all([
     supabase
       .from("user_bookmarked_scholarships")
-      .select("scholarship_id, status, school_id, created_at, schools(name), scholarships(id, title, provider_name, amount_display, deadline_at)")
+      .select("scholarship_id, status, school_id, created_at, schools(name), scholarships(id, title, provider_name, amount_display, deadline_at, is_active)")
       .eq("user_id", userId)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false }).abortSignal(signal),
     supabase
       .from("user_bookmarked_schools")
       .select("school_id, created_at, schools(id, name, country)")
       .eq("user_id", userId)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false }).abortSignal(signal),
     supabase
       .from("user_bookmarked_majors")
       .select("major_id, created_at, majors(id, name, category)")
       .eq("user_id", userId)
-      .order("created_at", { ascending: false }),
-    supabase.from("user_school_applications").select("id, school_id, status").eq("user_id", userId),
-    supabase.from("user_course_bookmarks").select("course_id, created_at, course_offerings(id, name, institution_name, campus, active, source_url, school_id)").eq("user_id", userId).order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false }).abortSignal(signal),
+    supabase.from("user_school_applications").select("id, school_id, status").eq("user_id", userId).abortSignal(signal),
+    supabase.from("user_course_bookmarks").select("course_id, created_at, course_offerings(id, name, institution_name, campus, active, source_url, school_id)").eq("user_id", userId).order("created_at", { ascending: false }).abortSignal(signal),
   ]);
   for (const res of [schRes, schoolRes, majorRes, appRes, courseRes]) {
     if (res.error) throw new Error("Could not load your shortlist");
@@ -103,6 +105,7 @@ export async function loadShortlist(supabase: SupabaseClient, userId: string): P
       return [{
         id: s.id as string,
         title: s.title as string,
+        active: s.is_active === true,
         provider: (s.provider_name as string | null) ?? null,
         amount: (s.amount_display as string | null) ?? null,
         deadlineAt: (s.deadline_at as string | null) ?? null,

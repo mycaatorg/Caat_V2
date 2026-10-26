@@ -2182,3 +2182,43 @@ test('course preparation persists, links work without ticking and survives unsav
   if(!hadBookmark)await request.delete(`${api}/rest/v1/user_course_bookmarks?${own}&course_id=eq.${prepCourse.id}`,{headers});
  }
 });
+
+// PROD-80: selected-only snapshots, anonymous capabilities, replacement and revocation.
+test('shortlist sharing previews selected items and revokes anonymous access (PROD-80)', {tag:'@phone'}, async({page,request,browser},testInfo)=>{
+ test.setTimeout(120_000);page.setDefaultTimeout(15_000);
+ const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin,key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ const auth=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:STUDENT_EMAIL,password:process.env.E2E_TEST_PASSWORD}});expect(auth.ok()).toBe(true);
+ const session=await auth.json(),headers={apikey:key,Authorization:`Bearer ${session.access_token}`,Prefer:'return=representation'},own=`user_id=eq.${session.user.id}`;
+ const bookmarkUrl=`${api}/rest/v1/user_bookmarked_schools?${own}&school_id=eq.${SCHOOL_ID}`;
+ const existing=await(await request.get(bookmarkUrl,{headers})).json();
+ const before=await(await request.get(`${api}/rest/v1/shortlist_shares?${own}&select=id`,{headers})).json();
+ const existingIds=new Set(before.map((row:{id:string})=>row.id));
+ const guest=await browser.newContext({viewport:page.viewportSize(),isMobile:!!testInfo.project.use.isMobile,hasTouch:!!testInfo.project.use.hasTouch});
+ try{
+  if(!existing.length)expect((await request.post(`${api}/rest/v1/user_bookmarked_schools`,{headers,data:{user_id:session.user.id,school_id:SCHOOL_ID}})).ok()).toBe(true);
+  await signInToIsolatedStudent(page);await page.goto('/shortlist');await page.getByRole('link',{name:'Share selected items',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Share a little perspective'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Preview selected items'})).toBeDisabled();
+  const school=await(await request.get(`${api}/rest/v1/schools?id=eq.${SCHOOL_ID}&select=name`,{headers})).json();const title=school[0].name;
+  await page.getByRole('checkbox',{name:new RegExp('^'+title+' University')}).check();await page.getByRole('button',{name:'Preview selected items',exact:true}).click();
+  const preview=page.locator('[data-share-preview]');await expect(preview.getByRole('heading',{name:title,exact:true})).toBeVisible();expect(await preview.locator('li').count()).toBe(1);
+  const previewText=await preview.innerText();await page.getByRole('button',{name:'Create shared link',exact:true}).click();
+  const link=page.getByLabel('Shared link',{exact:true});await expect(link).toHaveValue(/\/share\/shortlist#[a-f0-9]{64}$/);const first=await link.inputValue();const token=new URL(first).hash.slice(1);
+  const publicPage=await guest.newPage();const reply=await publicPage.goto(first);expect(reply?.status()).toBe(200);expect(reply?.headers()['referrer-policy']).toBe('no-referrer');expect(reply?.headers()['x-robots-tag']).toContain('noindex');
+  await expect(publicPage.getByRole('heading',{name:title,exact:true})).toBeVisible();expect((await publicPage.locator('[data-share-preview]').innerText()).trim()).toBe(previewText.trim());
+  expect(await publicPage.evaluate(()=>Object.keys(localStorage).filter(k=>k.includes('auth-token')))).toEqual([]);
+  const exportResponse=await page.request.get('/settings/export');expect(exportResponse.ok()).toBe(true);const exported=await exportResponse.json();expect(exported.data.shortlist_shares.length).toBeGreaterThan(0);expect(JSON.stringify(exported)).not.toContain(token);
+  await testInfo.attach('shortlist-sharing-owner',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  await testInfo.attach('shortlist-sharing-recipient',{body:await publicPage.screenshot({fullPage:true}),contentType:'image/png'});
+  const row=page.getByRole('listitem').filter({has:page.getByRole('button',{name:'Revoke link',exact:true})}).filter({hasText:title}).first();
+  await row.getByRole('button',{name:'Replace link',exact:true}).click();await row.getByRole('button',{name:'Confirm replacement',exact:true}).click();await expect(link).not.toHaveValue(first);const second=await link.inputValue();
+  await publicPage.getByRole('button',{name:'Refresh link'}).click();await expect(publicPage.getByRole('heading',{name:'Link unavailable'})).toBeVisible();await expect(publicPage.locator('[data-share-preview]')).toHaveCount(0);
+  await publicPage.goto(second);await expect(publicPage.getByRole('heading',{name:title,exact:true})).toBeVisible();
+  await row.getByRole('button',{name:'Revoke link',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'Link revoked.'})).toBeVisible();
+  await publicPage.getByRole('button',{name:'Refresh link'}).click();await expect(publicPage.getByRole('heading',{name:'Link unavailable'})).toBeVisible();await expect(publicPage.locator('[data-share-preview]')).toHaveCount(0);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(await publicPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ }finally{
+  await guest.close();const rows=await(await request.get(`${api}/rest/v1/shortlist_shares?${own}&select=id`,{headers})).json();for(const row of rows)if(!existingIds.has(row.id))expect.soft((await request.delete(`${api}/rest/v1/shortlist_shares?${own}&id=eq.${row.id}`,{headers})).ok()).toBe(true);
+  if(!existing.length)expect.soft((await request.delete(bookmarkUrl,{headers})).ok()).toBe(true);
+ }
+});

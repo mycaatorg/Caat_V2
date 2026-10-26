@@ -269,6 +269,20 @@
       "kind": "static",
       "coverage": "authenticated-content",
       "expected": "Find the degree behind your interests"
+    },
+    {
+      "route": "/shortlist/share",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Share a little perspective"
+    },
+    {
+      "route": "/share/shortlist",
+      "access": "public",
+      "kind": "static",
+      "coverage": "public-content",
+      "expected": "A shortlist to consider"
     }
   ],
   "writeJourneys": [
@@ -360,6 +374,14 @@
         "tests/e2e/staging-journeys.spec.ts"
       ],
       "reason": "PR staging verifies school notes and application status/checklist/notes persistence against local fixtures."
+    },
+    {
+      "id": "shortlist-sharing",
+      "coverage": "isolated-ci",
+      "reason": "Selected-only preview, anonymous read, replace/revoke, account export privacy and narrow database ownership tests. Human pilot remains separate.",
+      "specs": [
+        "tests/e2e/staging-journeys.spec.ts"
+      ]
     }
   ]
 }

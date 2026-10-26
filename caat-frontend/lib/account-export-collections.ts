@@ -13,6 +13,7 @@ type Collection = {
  * community records still require an explicit owner filter here. Reports have
  * no owner SELECT policy, so they are deliberately excluded, never elevated. */
 export const accountExportCollections = [
+  { table: "shortlist_shares", owner: "user_id", order: ["id"] },
   { table: "course_preparation_checks", owner: "user_id", order: ["id"] },
   { table: "course_preparation_work", owner: "user_id", order: ["id"] },
   { table: "application_evidence_links", owner: "user_id", order: ["id"] },
