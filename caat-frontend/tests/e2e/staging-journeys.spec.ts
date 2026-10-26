@@ -2157,6 +2157,8 @@ test('course preparation persists, links work without ticking and survives unsav
   const row=card.getByRole('group',{name:`${prepCourse.name} · E2E175: Review prerequisites`,exact:true});
   await row.getByRole('button',{name:'Start check',exact:true}).click();
   await expect(row.getByText('In progress',{exact:true})).toBeVisible();
+  await expect(row.getByRole('button',{name:'Mark reviewed',exact:true})).toBeFocused();
+  await expect(card.locator('[aria-live="polite"]')).toContainText('In progress');
   const opener=row.getByRole('button',{name:'Supporting work',exact:true});await opener.focus();await opener.press('Enter');
   const dialog=page.getByRole('dialog',{name:'Course supporting work',exact:true});
   await dialog.getByLabel('Find supporting work').fill(title);
@@ -2165,9 +2167,23 @@ test('course preparation persists, links work without ticking and survives unsav
   const box=await dialog.boundingBox();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   await dialog.getByRole('button',{name:'Close dialog'}).click();await expect(opener).toBeFocused();
   await expect(row.getByText('In progress',{exact:true})).toBeVisible();
-  await row.getByRole('button',{name:'Mark reviewed',exact:true}).click();await expect(row.getByText('Reviewed',{exact:true})).toBeVisible();
+  await row.getByRole('button',{name:'Mark reviewed',exact:true}).focus();await row.getByRole('button',{name:'Mark reviewed',exact:true}).press('Enter');await expect(row.getByText('Reviewed',{exact:true})).toBeVisible();
+  await expect(row.getByRole('button',{name:'Reopen check',exact:true})).toBeFocused();await expect(card.locator('[aria-live="polite"]')).toContainText('Reviewed');
   await page.reload();await expect(row.getByText('Reviewed',{exact:true})).toBeVisible();
   await row.getByRole('button',{name:'Reopen check',exact:true}).click();await expect(row.getByText('In progress',{exact:true})).toBeVisible();
+  await expect(row.getByRole('button',{name:'Mark reviewed',exact:true})).toBeFocused();
+  // PROD-184: rejected writes retain row focus and never announce success.
+  const saveRoute='**/rest/v1/rpc/save_course_preparation';
+  await page.route(saveRoute,route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Synthetic failure'})}),{times:1});
+  await row.getByRole('button',{name:'Mark reviewed',exact:true}).click();await expect(card.getByRole('alert')).toContainText('Could not save');await expect(row).toBeFocused();await expect(card.locator('[aria-live="polite"]')).toBeEmpty();
+  await card.getByRole('button',{name:'Refresh preparation',exact:true}).click();await expect(card.getByRole('alert')).toHaveCount(0);
+  // Stage a stale read to exercise acknowledgement focus; the write remains a
+  // real RPC. Source/revision conflict enforcement is covered by real DB tests.
+  await page.route('**/rest/v1/course_preparation_checks?**',async route=>{const response=await route.fetch();const checks=await response.json();await route.fulfill({response,json:checks.map((c:{course_id:string;item_key:string;snapshot:Record<string,unknown>})=>c.course_id===prepCourse.id&&c.item_key==='prerequisites'?{...c,snapshot:{...c.snapshot,text:'Earlier recorded prerequisite'}}:c)});},{times:1});
+  await card.getByRole('button',{name:'Refresh preparation',exact:true}).click();await expect(row.getByText('Needs review',{exact:true})).toBeVisible();
+  await row.getByRole('button',{name:'Use current information',exact:true}).focus();await row.getByRole('button',{name:'Use current information',exact:true}).press('Enter');
+  await expect(row.getByRole('button',{name:'Mark reviewed',exact:true})).toBeFocused();await expect(card.locator('[aria-live="polite"]')).toContainText('In progress');
+
   expect((await request.delete(`${api}/rest/v1/user_course_bookmarks?${own}&course_id=eq.${prepCourse.id}`,{headers})).ok()).toBe(true);
   await page.reload();await expect(card.getByText('No longer saved',{exact:true})).toBeVisible();await expect(row.getByText('In progress',{exact:true})).toBeVisible();
   await row.getByRole('button',{name:'Supporting work',exact:true}).click();await expect(dialog.getByText(title,{exact:true})).toBeVisible();await dialog.getByRole('button',{name:'Close dialog'}).click();
