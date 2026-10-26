@@ -3,6 +3,8 @@ import React, { type ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { enrichPosts } from "@/app/(main)/communities/actions/_shared";
+import { createMockSupabase } from "./mock-supabase";
 import { CreatePostForm } from "@/components/communities/CreatePostForm";
 import { PostCard } from "@/components/communities/PostCard";
 import { CommentsSection } from "@/components/communities/CommentsSection";
@@ -160,6 +162,15 @@ async function openPostMenu() {
 }
 
 describe("community mutation recovery", () => {
+  it("carries removed status through enrichment and hides editing for the author", async () => {
+    const db=createMockSupabase({user:{id:author.id},resolver:()=>({data:[]}),rpc:()=>({data:[]})});
+    const [removed]=await enrichPosts(db as unknown as Parameters<typeof enrichPosts>[0],[{...post,is_removed:true,content:'[Removed by author]'}],author.id);
+    expect(removed.is_removed).toBe(true);
+    await mount(<PostCard post={removed} currentUser={author} initialIsLiked={false} initialIsSaved={false}/>);
+    await openPostMenu();
+    expect([...document.querySelectorAll('[role=menuitem]')].some(node=>node.textContent?.includes('Edit post'))).toBe(false);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();

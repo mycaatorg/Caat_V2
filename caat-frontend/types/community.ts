@@ -128,6 +128,7 @@ export interface CommunityPost {
   resume_title: string | null;
   is_anonymous: boolean;
   is_hidden: boolean;
+  is_removed?: boolean;
   edited_at: string | null;
   poll_options: PollOption[] | null;
   poll_votes: Record<string, number> | null;

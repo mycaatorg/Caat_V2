@@ -419,6 +419,7 @@ export type Database = {
           group_id: string | null
           id: string
           is_anonymous: boolean
+          is_removed: boolean
           is_hidden: boolean
           major_id: string | null
           poll_options: Json | null
@@ -437,6 +438,7 @@ export type Database = {
           group_id?: string | null
           id?: string
           is_anonymous?: boolean
+          is_removed?: boolean
           is_hidden?: boolean
           major_id?: string | null
           poll_options?: Json | null
@@ -455,6 +457,7 @@ export type Database = {
           group_id?: string | null
           id?: string
           is_anonymous?: boolean
+          is_removed?: boolean
           is_hidden?: boolean
           major_id?: string | null
           poll_options?: Json | null
@@ -1882,6 +1885,9 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      list_owned_community_content: {Args:{p_page?:number};Returns:{kind:string;id:string;content:string;created_at:string;removed:boolean}[]}
+      remove_owned_community_content: {Args:{p_kind:string;p_id:string};Returns:boolean}
+
       read_community_resume: { Args: {p_post_id:string}; Returns:Json }
       create_community_resume_post: { Args: {p_post_id:string;p_post:Json;p_snapshot:Json}; Returns:Json }
 

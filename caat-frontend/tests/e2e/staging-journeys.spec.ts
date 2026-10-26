@@ -2278,3 +2278,33 @@ test('@phone shared community resume requires consent, preserves its copy and re
   await peerContext.close();await request.delete(`${api}/rest/v1/community_posts?resume_link=eq.${resumeId}&user_id=eq.${session.user.id}`,{headers});await request.delete(`${api}/rest/v1/resumes?id=eq.${resumeId}&user_id=eq.${session.user.id}`,{headers});
  }
 });
+
+test('@phone former group member removes own content without seeing peer content',async({page,request},testInfo)=>{
+ test.setTimeout(120000);
+ const api=process.env.NEXT_PUBLIC_SUPABASE_URL!,key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ async function auth(email:string){const result=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email,password:process.env.E2E_TEST_PASSWORD}});expect(result.ok()).toBe(true);const data=await result.json();return {id:data.user.id,headers:{apikey:key,Authorization:`Bearer ${data.access_token}`,Prefer:'return=representation'}};}
+ const student=await auth(STUDENT_EMAIL),peer=await auth('e2e.peer@caat.local.test');
+ const group=crypto.randomUUID(),post=crypto.randomUUID(),comment=crypto.randomUUID(),reply=crypto.randomUUID(),text=marker(`OwnRemoval-${testInfo.project.name}`);
+ async function write(path:string,data:unknown,headers:typeof student.headers){const result=await request.post(`${api}/rest/v1/${path}`,{headers,data});expect(result.ok(),await result.text()).toBe(true);}
+ try{
+  await write('community_groups',{id:group,creator_id:peer.id,is_private:true,name:'Synthetic private group',slug:`remove-${group.slice(0,12)}`},peer.headers);
+  await write('community_group_requests',{group_id:group,user_id:student.id,status:'pending'},student.headers);
+  await write('rpc/approve_group_join_request',{p_group_id:group,p_requester_user_id:student.id},peer.headers);
+  await write('community_posts',{id:post,user_id:student.id,group_id:group,topic_tag:'ADVICE',content:text},student.headers);
+  await write('community_comments',{id:comment,user_id:student.id,post_id:post,content:`${text} comment`},student.headers);
+  await write('community_comments',{id:reply,user_id:peer.id,post_id:post,parent_comment_id:comment,content:'PEER ONLY PRIVATE REPLY'},peer.headers);
+  expect((await request.delete(`${api}/rest/v1/community_group_members?group_id=eq.${group}&user_id=eq.${student.id}`,{headers:student.headers})).ok()).toBe(true);
+  await signInToIsolatedStudent(page);await expect(page.getByText('Your next step',{exact:true})).toBeVisible();await page.goto('/communities/your-content');
+  await expect(page.getByRole('heading',{name:'Your community content',exact:true})).toBeVisible();await expect(page.getByText('PEER ONLY PRIVATE REPLY',{exact:true})).toHaveCount(0);
+  const postRow=page.getByRole('listitem').filter({has:page.getByText(text,{exact:true})});
+  await postRow.getByRole('button',{name:'Remove post',exact:true}).click();await expect(postRow.getByText(text,{exact:true})).toBeVisible();await postRow.getByRole('button',{name:'Confirm removal'}).click();await expect(page.getByText(text,{exact:true})).toHaveCount(0);
+  const commentRow=page.getByRole('listitem').filter({has:page.getByText(`${text} comment`,{exact:true})});await commentRow.getByRole('button',{name:'Remove comment'}).click();await commentRow.getByRole('button',{name:'Confirm removal'}).click();await expect(page.getByText(`${text} comment`,{exact:true})).toHaveCount(0);
+  const memberPost=await(await request.get(`${api}/rest/v1/community_posts?id=eq.${post}&select=content,is_removed`,{headers:peer.headers})).json();expect(memberPost).toEqual([{content:'[Removed by author]',is_removed:true}]);
+  const replies=await(await request.get(`${api}/rest/v1/community_comments?id=eq.${reply}&select=content`,{headers:peer.headers})).json();expect(replies).toEqual([{content:'PEER ONLY PRIVATE REPLY'}]);
+  expect(await(await request.get(`${api}/rest/v1/community_posts?id=eq.${post}&select=id`,{headers:student.headers})).json()).toEqual([]);
+  await testInfo.attach('own-content-removed',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+ }finally{
+  // Current group owner can delete the disposable group and its content cascade.
+  await request.delete(`${api}/rest/v1/community_groups?id=eq.${group}`,{headers:peer.headers});
+ }
+});

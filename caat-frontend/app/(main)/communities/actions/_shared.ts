@@ -273,6 +273,7 @@ export async function enrichPosts(
       resume_title: null, // Shared title comes from the authorized frozen copy.
       is_anonymous: isAnon,
       is_hidden: (row.is_hidden as boolean) ?? false,
+      is_removed: (row.is_removed as boolean) ?? false,
       edited_at: (row.edited_at as string | null) ?? null,
       poll_options: (row.poll_options as PollOption[] | null) ?? null,
       poll_votes: pollCountMap.get(row.id as string) ?? null,
