@@ -90,6 +90,7 @@ async function main() {
   run('tests/staging/scholarship-source-checks.mjs', localOnlyEnv);
   run('tests/staging/course-preparation-rls.mjs', localOnlyEnv);
   run('tests/staging/course-preparation-race.mjs', localOnlyEnv);
+  run('tests/staging/shortlist-sharing-rls.mjs', localOnlyEnv);
   const githubEnv = githubPublicEnv(local);
   const { appendFile } = await import('node:fs/promises');
   await appendFile(process.env.GITHUB_ENV, githubEnv);

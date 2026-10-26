@@ -1,3 +1,4 @@
+import type {ShareRecord} from "./shortlist-sharing";
 import type { PreparationCheck, PreparationWork } from "./course-preparation";
 import type { CourseOffering } from "./courses";
 
@@ -17,6 +18,7 @@ export type Database = {
   }
   public: {
     Tables: {
+      shortlist_shares: { Row: ShareRecord; Insert: never; Update: never; Relationships: [] }
       course_preparation_checks: {
         Row: PreparationCheck
         Insert: never
@@ -1878,6 +1880,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      preview_shortlist_share: {Args:{p_selection:Json};Returns:Json}
+      create_shortlist_share: {Args:{p_selection:Json;p_expected_items:Json;p_token:string};Returns:ShareRecord[]}
+      replace_shortlist_share: {Args:{p_id:string;p_expected_revision:string;p_token:string};Returns:ShareRecord[]}
+      revoke_shortlist_share: {Args:{p_id:string};Returns:ShareRecord[]}
+      read_shortlist_share: {Args:{p_token:string};Returns:Json}
+
       save_course_preparation: {
         Args: {p_application_id:string;p_course_id:string;p_item_key:string;p_action:string;p_expected_revision:string|null;p_expected_snapshot:Json}
         Returns: PreparationCheck[]
