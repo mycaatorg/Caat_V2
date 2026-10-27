@@ -3,7 +3,7 @@
 import { TaskEditor } from "@/components/today/task-editor";
 import type { TaskDetails } from "@/lib/personal-tasks";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { track } from "@vercel/analytics";
@@ -197,7 +197,7 @@ function RecentRows({ items, todayISO }: { items: RecentWork[]; todayISO: string
 
 type TodayTodoRow = TodayTodo & { done: boolean };
 
-function TodoRows({ items, todayISO, pendingIds, onToggle, onSaved }: { items: TodayTodoRow[]; todayISO: string; pendingIds: Set<string>; onToggle: (todo: TodayTodoRow, done: boolean) => void; onSaved: (saved: TaskDetails) => void }) {
+function TodoRows({ items, todayISO, pendingIds, onToggle, onSaved, onMissing, fallbackFocusRef, returnTo }: { items: TodayTodoRow[]; todayISO: string; pendingIds: Set<string>; onToggle: (todo: TodayTodoRow, done: boolean) => void; onSaved: (saved: TaskDetails) => void; onMissing: (id: string) => void; fallbackFocusRef: RefObject<HTMLElement | null>; returnTo: string }) {
   return (
     <ul className="border divide-y bg-card">
       {items.map((t) => {
@@ -214,7 +214,7 @@ function TodoRows({ items, todayISO, pendingIds, onToggle, onSaved }: { items: T
                 </span>
               ) : null}
             </label>
-            <TaskEditor task={t} disabled={pendingIds.has(t.id)} onSaved={onSaved} />
+            <TaskEditor task={t} disabled={pendingIds.has(t.id)} onSaved={onSaved} onMissing={onMissing} fallbackFocusRef={fallbackFocusRef} returnTo={returnTo} />
           </li>
         );
       })}
@@ -337,6 +337,8 @@ export function TodayView(props: TodayViewProps) {
     return { view, page: Number.isInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, pageCount(items.length)) : 1 };
   });
   const focusedHeadingRef = useRef<HTMLHeadingElement>(null);
+  const todoSectionRef = useRef<HTMLElement>(null);
+  const [taskNotice, setTaskNotice] = useState('');
   const todayHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusMountedRef = useRef(false);
   const focusedItems = focus.view === "attention" ? tasks : focus.view === "upcoming" ? comingUp : focus.view === "recent" ? recent : focus.view === "todos" ? todos : [];
@@ -401,6 +403,14 @@ export function TodayView(props: TodayViewProps) {
     router.refresh();
   }
 
+  function missingTask(id: string) {
+    // Invalidate an old toast Undo and any completion response for this row only.
+    todoVersionsRef.current.set(id, (todoVersionsRef.current.get(id) ?? 0) + 1);
+    setTodos(current => current.filter(todo => todo.id !== id));
+    setTaskNotice('Removed the unavailable task from Today.');
+    router.refresh();
+  }
+
   async function toggleTodoState(todo: TodayTodoRow, done: boolean) {
     if (pendingTodoIdsRef.current.has(todo.id)) return;
     const version = (todoVersionsRef.current.get(todo.id) ?? 0) + 1;
@@ -450,6 +460,7 @@ export function TodayView(props: TodayViewProps) {
     const visible = focusedItems.slice(start, start + PAGE_SIZE);
     return (
       <div className="flex flex-1 flex-col gap-5 p-6 pt-0 max-w-4xl">
+        <p role="status" className="sr-only">{taskNotice}</p>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button variant="ghost" className="-ml-3 rounded-none" onClick={backToToday}>← Back to Today</Button>
           <span className="text-sm text-muted-foreground" aria-live="polite">Page {visiblePage} of {currentPageCount}</span>
@@ -461,7 +472,7 @@ export function TodayView(props: TodayViewProps) {
               {focus.view === "attention" ? <TaskRows items={visible as TodayTask[]} /> : null}
               {focus.view === "upcoming" ? <ComingUpRows items={visible as UnifiedDeadline[]} todayISO={todayISO} /> : null}
               {focus.view === "recent" ? <RecentRows items={visible as RecentWork[]} todayISO={todayISO} /> : null}
-              {focus.view === "todos" ? <TodoRows items={visible as TodayTodoRow[]} todayISO={todayISO} pendingIds={pendingTodoIds} onToggle={toggleTodoState} onSaved={savedTask} /> : null}
+              {focus.view === "todos" ? <TodoRows items={visible as TodayTodoRow[]} todayISO={todayISO} pendingIds={pendingTodoIds} onToggle={toggleTodoState} onSaved={savedTask} onMissing={missingTask} fallbackFocusRef={focusedHeadingRef} returnTo={`/today?view=todos&page=${visiblePage}`} /> : null}
             </>
           ) : (
             <p className="border bg-card px-4 py-5 text-sm text-muted-foreground">
@@ -554,7 +565,8 @@ export function TodayView(props: TodayViewProps) {
             </section>
           ) : null}
 
-          <section aria-label="Your to-dos">
+          <section ref={todoSectionRef} tabIndex={-1} aria-label="Your to-dos">
+            <p role="status" className="sr-only">{taskNotice}</p>
             <SectionHeading
               title="Your to-dos"
               action={
@@ -565,7 +577,7 @@ export function TodayView(props: TodayViewProps) {
               }
             />
             {todos.length ? (
-              <TodoRows items={todos.slice(0, PREVIEW_LIMIT.todos)} todayISO={todayISO} pendingIds={pendingTodoIds} onToggle={toggleTodoState} onSaved={savedTask} />
+              <TodoRows items={todos.slice(0, PREVIEW_LIMIT.todos)} todayISO={todayISO} pendingIds={pendingTodoIds} onToggle={toggleTodoState} onSaved={savedTask} onMissing={missingTask} fallbackFocusRef={todoSectionRef} returnTo="/today" />
             ) : (
               <p className="border bg-card px-4 py-5 text-sm text-muted-foreground">No open to-dos.</p>
             )}

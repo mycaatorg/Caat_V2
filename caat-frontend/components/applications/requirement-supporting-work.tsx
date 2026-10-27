@@ -24,6 +24,7 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState('');
   const [target, setTarget] = useState<Target | null>(null);
   const [selected, setSelected] = useState('');
   const [query, setQuery] = useState('');
@@ -56,16 +57,24 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
   }, [load, cancelPending]);
   const open = (next: Target, opener: HTMLElement) => {
     returnFocus.current = opener;
-    setTarget(next); setSelected(''); setQuery(''); setError(null); void load();
+    setTarget(next); setSelected(''); setQuery(''); setError(null); setNotice(''); void load();
   };
-  const run = async (action: () => Promise<void>, onSuccess?: () => void) => {
+  const run = async (action: () => Promise<void>, confirmation: string, onSuccess?: () => void) => {
     if (writing.current) return;
-    writing.current = true; setBusy(true); setError(null);
-    try { await action(); if (await load()) onSuccess?.(); }
+    writing.current = true; setBusy(true); setError(null); setNotice('');
+    try {
+      await action();
+      setNotice(confirmation);
+      await load();
+      // A failed or superseded read does not undo the confirmed write.
+      // Close once this read settles; the dialog uses its stable focus fallback
+      // if a newer refresh still disables the opener.
+      onSuccess?.();
+    }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not save this link. Try again.'); }
     finally { writing.current = false; setBusy(false); }
   };
-  const remove = (link: RequirementWorkLink) => void run(() => unlinkRequirementWork(link));
+  const remove = (link: RequirementWorkLink) => void run(() => unlinkRequirementWork(link), 'Supporting link removed.');
   const alreadyLinked = (source: WorkSource) => !!target && !!work?.links.some(link => link.scholarship_id === target.scholarshipId && link.item_key === target.item.key && (source.kind === 'evidence' ? link.evidence_link_id === source.id : link.essay_draft_id === source.id));
   const selectedSource = work?.sources.find(source => sourceKey(source) === selected);
   const matches = work?.sources.filter(source => `${source.title} ${source.category}`.toLowerCase().includes(query.trim().toLowerCase())) ?? [];
@@ -76,6 +85,7 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
       <p className="text-xs text-muted-foreground">Connect supporting work to each requirement. Links follow your current work; you decide when to tick preparation.</p>
       <p className="text-xs text-muted-foreground">Moving or detaching a scholarship clears its requirement links. Your saved work and preparation ticks stay.</p>
       <Button size="sm" variant="ghost" disabled={loading || busy} onClick={() => void load()}>Refresh supporting work</Button>
+      {notice && !target && <p role="status" className="text-sm">{notice}</p>}
       {loading && <p role="status" className="text-xs text-muted-foreground">Loading supporting work…</p>}
       {error && !target && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
@@ -83,6 +93,7 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
     {target && <LibraryDialog returnFocusRef={returnFocus} fallbackFocusRef={supportRegion} title="Link supporting work" description={target.item.label} busy={busy} onClose={() => { setTarget(null); setError(null); }}>
       <p className="text-sm text-muted-foreground">Choose a document or library item already linked to this application, or one of your saved essay drafts. Linking does not complete the requirement or send anything to the provider.</p>
       <p className="mt-2 text-xs text-muted-foreground">To add more choices, use this application&apos;s Documents or Activities, awards &amp; experience card, or save a draft in <Link href="/essays" className="underline">Essays</Link>.</p>
+      {notice && <p role="status" className="mt-3 text-sm">{notice}</p>}
       {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
       {loading ? <p role="status" className="my-4 text-sm">Loading supporting work…</p> : !work ? <Button className="mt-3" variant="outline" onClick={() => void load()}>Retry supporting work</Button> : <>
         <label className="mt-4 block text-sm">Find supporting work
@@ -103,7 +114,7 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
           if (!selectedSource) return;
           void run(async () => {
             await linkRequirementWork({ applicationId, schoolId, scholarshipId: target.scholarshipId, itemKey: target.item.key, label: target.item.label, source: { kind: selectedSource.kind, id: selectedSource.id } });
-          }, () => { setTarget(null); setSelected(''); });
+          }, 'Supporting link saved.', () => { setTarget(null); setSelected(''); });
         }}>{busy ? 'Saving…' : 'Link selected work'}</Button>
         <Button variant="ghost" disabled={busy} onClick={() => { setTarget(null); setError(null); }}>Cancel</Button>
       </div>
