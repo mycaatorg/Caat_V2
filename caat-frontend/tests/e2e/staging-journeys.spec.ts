@@ -1977,7 +1977,9 @@ test("document usage opens named applications, preserves tailoring and refreshes
     }
     await signInToIsolatedStudent(page); await page.goto("/documents");
     const opener = page.getByRole("button", { name: `View application links for ${fileName}`, exact: true });
-    await expect(opener).toHaveText("Used in 2 applications"); await opener.focus(); await opener.press("Enter");
+    await expect(opener).toHaveText("Used in 2 applications");
+    await expect(opener).toHaveAccessibleDescription("Used in 2 applications");
+    await opener.focus(); await opener.press("Enter");
     const dialog = page.getByRole("dialog", { name: "Applications using this document", exact: true });
     await expect(dialog.getByRole("link", { name: "E2E Test University", exact: true })).toHaveAttribute("href", `/applications/${apps[0]}`);
     await expect(dialog.getByRole("link", { name: "E2E Library University", exact: true })).toHaveAttribute("href", `/applications/${apps[1]}`);
@@ -1999,12 +2001,18 @@ test("document usage opens named applications, preserves tailoring and refreshes
     await expect(dialog.getByRole("alert")).toContainText("Showing the last loaded links");
     await expect(dialog.getByRole("button", { name: "Retry application links", exact: true })).toBeFocused();
     await expect(dialog.getByRole("link")).toHaveCount(1);
+    await page.keyboard.press("Escape"); await expect(opener).toBeFocused();
+    await expect(opener).toHaveText("Used in 1 application (last loaded; refresh failed)");
+    await expect(opener).toHaveAccessibleDescription("Used in 1 application (last loaded; refresh failed)");
+    await opener.press("Enter");
+    await dialog.getByRole("button", { name: "Retry application links", exact: true }).focus();
     await page.unroute(usageRoute);
     await dialog.getByRole("button", { name: "Retry application links", exact: true }).press("Enter");
     await expect(dialog.getByRole("alert")).toHaveCount(0); await expect(dialog.getByRole("link")).toHaveCount(1);
     await expect(refreshAction).toBeFocused();
     await page.keyboard.press("Escape"); await expect(opener).toBeFocused();
     await expect(opener).toHaveText("Used in 1 application");
+    await expect(opener).toHaveAccessibleDescription("Used in 1 application");
     expect((await read("documents", `${own}&id=eq.${documentId}`))).toHaveLength(1);
   } finally {
     await page.unroute(usageRoute);

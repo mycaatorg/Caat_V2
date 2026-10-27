@@ -19,7 +19,7 @@ vi.mock("@/lib/supabase/client", () => {
       if (op) ctx.op = op;
       return b;
     };
-    for (const m of ["select", "eq", "in", "order", "limit", "is", "not", "range"]) b[m] = pass(m);
+    for (const m of ["select", "eq", "in", "order", "limit", "is", "not", "range", "abortSignal"]) b[m] = pass(m);
     for (const m of ["insert", "update", "upsert", "delete"]) b[m] = pass(m, m);
     b.then = (f: (v: unknown) => unknown, r?: (e: unknown) => unknown) => Promise.resolve(state.resolver(ctx)).then(f, r);
     return b;
@@ -258,4 +258,21 @@ it("reads all document usage pages with names and tailoring, failing on a later 
   expect(state.queries.every(q=>calls(q,"eq").some(args=>args[0] === "user_id" && args[1] === "user-1"))).toBe(true);
   state.resolver = q => calls(q,"range")[0]?.[0] === 200 ? {data:null,error:{message:"private failure"}} : {data:Array.from({length:200},(_,i)=>({document_id:"doc-1",application_id:`app-${i}`})),error:null};
   await expect(fetchDocumentUsage()).rejects.toThrow("Could not load where your documents are used");
+});
+
+
+it("passes cancellation to every document usage page", async () => {
+  const controller = new AbortController();
+  state.resolver = q => ({ data: calls(q, "range")[0]?.[0] === 0 ? Array.from({length:200}, (_, i) => ({document_id:"doc-1", application_id:`app-${i}`})) : [], error:null });
+  const result = await fetchDocumentUsage(controller.signal);
+  expect(result["doc-1"]).toHaveLength(200);
+  expect(state.queries).toHaveLength(2);
+  expect(state.queries.every(q => calls(q,"abortSignal")[0]?.[0] === controller.signal)).toBe(true);
+});
+
+it("fails document usage when pagination never finishes instead of publishing partial counts", async () => {
+  let pages = 0;
+  state.resolver = () => ({ data: ++pages <= 100 ? Array.from({length:200}, (_, i) => ({document_id:"doc-1", application_id:`app-${pages}-${i}`})) : [], error:null });
+  await expect(fetchDocumentUsage()).rejects.toThrow("Could not load where your documents are used");
+  expect(pages).toBe(100);
 });

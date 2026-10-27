@@ -218,6 +218,7 @@ function usedInLabel(n: number) {
 function DeleteModal({
   doc,
   usedIn,
+  usageStale,
   onConfirm,
   onCancel,
   isDeleting,
@@ -225,6 +226,7 @@ function DeleteModal({
   doc: DocumentRow | null;
   /** null means usage could not currently be established. */
   usedIn: number | null;
+  usageStale: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   isDeleting: boolean;
@@ -246,11 +248,11 @@ function DeleteModal({
             Are you sure you want to delete{" "}
             <span className="font-medium text-foreground">{doc?.file_name}</span>?
             This action cannot be undone.
-            {usedIn === null ? (
+            {usedIn === null || (usedIn === 0 && usageStale) ? (
               <span className="mt-2 block text-muted-foreground">Application links have not been confirmed. If this document is linked, unlink it from its applications before deleting.</span>
             ) : usedIn > 0 ? (
               <span className="mt-2 block text-amber-700 dark:text-amber-400">
-                It is linked to {usedInLabel(usedIn).replace(/^Used in /, "")}. Unlink it from them first; deleting is refused while it is linked.
+                {usageStale && "Last loaded: "}It is linked to {usedInLabel(usedIn).replace(/^Used in /, "")}. Unlink it from them first; deleting is refused while it is linked.
               </span>
             ) : null}
           </Dialog.Description>
@@ -1020,7 +1022,8 @@ export default function DocumentVaultClient({
       {/* ------------------------------------------------------------------ */}
       <DeleteModal
         doc={deleteTarget}
-        usedIn={deleteTarget && usage.data !== null && !usage.error && !usage.loading ? usage.data[deleteTarget.id]?.length ?? 0 : null}
+        usedIn={deleteTarget && usage.data !== null ? usage.data[deleteTarget.id]?.length ?? 0 : null}
+        usageStale={usage.error || usage.loading}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
         isDeleting={isDeleting}
