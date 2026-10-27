@@ -85,3 +85,7 @@ PROD-172: fresh bootstrap also applies `20261027040000_personal_task_validation.
 ### Supporting-work recovery (PROD-163)
 
 The PROD-161 journey uses reserved scholarship fixtures ending `0163` and `0164` from `seed-opportunities.sql`. It refuses existing bookmarks for those IDs before writing, uses plain inserts, and deletes only bookmarks/resources it created. This avoids moving shared scholarship fixtures and cascading another journey's requirement links. Existing local stacks can apply this seed file without resetting user data. The journey commits an association through the real API, then simulates failed refresh GETs: it verifies saved confirmation, focus recovery, one persisted association and read-only refresh retry before continuing manual ticks, tailoring, unlink and detach checks.
+
+### Auth Admin community cleanup (PROD-196)
+
+Fresh bootstrap applies `20261027050000_community_admin_cleanup.sql` and runs `community-admin-cleanup.mjs` against loopback Supabase only. Two disposable accounts exercise real Auth Admin deletion of a post author with peer-authored children, verify all post children disappear, and retain the unrelated peer account/post/children. Peer REST deletion is denied. Cleanup uses only generated fixture IDs. The migration qualifies the existing trigger references and pins its search path; it does not alter RLS or cleanup scope.
