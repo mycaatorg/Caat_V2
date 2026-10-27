@@ -33,7 +33,8 @@ INSERT INTO public.scholarships (id, slug, title, provider_name, description,
   funding_type, eligible_countries, is_active, is_featured, tags, school_name,
   country, application_requirements, requires_essay, eligibility_summary,
   deadline_at, external_url, last_verified_at)
-SELECT fixture.id::uuid, fixture.slug, fixture.title, s.provider_name, s.description,
+-- Keep these awards out of the original provider's two-result onboarding cap.
+SELECT fixture.id::uuid, fixture.slug, fixture.title, 'E2E Supporting Work Foundation', s.description,
   s.amount_value, s.amount_currency, s.amount_display, s.frequency, s.study_level,
   s.funding_type, s.eligible_countries, s.is_active, s.is_featured, s.tags, s.school_name,
   s.country, s.application_requirements, s.requires_essay, s.eligibility_summary,
