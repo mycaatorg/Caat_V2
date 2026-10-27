@@ -93,7 +93,7 @@ beforeEach(() => {
   io.fetchMySchools.mockResolvedValue([{ id: 7, name: "Alpha University" }]);
   io.uploadDocument.mockImplementation(async (file: File) => doc("doc-new", file.name));
   io.deleteDocument.mockResolvedValue(undefined);
-  io.fetchDocumentUsage.mockResolvedValue({});
+  io.fetchDocumentUsage.mockReset().mockResolvedValue({});
 });
 
 afterEach(() => unmountAll());
@@ -368,4 +368,83 @@ it("keeps the same focused action through failed refresh and pending retry", asy
   await click(action);expect(io.fetchDocumentUsage).toHaveBeenCalledTimes(3);
   retry.resolve({});await flush();
   expect(button("Refresh application links")).toBe(action);expect(document.activeElement).toBe(action);
+});
+
+describe("document usage refresh reliability (PROD-166)", () => {
+  const description = (el: HTMLElement) => (el.getAttribute("aria-describedby") ?? "").split(/\s+/)
+    .map(id => document.getElementById(id)?.textContent ?? "").join(" ");
+
+  it("exposes the count and retained failure state in the row's accessible description", async () => {
+    io.fetchDocumentUsage.mockResolvedValueOnce({ "doc-1": [usageEntry()] }).mockRejectedValueOnce(new Error("offline"));
+    await mount();
+    const opener = button("View application links for transcript.pdf");
+    expect(description(opener)).toContain("Used in 1 application");
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(opener.textContent).toContain("Used in 1 application");
+    expect(description(opener)).toMatch(/last loaded/i);
+    expect(description(opener)).toMatch(/refresh failed/i);
+    expect(description(button("View application links for passport.pdf"))).toMatch(/last loaded/i);
+  });
+
+  it("describes an unknown failure without presenting a zero count", async () => {
+    io.fetchDocumentUsage.mockRejectedValueOnce(new Error("offline"));
+    await mount();
+    const text = description(button("View application links for transcript.pdf"));
+    expect(text).toContain("Application links unavailable");
+    expect(text).not.toContain("Not linked");
+  });
+
+  it("retains a known positive delete warning during refresh and after failure", async () => {
+    const pending = deferred<Record<string, ReturnType<typeof usageEntry>[]>>();
+    io.fetchDocumentUsage.mockResolvedValueOnce({ "doc-1": [usageEntry()] }).mockReturnValueOnce(pending.promise);
+    await mount(); await click(menuItem("transcript.pdf", "Delete"));
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("It is linked to 1 application");
+    expect(dialog.textContent).toMatch(/last loaded/i);
+    pending.reject(new Error("offline")); await flush();
+    expect(dialog.textContent).toContain("It is linked to 1 application");
+    expect(dialog.textContent).toMatch(/last loaded/i);
+  });
+
+  it("does not treat a stale zero as confirmed safe to delete", async () => {
+    const pending = deferred<Record<string, ReturnType<typeof usageEntry>[]>>();
+    io.fetchDocumentUsage.mockResolvedValueOnce({}).mockReturnValueOnce(pending.promise);
+    await mount(); await click(menuItem("transcript.pdf", "Delete"));
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Application links have not been confirmed");
+    pending.resolve({}); await flush();
+  });
+
+  it("keeps automatic refreshes quiet but announces deliberate refresh failures", async () => {
+    const automatic = deferred<Record<string, ReturnType<typeof usageEntry>[]>>();
+    const manual = deferred<Record<string, ReturnType<typeof usageEntry>[]>>();
+    io.fetchDocumentUsage.mockResolvedValueOnce({ "doc-1": [usageEntry()] }).mockReturnValueOnce(automatic.promise).mockReturnValueOnce(manual.promise);
+    await mount(); await click(button("View application links for transcript.pdf"));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(dialog.textContent).toContain("Refreshing application links");
+    expect(dialog.querySelector('[role="status"]')).toBeNull();
+    automatic.reject(new Error("offline")); await flush();
+    expect(dialog.textContent).toContain("Showing the last loaded links");
+    expect(dialog.querySelector('[role="alert"]')).toBeNull();
+    await click(button("Retry application links"));
+    expect(dialog.querySelector('[role="status"]')?.textContent).toContain("Refreshing");
+    manual.reject(new Error("offline")); await flush();
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain("Showing the last loaded links");
+  });
+
+  it("aborts superseded refreshes and the active request on unmount", async () => {
+    const signals: AbortSignal[] = [];
+    io.fetchDocumentUsage.mockImplementation((signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise(() => {});
+    });
+    await mount();
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+    unmountAll();
+    expect(signals[1]?.aborted).toBe(true);
+  });
 });
