@@ -1770,6 +1770,9 @@ test('library activities, awards and experience import once and tailor independe
 test('requirement supporting work persists with tailored previews, manual ticks and safe unlink (PROD-161)', {tag:'@phone'}, async ({page,request},testInfo)=>{
  test.setTimeout(120_000);
  page.setDefaultTimeout(15_000);
+ const supportScholarship={id:'e2000000-0000-4000-8000-000000000163',title:'E2E Supporting Work Scholarship'};
+ const companionId='e2000000-0000-4000-8000-000000000164';
+ const createdBookmarks:string[]=[];
  const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin;
  const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
  const auth=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:STUDENT_EMAIL,password:process.env.E2E_TEST_PASSWORD}});
@@ -1780,19 +1783,20 @@ test('requirement supporting work persists with tailored previews, manual ticks 
  const read=async(table:string,query:string)=>{const r=await request.get(`${api}/rest/v1/${table}?${query}`,{headers});expect(r.ok()).toBe(true);return r.json();};
  const create=async(table:string,data:unknown)=>{const r=await request.post(`${api}/rest/v1/${table}`,{headers,data});expect(r.ok(),await r.text()).toBe(true);return (await r.json())[0];};
  const del=async(table:string,query:string)=>{const r=await request.delete(`${api}/rest/v1/${table}?${query}`,{headers});expect(r.ok()).toBe(true);};
- const saved=(await read('user_bookmarked_scholarships',`${own}&scholarship_id=eq.${REQ_SCHOLARSHIP.id}`))[0];
- const ticks=await read('user_scholarship_prep_checks',`${own}&scholarship_id=eq.${REQ_SCHOLARSHIP.id}`);
- const secondSaved=(await read('user_bookmarked_scholarships',`${own}&scholarship_id=eq.${SCHOLARSHIP_ID}`))[0];
- const secondTicks=await read('user_scholarship_prep_checks',`${own}&scholarship_id=eq.${SCHOLARSHIP_ID}`);
+ // Refuse stale fixture bookmarks before writing: never cascade someone else's
+ // existing requirement links while setting up or cleaning this journey.
+ for(const id of [supportScholarship.id,companionId])
+  expect(await read('user_bookmarked_scholarships',`${own}&scholarship_id=eq.${id}`),'Reserved supporting-work fixture is already in use').toEqual([]);
  const existing=(await read('user_school_applications',`${own}&school_id=eq.900001`))[0];
  let appId=existing?.id as string|undefined,itemId:string|undefined,documentId:string|undefined,draftId:string|undefined;
  const evidenceIds:string[]=[];
  const title=marker('Requirement award'),file=marker('Requirement document'),draft=marker('Requirement draft');
  try {
   if(!appId) appId=(await create('user_school_applications',{user_id:session.user.id,school_id:900001,status:'researching'})).id;
-  const bookmarked=await request.post(`${api}/rest/v1/user_bookmarked_scholarships?on_conflict=user_id,scholarship_id`,{headers:{...headers,Prefer:'resolution=merge-duplicates,return=representation'},data:{user_id:session.user.id,scholarship_id:REQ_SCHOLARSHIP.id,school_id:900001,status:'interested'}});expect(bookmarked.ok()).toBe(true);
-  expect((await request.post(`${api}/rest/v1/user_bookmarked_scholarships?on_conflict=user_id,scholarship_id`,{headers:{...headers,Prefer:'resolution=merge-duplicates,return=representation'},data:{user_id:session.user.id,scholarship_id:SCHOLARSHIP_ID,school_id:900001,status:'interested'}})).ok()).toBe(true);
-  await del('user_scholarship_prep_checks',`${own}&scholarship_id=eq.${REQ_SCHOLARSHIP.id}`);
+  for(const id of [supportScholarship.id,companionId]){
+   await create('user_bookmarked_scholarships',{user_id:session.user.id,scholarship_id:id,school_id:900001,status:'interested'});
+   createdBookmarks.push(id);
+  }
   itemId=(await create('evidence_items',{user_id:session.user.id,kind:'award',title:'Library version',description:'Original source'})).id;
   const evidence=await create('application_evidence_links',{user_id:session.user.id,application_id:appId,kind:'item',evidence_item_id:itemId});evidenceIds.push(evidence.id);
   expect((await request.patch(`${api}/rest/v1/application_evidence_links?id=eq.${evidence.id}`,{headers,data:{tailored_title:title,tailored_body:'Application-specific award statement'}})).ok()).toBe(true);
@@ -1800,7 +1804,7 @@ test('requirement supporting work persists with tailored previews, manual ticks 
   evidenceIds.push((await create('application_evidence_links',{user_id:session.user.id,application_id:appId,kind:'document',document_id:documentId})).id);
   draftId=(await create('essay_drafts',{user_id:session.user.id,prompt_id:crypto.randomUUID(),prompt_slug:'synthetic-requirement',label:draft,content:'Saved essay statement'})).id;
   await signInToIsolatedStudent(page);await page.goto(`/applications/${appId}`);
-  const card=page.locator(`[data-attached-scholarship="${REQ_SCHOLARSHIP.id}"]`);
+  const card=page.locator(`[data-attached-scholarship="${supportScholarship.id}"]`);
   const essay=card.locator('[data-checklist-item="essay"]');
   const opener=essay.getByRole('button',{name:/Link supporting work:/});
   await expect(opener).toBeEnabled();await opener.focus();await opener.press('Enter');
@@ -1810,7 +1814,26 @@ test('requirement supporting work persists with tailored previews, manual ticks 
   for(const name of [title,file,draft]){
    await opener.click();await dialog.getByRole('radio',{name:new RegExp(name)}).check();
    if(name===title) await expect(dialog.getByText('Application-specific award statement',{exact:true})).toBeVisible();
-   await dialog.getByRole('button',{name:'Link selected work',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(opener).toBeFocused();
+   let writes=0,failRefresh=false;
+   const associationRoute='**/rest/v1/requirement_evidence_links*';
+   if(name===title)await page.route(associationRoute,async route=>{
+    if(route.request().method()==='POST'){
+     writes++;const response=await route.fetch();expect(response.ok()).toBe(true);failRefresh=true;await route.fulfill({response});
+    }else if(route.request().method()==='GET'&&failRefresh){
+     await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Synthetic post-save refresh outage'})});
+    }else await route.continue();
+   });
+   await dialog.getByRole('button',{name:'Link selected work',exact:true}).click();await expect(dialog).toHaveCount(0);
+   if(name===title){
+    const group=page.getByRole('group',{name:'Supporting work',exact:true});
+    await expect(group.getByRole('status').filter({hasText:'Supporting link saved.'})).toBeVisible();
+    await expect(group.getByRole('alert')).toContainText('Could not load supporting work');
+    await expect(group).toBeFocused();await expect(opener).toBeDisabled();
+    expect(await read('requirement_evidence_links',`${own}&scholarship_id=eq.${supportScholarship.id}`)).toHaveLength(1);
+    await testInfo.attach('supporting-work-saved-refresh-failed',{body:await group.screenshot(),contentType:'image/png'});
+    await page.unroute(associationRoute);await group.getByRole('button',{name:'Refresh supporting work',exact:true}).click();
+    await expect(group.getByRole('alert')).toHaveCount(0);expect(writes).toBe(1);
+   }else await expect(opener).toBeFocused();
    await expect(essay.getByText(name,{exact:true})).toBeVisible();
   }
   await page.reload();await expect(essay.locator('[data-requirement-link]')).toHaveCount(3);
@@ -1835,25 +1858,22 @@ test('requirement supporting work persists with tailored previews, manual ticks 
   await documentHub.getByRole('button',{name:`Unlink ${file}`,exact:true}).click();
   await documentHub.getByRole('button',{name:'Confirm unlink',exact:true}).click();
   await expect(essay.locator('[data-requirement-link]')).toHaveCount(1);
-  await card.getByRole('button',{name:`Detach ${REQ_SCHOLARSHIP.title}`,exact:true}).click();await expect(card).toHaveCount(0);
-  expect(await read('requirement_evidence_links',`${own}&application_id=eq.${appId}&scholarship_id=eq.${REQ_SCHOLARSHIP.id}`)).toEqual([]);
+  await card.getByRole('button',{name:`Detach ${supportScholarship.title}`,exact:true}).click();await expect(card).toHaveCount(0);
+  expect(await read('requirement_evidence_links',`${own}&application_id=eq.${appId}&scholarship_id=eq.${supportScholarship.id}`)).toEqual([]);
   // The second attached scholarship keeps the provider mounted. Reattaching
   // must not resurrect the old cached draft association.
   await page.getByRole('button',{name:'Attach a saved scholarship',exact:true}).click();
   const attaching=page.getByRole('dialog',{name:'Attach a saved scholarship',exact:true});
-  await attaching.getByRole('button',{name:`Attach ${REQ_SCHOLARSHIP.title}`,exact:true}).click();await expect(attaching).toHaveCount(0);
+  await attaching.getByRole('button',{name:`Attach ${supportScholarship.title}`,exact:true}).click();await expect(attaching).toHaveCount(0);
   await expect(opener).toBeEnabled();await expect(essay.locator('[data-requirement-link]')).toHaveCount(0);
   expect((await read('essay_drafts',`${own}&id=eq.${draftId}`))).toHaveLength(1);
-  expect((await read('user_scholarship_prep_checks',`${own}&scholarship_id=eq.${REQ_SCHOLARSHIP.id}`))).toHaveLength(1);
+  expect((await read('user_scholarship_prep_checks',`${own}&scholarship_id=eq.${supportScholarship.id}`))).toHaveLength(1);
  } finally {
   for(const id of evidenceIds) await del('application_evidence_links',`${own}&id=eq.${id}`);
   if(itemId)await del('evidence_items',`${own}&id=eq.${itemId}`);
   if(documentId)await del('documents',`${own}&id=eq.${documentId}`);
   if(draftId)await del('essay_drafts',`${own}&id=eq.${draftId}`);
-  await del('user_bookmarked_scholarships',`${own}&scholarship_id=eq.${REQ_SCHOLARSHIP.id}`);
-  if(saved){await create('user_bookmarked_scholarships',saved);for(const tick of ticks)await create('user_scholarship_prep_checks',tick);}
-  await del('user_bookmarked_scholarships',`${own}&scholarship_id=eq.${SCHOLARSHIP_ID}`);
-  if(secondSaved){await create('user_bookmarked_scholarships',secondSaved);for(const tick of secondTicks)await create('user_scholarship_prep_checks',tick);}
+  for(const id of createdBookmarks)await del('user_bookmarked_scholarships',`${own}&scholarship_id=eq.${id}`);
   if(!existing&&appId)await del('user_school_applications',`${own}&id=eq.${appId}`);
  }
 });

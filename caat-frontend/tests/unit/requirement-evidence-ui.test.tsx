@@ -76,3 +76,43 @@ it('returns focus to a pointer opener even when Safari did not focus it on click
  await click(button('Link selected work'));
  await vi.waitFor(()=>expect(document.activeElement).toBe(opener));
 });
+
+it('confirms a saved link after refresh fails and retries only the read',async()=>{
+ await mountComponent(<Screen/>);const opener=button('Link supporting work: Essay required');await click(opener);
+ await click(document.querySelector('input[type="radio"]')!);
+ io.add.mockResolvedValue(linked);io.load.mockRejectedValueOnce(new Error('Offline'));
+ await click(button('Link selected work'));
+ expect(document.querySelector('[role="dialog"]')).toBeNull();
+ expect(document.querySelector('[role="status"]')?.textContent).toMatch(/supporting link saved/i);
+ expect(document.querySelector('[role="alert"]')?.textContent).toMatch(/could not load supporting work/i);
+ expect(opener.disabled).toBe(true);
+ await vi.waitFor(()=>expect(document.activeElement).toBe(document.querySelector('[aria-label="Supporting work"]')));
+ io.load.mockResolvedValue({links:[linked],sources:[source]});await click(button('Refresh supporting work'));
+ expect(document.querySelector('[data-requirement-link="r1"]')).not.toBeNull();
+ expect(document.querySelector('[role="alert"]')).toBeNull();expect(io.add).toHaveBeenCalledTimes(1);
+ await click(opener);expect(document.querySelector<HTMLInputElement>('input[type="radio"]')?.disabled).toBe(true);
+ expect(button('Link selected work').disabled).toBe(true);
+});
+it('finishes a confirmed save when a known change supersedes its refresh',async()=>{
+ await mountComponent(<Screen/>);await click(button('Link supporting work: Essay required'));await click(document.querySelector('input[type="radio"]')!);
+ const {deferred}=await import('./dom-helpers');const old=deferred<unknown>(),newer=deferred<unknown>();
+ io.add.mockResolvedValue(linked);io.load.mockImplementationOnce(()=>old.promise).mockImplementationOnce(()=>newer.promise);
+ await click(button('Link selected work'));
+ const {act}=await import('react');await act(async()=>{window.dispatchEvent(new Event('caat:requirement-work-changed'));});
+ await act(async()=>{old.resolve({links:[linked],sources:[source]});});
+ expect(document.querySelector('[role="dialog"]')).toBeNull();
+ expect(hasText(/Supporting link saved/i)).toBe(true);
+ await vi.waitFor(()=>expect(document.activeElement).toBe(document.querySelector('[aria-label="Supporting work"]')));
+ await act(async()=>{newer.resolve({links:[],sources:[]});});
+ expect(document.querySelector('[data-requirement-link="r1"]')).toBeNull();expect(io.add).toHaveBeenCalledTimes(1);
+ expect(button('Link supporting work: Essay required').disabled).toBe(false);
+});
+it('confirms removal separately from an unavailable refreshed list',async()=>{
+ io.load.mockResolvedValue({links:[linked],sources:[source]});io.remove.mockResolvedValue(undefined);
+ await mountComponent(<Screen/>);io.load.mockRejectedValueOnce(new Error('Offline'));
+ await click(button('Remove supporting link: My tailored award'));
+ expect(hasText(/Supporting link removed/i)).toBe(true);
+ expect(document.querySelector('[role="alert"]')?.textContent).toMatch(/could not load supporting work/i);
+ io.load.mockResolvedValue({links:[],sources:[source]});await click(button('Refresh supporting work'));
+ expect(document.querySelector('[data-requirement-link="r1"]')).toBeNull();expect(io.remove).toHaveBeenCalledTimes(1);
+});
