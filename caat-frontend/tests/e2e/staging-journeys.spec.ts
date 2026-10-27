@@ -2115,6 +2115,13 @@ test("Today task editing preserves other fields and recovers from conflicts and 
   await expect(opener).toBeVisible();await opener.click();
   const dialog=page.getByRole('dialog',{name:'Edit personal task'});
   await expect(dialog.getByLabel('Task',{exact:true})).toHaveValue(initial);
+  await dialog.getByLabel('Task',{exact:true}).fill('   ');
+  await dialog.getByRole('button',{name:'Save changes',exact:true}).click();
+  await expect(dialog.getByLabel('Task',{exact:true})).toHaveAttribute('aria-invalid','true');
+  await expect(dialog.getByLabel('Task',{exact:true})).toHaveAccessibleDescription(/1,000/);
+  await expect(dialog.getByLabel('Task',{exact:true})).toBeFocused();
+  await dialog.getByLabel('Task',{exact:true}).fill(initial);
+  await expect(dialog.getByLabel('Task',{exact:true})).not.toHaveAttribute('aria-invalid','true');
   // Exercise a successful 1000-character multilingual compare in the POST body.
   await dialog.getByRole('button',{name:'Save changes',exact:true}).click();
   await expect(dialog).toHaveCount(0);
@@ -2160,6 +2167,21 @@ test("Today task editing preserves other fields and recovers from conflicts and 
   const peerRpc=await request.post(`${api}/rest/v1/rpc/edit_personal_task`,{headers:peerHeaders,data:{p_id:task.id,p_original_text:finalText,p_original_due_date:'2026-11-05',p_text:'Should not write',p_due_date:null}});
   expect(peerRpc.ok()).toBe(true);expect(await peerRpc.json()).toEqual([]);
   expect((await(await request.get(url,{headers})).json())[0].text).toBe(finalText);
+  await page.getByRole('button',{name:`Edit task: ${finalText}`,exact:true}).click();
+  await dialog.getByLabel('Task',{exact:true}).fill('Copy this missing-task draft');
+  expect((await request.delete(url,{headers})).ok()).toBe(true);
+  await dialog.getByRole('button',{name:'Reload saved task',exact:true}).click();
+  await expect(dialog.getByRole('alert')).toContainText('no longer available');
+  await expect(dialog.getByLabel('Task',{exact:true})).toHaveValue('Copy this missing-task draft');
+  await expect(dialog.getByLabel('Task',{exact:true})).toBeEnabled();
+  await expect(dialog.getByLabel('Task',{exact:true})).toHaveAttribute('readonly','');
+  await expect(dialog.getByRole('button',{name:'Save changes',exact:true})).toHaveAttribute('aria-disabled','true');
+  await testInfo.attach('today-missing-task-recovery',{body:await page.screenshot(),contentType:'image/png'});
+  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button',{name:`Edit task: ${finalText}`,exact:true})).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Your to-dos',exact:true})).toBeFocused();
+  await expect(page.getByRole('status').filter({hasText:'Removed the unavailable task'})).toHaveCount(1);
  }finally{
   await page.unroute(todoRoute);
   expect((await request.delete(url,{headers})).ok()).toBe(true);

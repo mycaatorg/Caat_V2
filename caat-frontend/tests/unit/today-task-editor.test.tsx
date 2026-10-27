@@ -3,11 +3,10 @@ import React, {act} from 'react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {button,change,click,deferred,mountComponent,unmountAll} from './dom-helpers';
 const io=vi.hoisted(()=>({edit:vi.fn(),load:vi.fn(),saved:vi.fn()}));
-vi.mock('@/lib/personal-tasks',()=>({
+vi.mock('@/lib/supabase/client',()=>({supabase:{}}));
+vi.mock('@/lib/personal-tasks',async importOriginal=>({
+ ...await importOriginal<typeof import('@/lib/personal-tasks')>(),
  editPersonalTask:io.edit,fetchPersonalTask:io.load,
- TaskAuthError:class extends Error {constructor(){super('Please sign in again.');}},
- TaskConflictError:class extends Error {constructor(){super('This task changed or was removed elsewhere. Reload the saved task before trying again.');}},
- validatePersonalTask:(patch:{text:string;due_date:string|null})=>{if(!patch.text.trim())throw new Error('Write a task');return {...patch,text:patch.text.trim()};},
 }));
 import {TaskEditor} from '@/components/today/task-editor';
 import {TaskAuthError,TaskConflictError} from '@/lib/personal-tasks';
@@ -75,5 +74,45 @@ it('allows canceling a slow reload and ignores its response after reopening',asy
 it('explains expired authentication and offers sign in while retaining the draft',async()=>{
  io.edit.mockRejectedValueOnce(new TaskAuthError());await open();await change(text(),'Unsaved correction');await click(button('Save changes'));
  expect(document.querySelector('[role="alert"]')?.textContent).toContain('sign in');expect(text().value).toBe('Unsaved correction');
- expect(document.querySelector('a[href="/login?next=/today"]')).not.toBeNull();
+ expect(new URL(document.querySelector('[role="alert"] a')!.getAttribute('href')!, 'https://caat.test').searchParams.get('next')).toBe('/today');
+});
+
+
+it('labels and focuses invalid task text and clears its field error when corrected',async()=>{
+ await open();await change(text(),'   ');await click(button('Save changes'));
+ expect(text().getAttribute('aria-invalid')).toBe('true');
+ expect(document.getElementById(text().getAttribute('aria-describedby')!)?.textContent).toContain('1,000');
+ expect(document.activeElement).toBe(text());expect(date().getAttribute('aria-invalid')).not.toBe('true');
+ await change(text(),'Corrected task');expect(text().getAttribute('aria-invalid')).not.toBe('true');
+ expect(io.edit).not.toHaveBeenCalled();
+});
+it('associates incomplete date feedback with the date field',async()=>{
+ await open();Object.defineProperty(date(),'validity',{configurable:true,value:{badInput:true}});
+ await click(button('Save changes'));
+ expect(date().getAttribute('aria-invalid')).toBe('true');
+ expect(document.getElementById(date().getAttribute('aria-describedby')!)?.textContent).toContain('Complete the due date');
+ expect(document.activeElement).toBe(date());
+});
+it('leaves a missing task draft read-only and copyable until explicit close',async()=>{
+ const missing=vi.fn();await mountComponent(<TaskEditor task={task} disabled={false} onSaved={io.saved} onMissing={missing}/>);
+ await click(button('Edit task: Call admissions'));await change(text(),'Copy this draft');
+ io.load.mockResolvedValueOnce(null);await click(button('Reload saved task'));
+ expect(text().value).toBe('Copy this draft');expect(text().disabled).toBe(false);expect(text().readOnly).toBe(true);
+ expect(missing).not.toHaveBeenCalled();await click(button('Cancel'));expect(missing).toHaveBeenCalledWith('t1');
+});
+it('clears confirmed missing state after a successful reload before close',async()=>{
+ const missing=vi.fn();await mountComponent(<TaskEditor task={task} disabled={false} onSaved={io.saved} onMissing={missing}/>);
+ await click(button('Edit task: Call admissions'));io.load.mockResolvedValueOnce(null);await click(button('Reload saved task'));
+ await click(button('Reload saved task'));await click(button('Cancel'));expect(missing).not.toHaveBeenCalled();
+});
+it('falls back to a stable region when the Edit opener becomes disabled',async()=>{
+ function Harness(){const [disabled,setDisabled]=React.useState(false);const fallback=React.useRef<HTMLElement>(null);
+ return <><section ref={fallback} tabIndex={-1} aria-label="Your to-dos"/><button onClick={()=>setDisabled(true)}>Pending completion</button><TaskEditor task={task} disabled={disabled} onSaved={io.saved} fallbackFocusRef={fallback}/></>;}
+ await mountComponent(<Harness/>);await click(button('Edit task: Call admissions'));await click(button('Pending completion'));await click(button('Cancel'));
+ await vi.waitFor(()=>expect(document.activeElement).toBe(document.querySelector('[aria-label="Your to-dos"]')));
+});
+it('keeps the focused Today return destination on expired authentication',async()=>{
+ io.edit.mockRejectedValueOnce(new TaskAuthError());await mountComponent(<TaskEditor task={task} disabled={false} onSaved={io.saved} returnTo="/today?view=todos&page=2"/>);
+ await click(button('Edit task: Call admissions'));await click(button('Save changes'));
+ expect(new URL(document.querySelector('[role="alert"] a')!.getAttribute('href')!,'https://caat.test').searchParams.get('next')).toBe('/today?view=todos&page=2');
 });

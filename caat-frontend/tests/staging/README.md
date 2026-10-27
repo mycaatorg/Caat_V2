@@ -79,3 +79,5 @@ Not verified: Tab-key reachability on WebKit. Safari skips links and buttons on 
 ### Personal task editing (PROD-170)
 
 Fresh bootstrap applies `supabase/migrations/20261025020000_edit_personal_task.sql`. The Today browser journey verifies long multilingual original text through the POST-body RPC, conflict/reload, failure/retry, preserved completion/priority and peer isolation. Existing disposable stacks need this migration too; do not rely on a manually prepared local database as evidence that fresh CI bootstrap includes it.
+
+PROD-172: fresh bootstrap also applies `20261027040000_personal_task_validation.sql` and runs `personal-task-validation.mjs`. This local-only contract creates and removes one disposable owner row; it checks ECMAScript whitespace trimming, UTF-16 length (500 supplementary characters allowed, 501 rejected), no mutation on invalid input, original-field CAS, peer/anonymous isolation and preserved completion/priority.

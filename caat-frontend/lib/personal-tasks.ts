@@ -10,11 +10,15 @@ export class TaskAuthError extends Error {
 export class TaskConflictError extends Error {
   constructor() { super('This task changed or was removed elsewhere. Reload the saved task before trying again.'); }
 }
+export class TaskValidationError extends Error {
+  constructor(public field: keyof TaskEdit, message: string) { super(message); }
+}
+/** Trim ECMAScript whitespace; the 1,000 limit uses UTF-16 units, as maxlength does. */
 export function validatePersonalTask(patch: TaskEdit): TaskEdit {
   const text = patch.text.trim();
-  if (!text || text.length > 1000) throw new Error('Write a task between 1 and 1,000 characters.');
+  if (!text || text.length > 1000) throw new TaskValidationError('text', 'Write a task between 1 and 1,000 characters.');
   const day = patch.due_date;
-  if (day && (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(`${day}T00:00:00Z`)) || new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) !== day)) throw new Error('Choose a valid due date, or leave it empty.');
+  if (day && (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(`${day}T00:00:00Z`)) || new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) !== day)) throw new TaskValidationError('due_date', 'Choose a valid due date, or leave it empty.');
   return { text, due_date: day || null };
 }
 async function owner(signal?: AbortSignal): Promise<string> {
