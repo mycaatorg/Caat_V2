@@ -121,12 +121,14 @@ export type DocumentUsage = Record<string, DocumentApplication[]>;
 
 /** One paginated owner-scoped sequence for the whole vault, never one per file.
  * Application metadata is read through RLS; unavailable names have a fallback. */
-export async function fetchDocumentUsage(): Promise<DocumentUsage> {
+export async function fetchDocumentUsage(signal?: AbortSignal): Promise<DocumentUsage> {
   const userId = await requireUserId();
-  const data = await evidencePages((from, to) => supabase.from(LINKS)
-    .select("document_id, application_id, tailored_at, user_school_applications(schools(name))")
-    .eq("user_id", userId).eq("kind", "document").order("id").range(from, to),
-    "Could not load where your documents are used");
+  const data = await evidencePages((from, to) => {
+    const query = supabase.from(LINKS)
+      .select("document_id, application_id, tailored_at, user_school_applications(schools(name))")
+      .eq("user_id", userId).eq("kind", "document").order("id").range(from, to);
+    return signal ? query.abortSignal(signal) : query;
+  }, "Could not load where your documents are used", { signal, maxPages: 100 });
   const usage: DocumentUsage = {};
   for (const row of data) {
     if (!row.document_id) continue;
