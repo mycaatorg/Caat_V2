@@ -53,7 +53,8 @@ export function CoursePreparationCard({applicationId,schoolId}:{applicationId:st
    if(next){
     const current=next.courses.find(c=>c.id===course.id),saved=next.checks.find(c=>c.course_id===course.id&&c.item_key===key);
     const label=`${course.name} · ${course.program_code}: ${PREPARATION_LABELS[key]}`;
-    if(!current||!saved)setAnnouncement(`${label} is no longer shown. Preparation refreshed.`);
+    if(!current||(!saved&&!(next.savedCourseIds.includes(course.id)&&current.active&&current.school_id===schoolId)))setAnnouncement(`${label} is no longer shown. Preparation refreshed.`);
+    else if(!saved)setAnnouncement(`${label} — Not started.`);
     else{const changed=preparationNeedsReview(saved,current)||!current.active||current.school_id!==schoolId;setAnnouncement(`${label} — ${changed?'Needs review':saved.reviewed?'Reviewed':'In progress'}.`);}
    }
   }

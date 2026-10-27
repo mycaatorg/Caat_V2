@@ -2,7 +2,7 @@
  * Full-stack journeys for a disposable local Supabase instance only.
  * This spec is intentionally excluded from the default Playwright project.
  */
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import routeCoverage from "./route-coverage.json";
 
 const STUDENT_EMAIL = "e2e.student@caat.local.test";
@@ -1640,6 +1640,19 @@ test('library activities, awards and experience import once and tailor independe
   const library = page.getByRole('region', { name: 'Activities, awards and experience library', exact: true });
   const hub = page.getByRole('region', { name: 'Application activities, awards and experience', exact: true });
   const itemWrite = () => page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/rest/v1/evidence_items') && r.request().method() === 'POST' && r.ok());
+  // PROD-167: exercise pointer opening (including Safari's non-focusing clicks),
+  // both close paths, and the next keyboard step returning to the same control.
+  const pointerReturn = async (opener: Locator, dialog: Locator) => {
+    for (const close of ['button', 'escape']) {
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await opener.click();
+      await expect(dialog).toBeVisible();
+      if (close === 'button') await dialog.getByRole('button', { name: 'Close dialog', exact: true }).click();
+      else await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+      await expect(opener).toBeFocused();
+    }
+  };
   try {
     expect((await request.patch(`${api}/rest/v1/profiles?id=eq.${session.user.id}`, { headers, data: { activities: [...(profile.activities ?? []), activity] } })).ok()).toBe(true);
     resumeId = (await create('resumes', { user_id: session.user.id, title: marker('Library import resume') })).id;
@@ -1656,6 +1669,8 @@ test('library activities, awards and experience import once and tailor independe
     await expect(library.getByRole('button', {name:'Import existing work',exact:true})).toBeEnabled();
     await expect(page.getByRole('link', {name:`Edit "${marker('Library import resume')}"`,exact:true})).toBeVisible();
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);
+    await pointerReturn(library.getByRole('button', { name: 'Import existing work', exact: true }), page.getByRole('dialog', { name: 'Import existing work', exact: true }));
+    await pointerReturn(library.getByRole('button', { name: 'Add library item', exact: true }), page.getByRole('dialog', { name: 'Add library item', exact: true }));
     await library.getByRole('button', { name: 'Import existing work', exact: true }).focus();
     await library.getByRole('button', { name: 'Import existing work', exact: true }).press('Enter');
     const importing = page.getByRole('dialog', { name: 'Import existing work', exact: true });
@@ -1678,33 +1693,40 @@ test('library activities, awards and experience import once and tailor independe
     const writing = itemWrite(); await editor.getByRole('button', { name: 'Save item', exact: true }).click();
     items.push((await (await writing).json())[0].id);
     await expect(editor).toHaveCount(0);
+    await expect(library.getByRole('button', { name: 'Add library item', exact: true })).toBeFocused();
     await page.reload();
     await expect(library.getByRole('heading', { name: award, exact: true })).toBeVisible();
     await library.screenshot({ path: `/tmp/caat-library-${testInfo.project.name}.png` });
     for (const appId of apps) {
       await page.goto(`/applications/${appId}`);
+      await pointerReturn(hub.getByRole('button', { name: 'Add from your library', exact: true }), page.getByRole('dialog', { name: 'Add from your library', exact: true }));
       await hub.getByRole('button', { name: 'Add from your library', exact: true }).click();
       const picker = page.getByRole('dialog', { name: 'Add from your library', exact: true });
       await picker.getByRole('button', { name: `Link ${award}`, exact: true }).click();
       await expect(picker).toHaveCount(0);
+      await expect(hub.getByRole('button', { name: 'Add from your library', exact: true })).toBeFocused();
       await expect(hub.getByText('Original achievement', { exact: true })).toBeVisible();
     }
     await page.goto(`/applications/${apps[0]}`);
+    await pointerReturn(hub.getByRole('button', { name: `Tailor ${award}`, exact: true }), page.getByRole('dialog', { name: /^Tailor for / }));
     await hub.getByRole('button', { name: `Tailor ${award}`, exact: true }).click();
     const tailor = page.getByRole('dialog', { name: /^Tailor for / });
     await tailor.getByLabel('Application title', { exact: true }).fill('My tailored achievement');
     await tailor.getByRole('textbox', { name: 'Application description', exact: true }).fill('Independent application wording');
     await tailor.getByRole('button', { name: 'Save application version', exact: true }).click();
     await expect(tailor).toHaveCount(0);
+    await expect(hub.getByRole('button', { name: 'Tailor My tailored achievement', exact: true })).toBeFocused();
     await page.goto('/profile#evidence-library');
     const awardRow = library.locator('[data-library-item]').filter({ has: page.getByRole('heading', { name: award, exact: true }) });
     await expect(awardRow.getByText('Used in 2 applications', { exact: true })).toBeVisible();
     await expect(awardRow.getByRole('button', { name: `Delete ${award}`, exact: true })).toBeDisabled();
+    await pointerReturn(awardRow.getByRole('button', { name: `Edit ${award}`, exact: true }), page.getByRole('dialog', { name: 'Edit library item', exact: true }));
     await awardRow.getByRole('button', { name: `Edit ${award}`, exact: true }).click();
     const edit = page.getByRole('dialog', { name: 'Edit library item', exact: true });
     await edit.getByRole('textbox', { name: 'Description', exact: true }).fill('Updated achievement');
     await edit.getByRole('button', { name: 'Save item', exact: true }).click();
     await expect(edit).toHaveCount(0);
+    await expect(awardRow.getByRole('button', { name: `Edit ${award}`, exact: true })).toBeFocused();
     await page.goto(`/applications/${apps[0]}`);
     await expect(hub.getByText('Independent application wording', { exact: true })).toBeVisible();
     const changed = hub.getByText('Library version updated since you tailored this. Your text has been kept.', { exact: true });
