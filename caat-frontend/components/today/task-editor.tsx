@@ -1,13 +1,16 @@
 'use client';
 
-import {useEffect,useId,useRef,useState} from 'react';
+import {useEffect,useId,useRef,useState,type RefObject} from 'react';
 import Link from 'next/link';
 import {Button} from '@/components/ui/button';
 import {LibraryDialog} from '@/components/evidence/library-dialog';
-import {editPersonalTask,fetchPersonalTask,TaskAuthError,TaskConflictError,validatePersonalTask,type TaskDetails} from '@/lib/personal-tasks';
+import {editPersonalTask,fetchPersonalTask,TaskAuthError,TaskConflictError,TaskValidationError,validatePersonalTask,type TaskDetails} from '@/lib/personal-tasks';
 
 type Task = {id:string;text:string;dueDate:string|null};
-export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;onSaved:(saved:TaskDetails)=>void}) {
+export function TaskEditor({task,disabled,onSaved,onMissing,fallbackFocusRef,returnTo='/today'}:{
+ task:Task;disabled:boolean;onSaved:(saved:TaskDetails)=>void;onMissing?:(id:string)=>void;
+ fallbackFocusRef?:RefObject<HTMLElement|null>;returnTo?:string;
+}) {
  const id=useId();
  const opener=useRef<HTMLButtonElement|null>(null);
  const activeRequest=useRef<AbortController|null>(null);
@@ -15,6 +18,7 @@ export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;o
  const generation=useRef(0);
  const saveAction=useRef<HTMLButtonElement|null>(null);
  const dateField=useRef<HTMLInputElement|null>(null);
+ const textField=useRef<HTMLTextAreaElement|null>(null);
  const reloadAction=useRef<HTMLButtonElement|null>(null);
  const [open,setOpen]=useState(false);
  const [text,setText]=useState('');
@@ -25,12 +29,13 @@ export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;o
  const [authError,setAuthError]=useState(false);
  const [error,setError]=useState<string|null>(null);
  const [missing,setMissing]=useState(false);
+ const [invalidField,setInvalidField]=useState<'text'|'due_date'|null>(null);
  useEffect(()=>()=>{generation.current++;activeRequest.current?.abort();},[]);
 
- async function run<T>(action:(signal:AbortSignal)=>Promise<T>,success:(value:T)=>void,loading=false) {
+ async function run<T>(action:(signal:AbortSignal)=>Promise<T>,success:(value:T)=>void,isReload=false) {
   if(working.current)return;
   const request=++generation.current;
-  working.current=true;setBusy(true);setLoading(loading);setError(null);setAuthError(false);
+  working.current=true;setBusy(true);setLoading(isReload);setError(null);setAuthError(false);setInvalidField(null);
   const controller=new AbortController();activeRequest.current=controller;
   let timer:ReturnType<typeof setTimeout>|undefined;
   try {
@@ -41,7 +46,7 @@ export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;o
   } catch(e) {
    if(request!==generation.current)return;
    setAuthError(e instanceof TaskAuthError);
-   setError(e instanceof TaskConflictError || e instanceof TaskAuthError ? e.message : loading ? 'Could not load the saved task. Your edits are still here.' : 'Could not confirm the save. Your edits are still here. Reload the saved task to check whether it saved before trying again.');
+   setError(e instanceof TaskConflictError || e instanceof TaskAuthError ? e.message : isReload ? 'Could not load the saved task. Your edits are still here.' : 'Could not confirm the save. Your edits are still here. Reload the saved task to check whether it saved before trying again.');
   } finally {
    clearTimeout(timer);
    if(request===generation.current){activeRequest.current=null;working.current=false;setBusy(false);setLoading(false);}
@@ -51,13 +56,18 @@ export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;o
   if(working.current&&!loading)return;
   generation.current++;activeRequest.current?.abort();activeRequest.current=null;working.current=false;
   setBusy(false);setLoading(false);setOpen(false);
+  if(missing)onMissing?.(task.id);
  }
  function save() {
   if(working.current||missing)return;
-  if(dateField.current?.validity.badInput){setError("Complete the due date, or clear all its parts to remove it.");dateField.current.focus();return;}
+  if(dateField.current?.validity.badInput){setError("Complete the due date, or clear all its parts to remove it.");setInvalidField('due_date');dateField.current.focus();return;}
   let values;
   try {values=validatePersonalTask({text,due_date:dueDate||null});}
-  catch(e) {setError(e instanceof Error ? e.message : 'Check your task text and due date.');return;}
+  catch(e) {
+   setError(e instanceof Error ? e.message : 'Check your task text and due date.');
+   if(e instanceof TaskValidationError){setInvalidField(e.field);(e.field==='text'?textField.current:dateField.current)?.focus();}
+   return;
+  }
   saveAction.current?.focus();
   void run(signal=>editPersonalTask(original,values,signal),saved=>{onSaved(saved);setOpen(false);});
  }
@@ -65,25 +75,25 @@ export function TaskEditor({task,disabled,onSaved}:{task:Task;disabled:boolean;o
   if(working.current)return;
   reloadAction.current?.focus();
   void run(signal=>fetchPersonalTask(task.id,signal),saved=>{
-   if(!saved){setMissing(true);setError('This task is no longer available. Close this editor and refresh Today.');return;}
+   if(!saved){setMissing(true);setError('This task is no longer available. Copy any edits you need before closing; it will be removed from Today.');return;}
    setMissing(false);setOriginal({id:saved.id,text:saved.text,due_date:saved.due_date});setText(saved.text);setDueDate(saved.due_date??'');
   },true);
  }
  return <>
   <Button ref={opener} type="button" size="sm" variant="ghost" disabled={disabled} className="shrink-0" aria-label={`Edit task: ${task.text}`} onClick={()=>{
-   setOriginal({id:task.id,text:task.text,due_date:task.dueDate});setText(task.text);setDueDate(task.dueDate??'');setError(null);setAuthError(false);setMissing(false);setOpen(true);
+   setOriginal({id:task.id,text:task.text,due_date:task.dueDate});setText(task.text);setDueDate(task.dueDate??'');setError(null);setAuthError(false);setInvalidField(null);setMissing(false);setOpen(true);
   }}>Edit</Button>
-  {open&&<LibraryDialog title="Edit personal task" description="Update your task text or due date. Completion and priority stay unchanged." busy={busy&&!loading} onClose={close} returnFocusRef={opener}>
+  {open&&<LibraryDialog title="Edit personal task" description="Update your task text or due date. Completion and priority stay unchanged." busy={busy&&!loading} onClose={close} returnFocusRef={missing && fallbackFocusRef ? fallbackFocusRef : opener} fallbackFocusRef={fallbackFocusRef}>
    <form className="space-y-4" onSubmit={e=>{e.preventDefault();save();}} noValidate>
     <div><label htmlFor={`${id}-text`} className="block text-sm font-medium">Task</label>
-     <textarea id={`${id}-text`} value={text} onChange={e=>setText(e.target.value)} disabled={busy||missing} maxLength={1000} rows={3} className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"/>
+     <textarea ref={textField} id={`${id}-text`} value={text} onChange={e=>{setText(e.target.value);if(invalidField==='text'){setInvalidField(null);setError(null);}}} disabled={busy} readOnly={missing} aria-invalid={invalidField==='text'||undefined} aria-describedby={invalidField==='text'?`${id}-error`:undefined} maxLength={1000} rows={3} className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"/>
     </div>
     <div><label htmlFor={`${id}-date`} className="block text-sm font-medium">Due date (optional)</label>
-     <input ref={dateField} id={`${id}-date`} type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} disabled={busy||missing} className="mt-1 min-w-0 max-w-full rounded-md border bg-background px-3 py-2 text-sm"/>
+     <input ref={dateField} id={`${id}-date`} type="date" value={dueDate} onChange={e=>{setDueDate(e.target.value);if(invalidField==='due_date'){setInvalidField(null);setError(null);}}} disabled={busy} readOnly={missing} aria-invalid={invalidField==='due_date'||undefined} aria-describedby={invalidField==='due_date'?`${id}-error`:undefined} className="mt-1 min-w-0 max-w-full rounded-md border bg-background px-3 py-2 text-sm"/>
     </div>
-    {error&&<div role="alert" className="text-sm text-destructive"><p>{error}</p>{authError&&<Link href="/login?next=/today" className="underline">Sign in again</Link>}</div>}
+    {error&&<div id={`${id}-error`} role="alert" className="text-sm text-destructive"><p>{error}</p>{authError&&<Link href={`/login?next=${encodeURIComponent(returnTo)}`} className="underline">Sign in again</Link>}</div>}
     <div className="flex flex-wrap gap-2">
-     <Button ref={saveAction} type="submit" aria-disabled={busy||missing} aria-busy={busy}>{busy?'Working…':'Save changes'}</Button>
+     <Button ref={saveAction} type="submit" aria-disabled={busy||missing} aria-busy={busy} className="aria-disabled:opacity-50 aria-disabled:cursor-not-allowed">{busy?'Working…':'Save changes'}</Button>
      <Button type="button" variant="ghost" disabled={busy&&!loading} onClick={close}>Cancel</Button>
     </div>
     <div className="border-t pt-3">

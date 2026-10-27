@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { button, change, click, deferred, flush, hasText, link, mountComponent, queryAll, queryButton, queryLink, unmountAll } from "./dom-helpers";
 
-const io = vi.hoisted(() => ({ editTask: vi.fn(), toggleTodo: vi.fn(), dismiss: vi.fn(), track: vi.fn(), refresh: vi.fn(), toast: { error: vi.fn(), success: vi.fn() } }));
+const io = vi.hoisted(() => ({ editTask: vi.fn(), loadTask: vi.fn(), toggleTodo: vi.fn(), dismiss: vi.fn(), track: vi.fn(), refresh: vi.fn(), toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: io.refresh }) }));
 vi.mock("@/components/dashboard/api", () => ({ toggleTodo: io.toggleTodo }));
 vi.mock("@/lib/onboarding", () => ({ dismissOnboarding: io.dismiss }));
@@ -293,7 +293,7 @@ describe("Today", () => {
   });
 });
 
-vi.mock("@/lib/personal-tasks", () => ({ editPersonalTask: io.editTask, fetchPersonalTask: vi.fn(), validatePersonalTask: (p: unknown) => p, TaskAuthError: class extends Error {}, TaskConflictError: class extends Error {} }));
+vi.mock("@/lib/personal-tasks", () => ({ editPersonalTask: io.editTask, fetchPersonalTask: io.loadTask, validatePersonalTask: (p: unknown) => p, TaskAuthError: class extends Error {}, TaskConflictError: class extends Error {} }));
 
 it("editing a completed task preserves completion and Undo preserves the edited wording", async()=>{
  await mountComponent(<TodayView {...props()} />);
@@ -307,4 +307,49 @@ it("editing a completed task preserves completion and Undo preserves the edited 
  await act(async()=>undo());
  expect(document.querySelector('[aria-label=\'Mark "Ask Dr Chen instead" done\']')).not.toBeNull();
  expect(document.body.textContent).toContain('5 Nov');
+});
+
+
+it("removes only a confirmed missing row on close, invalidates its Undo, and preserves another completed row",async()=>{
+ await mountComponent(<TodayView {...props()} />);
+ await click(document.querySelector('[aria-label=\'Mark "Ask Ms Lee for a reference" done\']') as HTMLElement);
+ const staleUndo=io.toast.success.mock.calls.at(-1)![1].action.onClick;
+ await click(document.querySelector('[aria-label=\'Mark "Book open day" done\']') as HTMLElement);
+ await click(button('Edit task: Ask Ms Lee for a reference'));
+ await change(document.querySelector('textarea')!, 'Copy before close');io.loadTask.mockResolvedValueOnce(null);
+ await click(button('Reload saved task'));expect(document.querySelector('textarea')!.value).toBe('Copy before close');
+ await click(button('Cancel'));
+ expect(queryButton('Edit task: Ask Ms Lee for a reference')).toBeNull();
+ expect((document.querySelector('[aria-label=\'Restore "Book open day"\']') as HTMLInputElement).checked).toBe(true);
+ await act(async()=>staleUndo());expect(io.toggleTodo).toHaveBeenCalledTimes(2);
+ await vi.waitFor(()=>expect(document.activeElement).toBe(document.querySelector('[aria-label="Your to-dos"]')));
+ expect(document.querySelector('[role="status"]')?.textContent).toContain('Removed');
+});
+it("clamps the last page and focuses its heading after closing a missing task",async()=>{
+ const todos=Array.from({length:11},(_,i)=>({id:`t${i}`,text:`Task ${i}`,dueDate:null,priority:1}));
+ window.history.replaceState(null,'','/today?view=todos&page=2');await mountComponent(<TodayView {...props({todos})}/>);
+ await click(button('Edit task: Task 10'));io.loadTask.mockResolvedValueOnce(null);await click(button('Reload saved task'));await click(button('Cancel'));
+ expect(queryButton('Edit task: Task 10')).toBeNull();expect(window.location.search).toBe('?view=todos&page=1');
+ await vi.waitFor(()=>expect(document.activeElement).toBe(document.querySelector('h1')));
+ expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(10);
+});
+it("does not remove a row after an unavailable reload",async()=>{
+ await mountComponent(<TodayView {...props()}/>);await click(button('Edit task: Ask Ms Lee for a reference'));
+ io.loadTask.mockRejectedValueOnce(new Error('offline'));await click(button('Reload saved task'));await click(button('Cancel'));
+ expect(queryButton('Edit task: Ask Ms Lee for a reference')).not.toBeNull();
+});
+
+it("does not resurrect a missing task when an already-pending Undo settles",async()=>{
+ await mountComponent(<TodayView {...props()}/>);
+ await click(document.querySelector('[aria-label=\'Mark "Ask Ms Lee for a reference" done\']') as HTMLElement);
+ const undo=io.toast.success.mock.calls.at(-1)![1].action.onClick;
+ await click(button('Edit task: Ask Ms Lee for a reference'));
+ const pending=deferred();io.toggleTodo.mockReturnValueOnce(pending.promise);
+ let undoResult: Promise<void>;
+ await act(async()=>{undoResult=undo();});
+ io.loadTask.mockResolvedValueOnce(null);await click(button('Reload saved task'));await click(button('Cancel'));
+ expect(queryButton('Edit task: Ask Ms Lee for a reference')).toBeNull();
+ await act(async()=>{pending.resolve();await undoResult;});
+ expect(queryButton('Edit task: Ask Ms Lee for a reference')).toBeNull();
+ expect(queryButton('Edit task: Book open day')).not.toBeNull();
 });

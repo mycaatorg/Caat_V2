@@ -50,3 +50,15 @@ it('sends long multilingual and punctuation-rich original text in the RPC body',
  expect(io.client.rpc.mock.calls[0][1]).toMatchObject({p_original_text:original,p_text:'Corrected'});
  expect(io.client.queries).toHaveLength(0);
 });
+
+
+it('reports which field failed validation',()=>{
+ for(const [patch,field] of [[{text:' ',due_date:null},'text'],[{text:'Valid',due_date:'2026-02-30'},'due_date']] as const){
+  try{validatePersonalTask(patch);throw new Error('Expected validation failure');}catch(error){expect(error).toMatchObject({field});}
+ }
+});
+it('trims ECMAScript whitespace and counts supplementary characters as two UTF-16 units',()=>{
+ expect(validatePersonalTask({text:'\t\n\u00a0\ufeff x \u2003\u2029',due_date:null}).text).toBe('x');
+ expect(validatePersonalTask({text:'😀'.repeat(500),due_date:null}).text).toHaveLength(1000);
+ expect(()=>validatePersonalTask({text:'😀'.repeat(501),due_date:null})).toThrow();
+});
