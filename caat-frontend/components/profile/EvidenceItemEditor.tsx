@@ -1,11 +1,11 @@
 "use client";
-import { useState } from 'react';
+import { useState, type RefObject } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { LibraryDialog } from '@/components/evidence/library-dialog';
 import { createEvidenceItem, updateEvidenceItem, EMPTY_EVIDENCE_INPUT, type EvidenceItem, type EvidenceItemInput } from '@/lib/evidence-items';
-export function EvidenceItemEditor({ item, usedCount, onSaved, onClose }: { item?: EvidenceItem; usedCount: number; onSaved: (item: EvidenceItem) => void; onClose: () => void }) {
+export function EvidenceItemEditor({ item, usedCount, onSaved, onClose, returnFocusRef, fallbackFocusRef }: { item?: EvidenceItem; usedCount: number; onSaved: (item: EvidenceItem) => void; onClose: () => void; returnFocusRef: RefObject<HTMLElement|null>; fallbackFocusRef: RefObject<HTMLElement|null> }) {
   const [draft, setDraft] = useState<EvidenceItemInput>(() => item ? { kind: item.kind, title: item.title, organisation: item.organisation, role: item.role, start_date: item.start_date, end_date: item.end_date, is_current: item.is_current, description: item.description } : { ...EMPTY_EVIDENCE_INPUT });
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   const change = (patch: Partial<EvidenceItemInput>) => setDraft(cur => ({ ...cur, ...patch }));
@@ -15,7 +15,7 @@ export function EvidenceItemEditor({ item, usedCount, onSaved, onClose }: { item
     catch (e) { setError(e instanceof Error ? e.message : 'Could not save this item. Try again.'); }
     finally { setBusy(false); }
   }
-  return <LibraryDialog title={item ? 'Edit library item' : 'Add library item'} description={usedCount ? `Used in ${usedCount} applications. Changes appear in applications following the library; tailored versions keep their text.` : 'Save something you have done, then reuse it in your applications.'} busy={busy} onClose={onClose}>
+  return <LibraryDialog returnFocusRef={returnFocusRef} fallbackFocusRef={fallbackFocusRef} title={item ? 'Edit library item' : 'Add library item'} description={usedCount ? `Used in ${usedCount} applications. Changes appear in applications following the library; tailored versions keep their text.` : 'Save something you have done, then reuse it in your applications.'} busy={busy} onClose={onClose}>
     <form onSubmit={save} className="space-y-4">
       <fieldset disabled={busy} className="space-y-4">
         <label className="block text-sm font-medium">Type

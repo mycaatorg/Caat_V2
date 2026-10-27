@@ -83,3 +83,26 @@ it('does not steal focus if the user moves elsewhere during a write',async()=>{
  const pending=deferred<PreparationCheck>();state.save.mockReturnValue(pending.promise);const c=await mountComponent(<CoursePreparationCard applicationId="a" schoolId={1}/>);const elsewhere=document.createElement('button');elsewhere.textContent='Elsewhere';document.body.append(elsewhere);
  await click(button('Reopen check',c));elsewhere.focus();await act(async()=>pending.resolve(check));expect(document.activeElement).toBe(elsewhere);
 });
+
+it('announces Not started and focuses Start check when a check vanishes but its saved course row remains',async()=>{
+ const c=await mountComponent(<CoursePreparationCard applicationId="a" schoolId={1}/>);
+ state.save.mockImplementation(async()=>{state.fetch.mockResolvedValue({checks:[],courses:[course],savedCourseIds:['c']});return check;});
+ await click(button('Reopen check',c));
+ const row=c.querySelector('[role="group"]')!;
+ expect(row.textContent).toContain('Not started');
+ expect(document.activeElement).toBe(button('Start check',row));
+ expect(c.querySelector('[aria-live="polite"]')?.textContent).toContain('Not started');
+ expect(c.querySelector('[aria-live="polite"]')?.textContent).not.toContain('no longer shown');
+});
+it.each([
+ {name:'unsaved',current:course,saved:[]},
+ {name:'inactive',current:{...course,active:false},saved:['c']},
+ {name:'another university',current:{...course,school_id:2},saved:['c']},
+])('announces a missing row after check deletion for $name courses',async({current,saved})=>{
+ const c=await mountComponent(<CoursePreparationCard applicationId="a" schoolId={1}/>);
+ state.save.mockImplementation(async()=>{state.fetch.mockResolvedValue({checks:[],courses:[current],savedCourseIds:saved});return check;});
+ await click(button('Reopen check',c));
+ expect(c.querySelector('[role="group"]')).toBeNull();
+ expect(document.activeElement).toBe(c.querySelector('section'));
+ expect(c.querySelector('[aria-live="polite"]')?.textContent).toContain('no longer shown');
+});
