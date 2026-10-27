@@ -24,3 +24,23 @@ ON CONFLICT (id) DO UPDATE SET slug = EXCLUDED.slug, title = EXCLUDED.title, pro
   application_requirements = EXCLUDED.application_requirements, requires_essay = EXCLUDED.requires_essay,
   eligibility_summary = EXCLUDED.eligibility_summary, deadline_at = EXCLUDED.deadline_at,
   external_url = EXCLUDED.external_url, last_verified_at = EXCLUDED.last_verified_at;
+
+
+-- PROD-163: reserved fixtures for the supporting-work journey. These never
+-- reuse the scholarships whose bookmark moves are exercised by other journeys.
+INSERT INTO public.scholarships (id, slug, title, provider_name, description,
+  amount_value, amount_currency, amount_display, frequency, study_level,
+  funding_type, eligible_countries, is_active, is_featured, tags, school_name,
+  country, application_requirements, requires_essay, eligibility_summary,
+  deadline_at, external_url, last_verified_at)
+SELECT fixture.id::uuid, fixture.slug, fixture.title, s.provider_name, s.description,
+  s.amount_value, s.amount_currency, s.amount_display, s.frequency, s.study_level,
+  s.funding_type, s.eligible_countries, s.is_active, s.is_featured, s.tags, s.school_name,
+  s.country, s.application_requirements, s.requires_essay, s.eligibility_summary,
+  s.deadline_at, s.external_url, s.last_verified_at
+FROM public.scholarships s CROSS JOIN (VALUES
+  ('e2000000-0000-4000-8000-000000000163', 'e2e-supporting-work', 'E2E Supporting Work Scholarship'),
+  ('e2000000-0000-4000-8000-000000000164', 'e2e-supporting-work-companion', 'E2E Supporting Work Companion')
+) AS fixture(id, slug, title)
+WHERE s.id = 'e2000000-0000-4000-8000-0000000000a1'
+ON CONFLICT (id) DO NOTHING;
