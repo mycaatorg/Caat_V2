@@ -78,6 +78,7 @@ async function main() {
   run('tests/staging/setup-local.mjs', localOnlyEnv);
   run('tests/staging/scholarship-search.mjs', localOnlyEnv);
   run('tests/staging/rls-smoke.mjs', localOnlyEnv);
+  run('tests/staging/document-review-boundary.mjs', localOnlyEnv);
   run('tests/staging/community-rls.mjs', localOnlyEnv);
   run('tests/staging/community-admin-cleanup.mjs', localOnlyEnv);
   run('tests/staging/community-write-validation.mjs', localOnlyEnv);
