@@ -79,6 +79,7 @@ async function main() {
   run('tests/staging/scholarship-search.mjs', localOnlyEnv);
   run('tests/staging/rls-smoke.mjs', localOnlyEnv);
   run('tests/staging/community-rls.mjs', localOnlyEnv);
+  run('tests/staging/community-admin-cleanup.mjs', localOnlyEnv);
   run('tests/staging/course-rls.mjs', localOnlyEnv);
   run('tests/staging/scholarship-bookmark-rls.mjs', localOnlyEnv);
   run('tests/staging/scholarship-attachments-rls.mjs', localOnlyEnv);
