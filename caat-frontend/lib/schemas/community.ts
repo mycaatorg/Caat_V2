@@ -4,9 +4,9 @@ import { ResumeShareInputSchema } from "@/lib/community-resume-share-schema";
 // P2.7 — Zod schemas for the Communities feature. Replaces hand-rolled
 // validation in server actions; runs before any DB call.
 //
-// Every constraint here also exists either as a CHECK in the schema or as a
-// length-cap hint in the application — the schemas are the single source of
-// truth from the action's perspective.
+// Attachment bounds are also enforced for authenticated direct writes by the
+// community_validate_post_write trigger. Keep its normalization in sync with
+// these schemas; the action still owns editor-specific content validation.
 
 const TopicTagSchema = z.enum([
   "APPLICATION_RESULTS",

@@ -52,7 +52,7 @@ try {
 
   required(await owner.client.from('community_posts').insert({
     id: ids.privatePost, user_id: owner.id, content: 'private synthetic content',
-    topic_tag: 'ADVICE', group_id: ids.privateGroup, poll_options: [{ id: 'a', text: 'Option A' }],
+    topic_tag: 'ADVICE', group_id: ids.privateGroup, poll_options: [{ id: 'a', text: 'Option A' }, { id: 'b', text: 'Option B' }],
   }), 'owner creates private post');
   required(await owner.client.from('community_comments').insert({
     id: ids.privateComment, post_id: ids.privatePost, user_id: owner.id, content: 'private reply',

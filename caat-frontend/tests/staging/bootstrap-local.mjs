@@ -48,4 +48,5 @@ runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/m
 runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261027030000_owned_community_content.sql')]);
 runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261027040000_personal_task_validation.sql')]);
 runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261027050000_community_admin_cleanup.sql')]);
+runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261028010000_community_write_validation.sql')]);
 console.log('Local-only CAAT schema and synthetic catalog fixtures installed.');
