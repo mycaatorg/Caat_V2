@@ -35,11 +35,12 @@ create trigger trg_guard_document_review_fields
   before insert or update on public.documents
   for each row execute function public.guard_document_review_fields();
 
--- A referenced object is immutable to the owner. Otherwise an unchanged row
--- could keep its review badge while Storage update/delete+insert swaps bytes.
+-- Block ordinary owner overwrites/recreation of referenced objects. Otherwise
+-- an unchanged row could keep its review badge while Storage swaps bytes.
 -- The app already uploads replacements at a new path and deletes rows before
 -- deleting their objects. Restrictive policies AND with all existing policies;
--- other buckets, reads, and trusted service-role operations are unchanged.
+-- other buckets, reads, deletes and trusted service-role operations retain
+-- their permissions. All file mutations still invalidate review below.
 create index if not exists documents_owner_storage_path_idx
   on public.documents (user_id, storage_path);
 
@@ -59,12 +60,8 @@ create policy documents_referenced_object_update_guard on storage.objects
     select 1 from public.documents d
     where d.user_id = (select auth.uid()) and d.storage_path = objects.name
   ));
-create policy documents_referenced_object_delete_guard on storage.objects
-  as restrictive for delete to authenticated
-  using (bucket_id <> 'user-documents' or not exists (
-    select 1 from public.documents d
-    where d.user_id = (select auth.uid()) and d.storage_path = objects.name
-  ));
+-- Owner deletion remains allowed for account cleanup, which removes files
+-- before deleting account rows. The AFTER DELETE trigger below clears review.
 
 -- Signed upload capabilities can execute with trusted Storage privileges after
 -- issuance, bypassing RLS. Invalidate the public review in the same metadata

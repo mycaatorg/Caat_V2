@@ -26,7 +26,11 @@ try{
  // Ordinary owner writes cannot change bytes underneath the review.
  assert.ok((await storage.update(paths[0],body(replacement),{contentType:'application/pdf'})).error,'overwrite refused');
  assert.ok((await storage.upload(paths[0],body(replacement),{contentType:'application/pdf',upsert:true})).error,'upsert refused');
- await storage.remove([paths[0]]);assert.equal(await ok(await storage.download(paths[0])).text(),original,'delete cannot remove referenced bytes');
+ ok(await storage.remove([paths[0]]));
+ assert.ok((await storage.download(paths[0])).error,'owner deletion remains available for account cleanup');
+ assert.equal((await state()).status,'pending_review','owner deletion cannot leave a verified badge');
+ ok(await admin.storage.from('user-documents').upload(paths[0],body(original),{contentType:'application/pdf'}));
+ ok(await admin.from('documents').update({status:'verified'}).eq('id',id));
  assert.ok((await storage.move(paths[0],paths[1])).error,'move of referenced object refused');
  ok(await storage.uploadToSignedUrl(paths[0],signed.token,body(replacement),{contentType:'application/pdf'}));
  assert.equal((await state()).status,'pending_review','pre-issued upload capability invalidates review when bytes change');
