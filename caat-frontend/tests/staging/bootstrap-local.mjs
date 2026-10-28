@@ -1,10 +1,12 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkLocalPsql, localDatabaseUrl, runLocalPsql } from './local-db.mjs';
 import { assertEmptyPublicSchema } from './safety.mjs';
+import { postBaselineSteps, validateMigrationPlan } from './bootstrap-migrations.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
+validateMigrationPlan(postBaselineSteps, await readdir(join(here, '../../supabase/migrations')));
 const dbUrl = localDatabaseUrl();
 const [{ schema }] = JSON.parse(await readFile(join(here, 'schema.snapshot.json'), 'utf8'));
 const tables = schema.tables.map(({ name }) => `'${name.replaceAll("'", "''")}'`).join(', ');
@@ -29,25 +31,7 @@ const search = spawnSync(process.execPath, [join(here, 'apply-search-migration.m
 if (search.error) throw search.error;
 if (search.status !== 0) throw new Error('Local scholarship search migration failed.');
 runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, 'seed.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261023070000_course_offerings.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261024090000_scholarship_source_checks.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261024100000_scholarship_bookmark_update_policy.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, 'seed-courses.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261024110000_scholarship_attachments.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261024120000_application_evidence_links.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261024130000_scholarship_attachment_integrity.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261024140000_evidence_source_versions.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261024150000_evidence_items.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, 'seed-opportunities.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261025010000_requirement_evidence_links.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261025020000_edit_personal_task.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261026010000_course_preparation.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261026020000_course_preparation_conflicts.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261027010000_shortlist_sharing.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261027020000_community_resume_sharing.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261027030000_owned_community_content.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261027040000_personal_task_validation.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261027050000_community_admin_cleanup.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261028010000_community_write_validation.sql')]);
-runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, '../../supabase/migrations/20261028020000_owned_community_content_cursors.sql')]);
+for (const step of postBaselineSteps) {
+  runLocalPsql(dbUrl, ['-v', 'ON_ERROR_STOP=1', '-f', join(here, step)]);
+}
 console.log('Local-only CAAT schema and synthetic catalog fixtures installed.');
