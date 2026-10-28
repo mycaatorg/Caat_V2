@@ -162,6 +162,38 @@ async function openPostMenu() {
 }
 
 describe("community mutation recovery", () => {
+  it("sanitizes stored rich HTML before the post renderer receives it", async () => {
+    const db=createMockSupabase({user:{id:author.id},resolver:()=>({data:[]}),rpc:()=>({data:[]})});
+    const raw='<p><strong>Safe formatting</strong><img src="x" onerror="alert(1)"><svg onload="alert(1)"></svg><script>alert(1)</script><a href="javascript:alert(1)">Unsafe link</a><a href="https://example.com">Safe link</a></p>';
+    const [enriched]=await enrichPosts(db as unknown as Parameters<typeof enrichPosts>[0],[{...post,content:raw}],author.id);
+    expect(enriched.content).not.toMatch(/onerror|onload|javascript:|<script|<img|<svg/);
+    await mount(<PostCard post={enriched} currentUser={author} initialIsLiked={false} initialIsSaved={false}/>);
+    const body=document.querySelector('.community-prose')!;
+    expect(body.querySelector('strong')?.textContent).toBe('Safe formatting');
+    expect(body.querySelector('a')?.getAttribute('href')).toBeNull();
+    const safe=body.querySelector('a[href="https://example.com"]');
+    expect(safe?.getAttribute('rel')).toBe('noopener noreferrer nofollow');
+    expect(safe?.getAttribute('target')).toBe('_blank');
+  });
+
+  it("preserves decoded text when sanitization removes every HTML tag", async () => {
+    const db = createMockSupabase({ user: { id: author.id }, resolver: () => ({ data: [] }), rpc: () => ({ data: [] }) });
+    const [enriched] = await enrichPosts(db as unknown as Parameters<typeof enrichPosts>[0], [{ ...post, content: '<span>R&D &lt;3</span>' }], author.id);
+    await mount(<PostCard post={enriched} currentUser={author} initialIsLiked={false} initialIsSaved={false} />);
+    expect(document.querySelector('.community-prose')?.textContent).toBe('R&D <3');
+  });
+
+  it("preserves legacy plain text through enrichment without double escaping", async () => {
+    const db=createMockSupabase({user:{id:author.id},resolver:()=>({data:[]}),rpc:()=>({data:[]})});
+    const raw='R&D <3 university\nNext step & more';
+    const [enriched]=await enrichPosts(db as unknown as Parameters<typeof enrichPosts>[0],[{...post,content:raw}],author.id);
+    expect(enriched.content).toBe(raw);
+    await mount(<PostCard post={enriched} currentUser={author} initialIsLiked={false} initialIsSaved={false}/>);
+    const body=document.querySelector('.community-prose')!;
+    expect(body.textContent).toBe('R&D <3 universityNext step & more');
+    expect(body.querySelectorAll('br')).toHaveLength(1);
+  });
+
   it("carries removed status through enrichment and hides editing for the author", async () => {
     const db=createMockSupabase({user:{id:author.id},resolver:()=>({data:[]}),rpc:()=>({data:[]})});
     const [removed]=await enrichPosts(db as unknown as Parameters<typeof enrichPosts>[0],[{...post,is_removed:true,content:'[Removed by author]'}],author.id);
