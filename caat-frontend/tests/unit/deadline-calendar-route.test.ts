@@ -1,0 +1,11 @@
+import {beforeEach,expect,it,vi} from "vitest";
+const m=vi.hoisted(()=>({user:{id:"owner"} as {id:string}|null,load:vi.fn(),cookie:"America/Los_Angeles"}));
+vi.mock("@/lib/supabase/server",()=>({createServerClient:async()=>({auth:{getUser:async()=>({data:{user:m.user}})}})}));
+vi.mock("next/headers",()=>({cookies:async()=>({get:()=>({value:m.cookie})})}));
+vi.mock("@/lib/deadline-calendar-data",()=>({loadCalendarDeadlines:m.load}));
+import {GET} from "@/app/(main)/today/calendar/route";
+beforeEach(()=>{m.user={id:"owner"};m.load.mockReset();m.cookie="America/Los_Angeles";});
+it("rejects anonymous requests before any data reads",async()=>{m.user=null;const r=await GET();expect(r.status).toBe(401);expect(r.headers.get("cache-control")).toContain("no-store");expect(m.load).not.toHaveBeenCalled();});
+it("downloads a private calendar using the owner's local date",async()=>{vi.useFakeTimers();vi.setSystemTime(new Date("2026-10-29T02:00:00Z"));try{m.load.mockResolvedValue([{id:"app-one",source:"app",title:"My deadline",dateISO:"2026-10-29",href:"/applications/one"}]);const r=await GET();expect(m.load.mock.calls[0].slice(1)).toEqual(["owner","2026-10-28"]);expect(r.headers.get("content-type")).toContain("text/calendar");expect(r.headers.get("content-disposition")).toContain("caat-deadlines.ics");expect(r.headers.get("cache-control")).toContain("no-store");expect(await r.text()).toContain("My deadline");}finally{vi.useRealTimers();}});
+it("returns empty state without creating a blank download",async()=>{m.load.mockResolvedValue([]);expect((await GET()).status).toBe(204);});
+it("fails the whole export without exposing backend details",async()=>{m.load.mockRejectedValue(new Error("SECRET"));const r=await GET();expect(r.status).toBe(500);expect(await r.text()).not.toContain("SECRET");});

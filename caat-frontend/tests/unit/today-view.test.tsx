@@ -323,7 +323,7 @@ it("removes only a confirmed missing row on close, invalidates its Undo, and pre
  expect((document.querySelector('[aria-label=\'Restore "Book open day"\']') as HTMLInputElement).checked).toBe(true);
  await act(async()=>staleUndo());expect(io.toggleTodo).toHaveBeenCalledTimes(2);
  await vi.waitFor(()=>expect(document.activeElement).toBe(document.querySelector('[aria-label="Your to-dos"]')));
- expect(document.querySelector('[role="status"]')?.textContent).toContain('Removed');
+ expect(document.querySelector('[role="status"][aria-label="Task updates"]')?.textContent).toContain('Removed');
 });
 it("clamps the last page and focuses its heading after closing a missing task",async()=>{
  const todos=Array.from({length:11},(_,i)=>({id:`t${i}`,text:`Task ${i}`,dueDate:null,priority:1}));
@@ -352,4 +352,39 @@ it("does not resurrect a missing task when an already-pending Undo settles",asyn
  await act(async()=>{pending.resolve();await undoResult;});
  expect(queryButton('Edit task: Ask Ms Lee for a reference')).toBeNull();
  expect(queryButton('Edit task: Book open day')).not.toBeNull();
+});
+
+
+it.each(["overview", "expanded", "across views"])("updates the active live region for two identically named missing tasks in %s (PROD-194)", async (view) => {
+  const todos = ["missing-one", "missing-two"].map(id => ({ id, text: "Check deadline", dueDate: null, priority: 1 }));
+  if (view === "expanded") window.history.replaceState(null, "", "/today?view=todos&page=1");
+  await mountComponent(<TodayView {...props({ todos })} />);
+  let status = document.querySelector('[role="status"][aria-label="Task updates"]')!;
+  expect(status.textContent).toBe("");
+  let previous = "";
+  for (let removed = 1; removed <= 2; removed++) {
+    await click(button("Edit task: Check deadline"));
+    await change(document.querySelector("textarea")!, `Copyable draft ${removed}`);
+    io.loadTask.mockResolvedValueOnce(null);
+    await click(button("Reload saved task"));
+    expect(document.querySelector("textarea")!.value).toBe(`Copyable draft ${removed}`);
+    expect(status.textContent).toBe(previous);
+    await click(button("Cancel"));
+    expect(document.querySelector('[role="status"][aria-label="Task updates"]')).toBe(status);
+    expect(status.textContent).not.toBe(previous);
+    expect(status.textContent).toContain("Removed");
+    previous = status.textContent!;
+    expect(document.querySelectorAll('button[aria-label="Edit task: Check deadline"]')).toHaveLength(2 - removed);
+    if (removed === 1 && view === "across views") {
+      await act(async () => {
+        window.history.replaceState(null, "", "/today?view=todos&page=1");
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      });
+      status = document.querySelector('[role="status"][aria-label="Task updates"]')!;
+      expect(status.textContent).toBe(previous);
+    }
+  }
+  expect(status.textContent).toBe("Removed 2 unavailable tasks from Today.");
+  expect(io.editTask).not.toHaveBeenCalled();
+  expect(io.toggleTodo).not.toHaveBeenCalled();
 });

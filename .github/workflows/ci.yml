@@ -256,6 +256,10 @@ jobs:
 
       - name: Start isolated local Supabase
         working-directory: .
+        env:
+          # Both ECR and GHCR have throttled hosted runners. The pinned CLI
+          # supports Docker Hub while preserving each original image namespace.
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
         run: |
           mkdir -p "$RUNNER_TEMP/caat-supabase/supabase"
           cp caat-frontend/tests/staging/config.toml "$RUNNER_TEMP/caat-supabase/supabase/config.toml"

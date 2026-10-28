@@ -1831,8 +1831,11 @@ test('requirement supporting work persists with tailored previews, manual ticks 
     await expect(group).toBeFocused();await expect(opener).toBeDisabled();
     expect(await read('requirement_evidence_links',`${own}&scholarship_id=eq.${supportScholarship.id}`)).toHaveLength(1);
     await testInfo.attach('supporting-work-saved-refresh-failed',{body:await group.screenshot(),contentType:'image/png'});
-    await page.unroute(associationRoute);await group.getByRole('button',{name:'Refresh supporting work',exact:true}).click();
-    await expect(group.getByRole('alert')).toHaveCount(0);expect(writes).toBe(1);
+    failRefresh=false;await group.getByRole('button',{name:'Refresh supporting work',exact:true}).click();
+    await expect(group.getByRole('alert')).toHaveCount(0);
+    expect(writes).toBe(1);
+    expect(await read('requirement_evidence_links',`${own}&application_id=eq.${appId}&scholarship_id=eq.${supportScholarship.id}`)).toHaveLength(1);
+    await page.unroute(associationRoute);
    }else await expect(opener).toBeFocused();
    await expect(essay.getByText(name,{exact:true})).toBeVisible();
   }
@@ -2128,8 +2131,11 @@ test("Today task editing preserves other fields and recovers from conflicts and 
  const created=await request.post(`${api}/rest/v1/user_todos`,{headers,data:{user_id:session.user.id,text:initial,due_date:'2026-11-01',priority:1,done:false}});
  expect(created.ok()).toBe(true);const task=(await created.json())[0];
  const url=`${api}/rest/v1/user_todos?user_id=eq.${session.user.id}&id=eq.${task.id}`;
+ const secondId=crypto.randomUUID(),secondText=marker('Second unavailable task');
+ const secondUrl=`${api}/rest/v1/user_todos?user_id=eq.${session.user.id}&id=eq.${secondId}`;
  const todoRoute='**/rest/v1/rpc/edit_personal_task';
  try{
+  expect((await request.post(`${api}/rest/v1/user_todos`,{headers,data:{id:secondId,user_id:session.user.id,text:secondText,due_date:'2026-11-01',priority:1,done:false}})).ok()).toBe(true);
   await signInToIsolatedStudent(page);await page.goto('/today?view=todos');
   const opener=page.getByRole('button',{name:`Edit task: ${initial}`,exact:true});
   await expect(opener).toBeVisible();await opener.click();
@@ -2201,10 +2207,25 @@ test("Today task editing preserves other fields and recovers from conflicts and 
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('button',{name:`Edit task: ${finalText}`,exact:true})).toHaveCount(0);
   await expect(page.getByRole('heading',{name:'Your to-dos',exact:true})).toBeFocused();
-  await expect(page.getByRole('status').filter({hasText:'Removed the unavailable task'})).toHaveCount(1);
+  const taskStatus=page.locator('[role="status"][aria-label="Task updates"]');
+  await expect(taskStatus).toHaveText('Removed 1 unavailable task from Today.');
+  // PROD-194: a second confirmed removal changes the existing live region.
+  await page.getByRole('button',{name:`Edit task: ${secondText}`,exact:true}).click();
+  await dialog.getByLabel('Task',{exact:true}).fill('Copy the second missing-task draft');
+  expect((await request.delete(secondUrl,{headers})).ok()).toBe(true);
+  await dialog.getByRole('button',{name:'Reload saved task',exact:true}).click();
+  await expect(dialog.getByRole('alert')).toContainText('no longer available');
+  await expect(dialog.getByLabel('Task',{exact:true})).toHaveValue('Copy the second missing-task draft');
+  await expect(taskStatus).toHaveText('Removed 1 unavailable task from Today.');
+  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button',{name:`Edit task: ${secondText}`,exact:true})).toHaveCount(0);
+  await expect(taskStatus).toHaveText('Removed 2 unavailable tasks from Today.');
+  await expect(page.getByRole('heading',{name:'Your to-dos',exact:true})).toBeFocused();
  }finally{
   await page.unroute(todoRoute);
   expect((await request.delete(url,{headers})).ok()).toBe(true);
+  expect((await request.delete(secondUrl,{headers})).ok()).toBe(true);
  }
 });
 
@@ -2442,5 +2463,43 @@ test('@phone owner history keeps its place across new content and recovers inval
   await testInfo.attach('owner-history-cursors',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
  }finally{
   expect((await request.delete(`${api}/rest/v1/community_posts?id=eq.${post}&user_id=eq.${session.user.id}`,{headers})).ok()).toBe(true);
+ }
+});
+
+// PROD-203: a real private download, including failure/empty recovery and peer isolation.
+test('Today downloads an owner-only deadline calendar snapshot (PROD-203)', {tag:'@phone'}, async({page,request},testInfo)=>{
+ const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin;
+ const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ const login=async(email:string)=>{const r=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email,password:process.env.E2E_TEST_PASSWORD}});expect(r.ok()).toBe(true);const s=await r.json();return {id:s.user.id as string,headers:{apikey:key,Authorization:`Bearer ${s.access_token}`}};};
+ const owner=await login(STUDENT_EMAIL),peer=await login('e2e.peer@caat.local.test');
+ const title=marker('Calendar 🎓 deadline'),peerTitle=marker('Private peer calendar');
+ const ids=[crypto.randomUUID(),crypto.randomUUID(),crypto.randomUUID()];
+ const route='**/today/calendar';
+ try{
+  for(const [user,rows] of [[owner,[{id:ids[0],title,deadline_at:'2096-02-29'},{id:ids[1],title:`Past ${title}`,deadline_at:'2000-01-01'}]],[peer,[{id:ids[2],title:peerTitle,deadline_at:'2096-02-29'}]]] as const){
+   const r=await request.post(`${api}/rest/v1/user_scholarships`,{headers:user.headers,data:rows.map(row=>({...row,user_id:user.id,provider_name:"Synthetic calendar provider"}))});expect(r.ok(),await r.text()).toBe(true);
+  }
+  await signInToIsolatedStudent(page);await page.goto('/today');
+  const control=page.getByRole('button',{name:'Download deadline calendar',exact:true});
+  await expect(control).toBeVisible();
+  await page.route(route,r=>r.fulfill({status:500,contentType:'application/json',body:'{}'}));
+  await control.click();await expect(page.getByRole('alert').filter({hasText:'Could not prepare your calendar'})).toBeVisible();await expect(control).toBeEnabled();
+  await page.unroute(route);await page.route(route,r=>r.fulfill({status:204}));
+  await control.click();await expect(page.getByRole('status').filter({hasText:'No upcoming application or scholarship deadlines'})).toBeVisible();
+  await page.unroute(route);
+  const downloading=page.waitForEvent('download');await control.click();const download=await downloading;
+  expect(download.suggestedFilename()).toBe('caat-deadlines.ics');
+  await download.saveAs(testInfo.outputPath('calendar.ics'));
+  const stream=await download.createReadStream();expect(stream).not.toBeNull();const chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(Buffer.from(chunk));
+  const text=Buffer.concat(chunks).toString('utf8'),unfolded=text.replace(/\r\n /g,'');
+  expect(unfolded).toContain(`SUMMARY:${title}`);expect(unfolded).not.toContain(peerTitle);expect(unfolded).not.toContain(`Past ${title}`);
+  expect(unfolded).toContain('DTSTART;VALUE=DATE:20960229\r\nDTEND;VALUE=DATE:20960301');expect(unfolded).not.toContain('VALARM');
+  const response=await page.request.get('/today/calendar');expect(response.status()).toBe(200);expect(response.headers()['cache-control']).toContain('no-store');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);
+  await testInfo.attach('calendar-snapshot',{body:Buffer.from(text),contentType:'text/calendar'});
+  await testInfo.attach('calendar-control',{body:await page.getByRole('region',{name:'Coming up',exact:true}).screenshot({path:testInfo.outputPath('calendar.png')}),contentType:'image/png'});
+ }finally{
+  await page.unroute(route);
+  for(const [user,list] of [[owner,ids.slice(0,2)],[peer,[ids[2]]]] as const){const r=await request.delete(`${api}/rest/v1/user_scholarships?id=in.(${list.join(',')})&user_id=eq.${user.id}`,{headers:user.headers});expect(r.ok()).toBe(true);}
  }
 });

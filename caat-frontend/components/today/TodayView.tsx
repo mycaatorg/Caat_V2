@@ -1,5 +1,6 @@
 "use client";
 
+import { DeadlineCalendarDownload } from "@/components/today/deadline-calendar-download";
 import { TaskEditor } from "@/components/today/task-editor";
 import type { TaskDetails } from "@/lib/personal-tasks";
 
@@ -338,7 +339,10 @@ export function TodayView(props: TodayViewProps) {
   });
   const focusedHeadingRef = useRef<HTMLHeadingElement>(null);
   const todoSectionRef = useRef<HTMLElement>(null);
-  const [taskNotice, setTaskNotice] = useState('');
+  const [removedTaskCount, setRemovedTaskCount] = useState(0);
+  const taskNotice = removedTaskCount > 0
+    ? `Removed ${removedTaskCount} unavailable task${removedTaskCount === 1 ? "" : "s"} from Today.`
+    : "";
   const todayHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusMountedRef = useRef(false);
   const focusedItems = focus.view === "attention" ? tasks : focus.view === "upcoming" ? comingUp : focus.view === "recent" ? recent : focus.view === "todos" ? todos : [];
@@ -407,7 +411,7 @@ export function TodayView(props: TodayViewProps) {
     // Invalidate an old toast Undo and any completion response for this row only.
     todoVersionsRef.current.set(id, (todoVersionsRef.current.get(id) ?? 0) + 1);
     setTodos(current => current.filter(todo => todo.id !== id));
-    setTaskNotice('Removed the unavailable task from Today.');
+    setRemovedTaskCount(count => count + 1);
     router.refresh();
   }
 
@@ -460,7 +464,7 @@ export function TodayView(props: TodayViewProps) {
     const visible = focusedItems.slice(start, start + PAGE_SIZE);
     return (
       <div className="flex flex-1 flex-col gap-5 p-6 pt-0 max-w-4xl">
-        <p role="status" className="sr-only">{taskNotice}</p>
+        <p role="status" aria-label="Task updates" className="sr-only">{taskNotice}</p>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button variant="ghost" className="-ml-3 rounded-none" onClick={backToToday}>← Back to Today</Button>
           <span className="text-sm text-muted-foreground" aria-live="polite">Page {visiblePage} of {currentPageCount}</span>
@@ -482,6 +486,7 @@ export function TodayView(props: TodayViewProps) {
               {focus.view === "todos" ? "No open to-dos." : null}
             </p>
           )}
+          {focus.view === "upcoming" ? <DeadlineCalendarDownload /> : null}
         </section>
         <nav aria-label="List pages" className="flex items-center justify-between">
           <Button variant="outline" className="rounded-none" onClick={() => showPage(visiblePage - 1)} disabled={visiblePage <= 1}>Previous page</Button>
@@ -554,6 +559,7 @@ export function TodayView(props: TodayViewProps) {
                 No deadlines in the next 60 days. Add one from an application or a saved scholarship.
               </p>
             )}
+            <DeadlineCalendarDownload />
           </section>
         </div>
 
@@ -566,7 +572,7 @@ export function TodayView(props: TodayViewProps) {
           ) : null}
 
           <section ref={todoSectionRef} tabIndex={-1} aria-label="Your to-dos">
-            <p role="status" className="sr-only">{taskNotice}</p>
+            <p role="status" aria-label="Task updates" className="sr-only">{taskNotice}</p>
             <SectionHeading
               title="Your to-dos"
               action={
