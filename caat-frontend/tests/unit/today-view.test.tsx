@@ -323,7 +323,7 @@ it("removes only a confirmed missing row on close, invalidates its Undo, and pre
  expect((document.querySelector('[aria-label=\'Restore "Book open day"\']') as HTMLInputElement).checked).toBe(true);
  await act(async()=>staleUndo());expect(io.toggleTodo).toHaveBeenCalledTimes(2);
  await vi.waitFor(()=>expect(document.activeElement).toBe(document.querySelector('[aria-label="Your to-dos"]')));
- expect(document.querySelector('[role="status"]')?.textContent).toContain('Removed');
+ expect(document.querySelector('[role="status"][aria-label="Task updates"]')?.textContent).toContain('Removed');
 });
 it("clamps the last page and focuses its heading after closing a missing task",async()=>{
  const todos=Array.from({length:11},(_,i)=>({id:`t${i}`,text:`Task ${i}`,dueDate:null,priority:1}));
