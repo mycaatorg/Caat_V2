@@ -9,6 +9,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./tests/setup.ts"],
     pool: "vmThreads",
+    // Bound CPU/memory pressure on developer machines as well as hosted CI.
+    // Unbounded local workers made real editor tests time out and cascade cleanup.
+    maxWorkers: 2,
     coverage: {
       provider: "v8",
       reporter: ["text-summary", "text", "json-summary", "lcov"],
