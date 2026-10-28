@@ -191,9 +191,6 @@ jobs:
         run: npm run build
 
   e2e-smoke:
-    permissions:
-      contents: read
-      packages: read
     name: E2E browser journeys (isolated Supabase)
     needs: discover-projects
     # Playwright 1.59.1 supports 24.04; ubuntu-latest is rolling to 26.04.
@@ -260,14 +257,10 @@ jobs:
       - name: Start isolated local Supabase
         working-directory: .
         env:
-          SUPABASE_INTERNAL_IMAGE_REGISTRY: ghcr.io
-          GHCR_TOKEN: ${{ github.token }}
+          # Both ECR and GHCR have throttled hosted runners. The pinned CLI
+          # supports Docker Hub while preserving each original image namespace.
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
         run: |
-          # Avoid shared anonymous registry limits without a long-lived secret.
-          # The pinned CLI reads Docker auth from DOCKER_CONFIG.
-          export DOCKER_CONFIG="$(mktemp -d "$RUNNER_TEMP/caat-registry.XXXXXX")"
-          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
-          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           mkdir -p "$RUNNER_TEMP/caat-supabase/supabase"
           cp caat-frontend/tests/staging/config.toml "$RUNNER_TEMP/caat-supabase/supabase/config.toml"
           docker network create --driver bridge --opt com.docker.network.bridge.host_binding_ipv4=127.0.0.1 caat-supabase
