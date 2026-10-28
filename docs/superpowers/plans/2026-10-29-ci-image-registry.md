@@ -1,0 +1,5 @@
+# PROD-204: restore isolated CI image pulls
+
+Observed release/develop CI fail before tests on GHCR throttling, including one fresh runner retry. Pinned supabase/setup-cli v3 exports SUPABASE_INTERNAL_IMAGE_REGISTRY=ghcr.io. Pinned CLI2.90.0 source defaults to public.ecr.aws and builds the same /supabase/image:tag URLs. Explicitly choose that official default at the Start isolated local Supabase step so the action's exported mirror does not override it. No new secrets/token permissions, service exclusions, test retries or gate changes.
+
+Evidence: Supabase CLI v2.90.0 internal/utils/docker.go GetRegistry/GetRegistryImageUrl; setup-cli pinned45a513f src/main.ts shouldUseGhcrRegistry/exportVariable. Public ECR pinned postgres manifest is readable locally. Validate YAML, existing discovery/bootstrap contracts and fresh remote full CI. Claude and independent review required; merge to develop only after green CI, then release/main gates. If ECR also fails, preserve diagnostics and investigate instead of bypassing tests.

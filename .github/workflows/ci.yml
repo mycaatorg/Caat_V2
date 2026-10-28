@@ -256,6 +256,10 @@ jobs:
 
       - name: Start isolated local Supabase
         working-directory: .
+        env:
+          # setup-cli exports GHCR, whose anonymous pulls have throttled runners.
+          # Use the official default registry of pinned Supabase CLI 2.90.0.
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: public.ecr.aws
         run: |
           mkdir -p "$RUNNER_TEMP/caat-supabase/supabase"
           cp caat-frontend/tests/staging/config.toml "$RUNNER_TEMP/caat-supabase/supabase/config.toml"
