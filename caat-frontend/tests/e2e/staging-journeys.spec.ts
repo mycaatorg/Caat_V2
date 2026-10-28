@@ -1831,8 +1831,11 @@ test('requirement supporting work persists with tailored previews, manual ticks 
     await expect(group).toBeFocused();await expect(opener).toBeDisabled();
     expect(await read('requirement_evidence_links',`${own}&scholarship_id=eq.${supportScholarship.id}`)).toHaveLength(1);
     await testInfo.attach('supporting-work-saved-refresh-failed',{body:await group.screenshot(),contentType:'image/png'});
-    await page.unroute(associationRoute);await group.getByRole('button',{name:'Refresh supporting work',exact:true}).click();
-    await expect(group.getByRole('alert')).toHaveCount(0);expect(writes).toBe(1);
+    failRefresh=false;await group.getByRole('button',{name:'Refresh supporting work',exact:true}).click();
+    await expect(group.getByRole('alert')).toHaveCount(0);
+    expect(writes).toBe(1);
+    expect(await read('requirement_evidence_links',`${own}&application_id=eq.${appId}&scholarship_id=eq.${supportScholarship.id}`)).toHaveLength(1);
+    await page.unroute(associationRoute);
    }else await expect(opener).toBeFocused();
    await expect(essay.getByText(name,{exact:true})).toBeVisible();
   }
