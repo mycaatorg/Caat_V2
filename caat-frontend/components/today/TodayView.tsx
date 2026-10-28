@@ -339,7 +339,10 @@ export function TodayView(props: TodayViewProps) {
   });
   const focusedHeadingRef = useRef<HTMLHeadingElement>(null);
   const todoSectionRef = useRef<HTMLElement>(null);
-  const [taskNotice, setTaskNotice] = useState('');
+  const [removedTaskCount, setRemovedTaskCount] = useState(0);
+  const taskNotice = removedTaskCount > 0
+    ? `Removed ${removedTaskCount} unavailable task${removedTaskCount === 1 ? "" : "s"} from Today.`
+    : "";
   const todayHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusMountedRef = useRef(false);
   const focusedItems = focus.view === "attention" ? tasks : focus.view === "upcoming" ? comingUp : focus.view === "recent" ? recent : focus.view === "todos" ? todos : [];
@@ -408,7 +411,7 @@ export function TodayView(props: TodayViewProps) {
     // Invalidate an old toast Undo and any completion response for this row only.
     todoVersionsRef.current.set(id, (todoVersionsRef.current.get(id) ?? 0) + 1);
     setTodos(current => current.filter(todo => todo.id !== id));
-    setTaskNotice('Removed the unavailable task from Today.');
+    setRemovedTaskCount(count => count + 1);
     router.refresh();
   }
 

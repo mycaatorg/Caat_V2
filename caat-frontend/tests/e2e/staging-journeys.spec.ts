@@ -2131,8 +2131,11 @@ test("Today task editing preserves other fields and recovers from conflicts and 
  const created=await request.post(`${api}/rest/v1/user_todos`,{headers,data:{user_id:session.user.id,text:initial,due_date:'2026-11-01',priority:1,done:false}});
  expect(created.ok()).toBe(true);const task=(await created.json())[0];
  const url=`${api}/rest/v1/user_todos?user_id=eq.${session.user.id}&id=eq.${task.id}`;
+ const secondId=crypto.randomUUID(),secondText=marker('Second unavailable task');
+ const secondUrl=`${api}/rest/v1/user_todos?user_id=eq.${session.user.id}&id=eq.${secondId}`;
  const todoRoute='**/rest/v1/rpc/edit_personal_task';
  try{
+  expect((await request.post(`${api}/rest/v1/user_todos`,{headers,data:{id:secondId,user_id:session.user.id,text:secondText,due_date:'2026-11-01',priority:1,done:false}})).ok()).toBe(true);
   await signInToIsolatedStudent(page);await page.goto('/today?view=todos');
   const opener=page.getByRole('button',{name:`Edit task: ${initial}`,exact:true});
   await expect(opener).toBeVisible();await opener.click();
@@ -2204,10 +2207,25 @@ test("Today task editing preserves other fields and recovers from conflicts and 
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('button',{name:`Edit task: ${finalText}`,exact:true})).toHaveCount(0);
   await expect(page.getByRole('heading',{name:'Your to-dos',exact:true})).toBeFocused();
-  await expect(page.getByRole('status').filter({hasText:'Removed the unavailable task'})).toHaveCount(1);
+  const taskStatus=page.locator('[role="status"][aria-label="Task updates"]');
+  await expect(taskStatus).toHaveText('Removed 1 unavailable task from Today.');
+  // PROD-194: a second confirmed removal changes the existing live region.
+  await page.getByRole('button',{name:`Edit task: ${secondText}`,exact:true}).click();
+  await dialog.getByLabel('Task',{exact:true}).fill('Copy the second missing-task draft');
+  expect((await request.delete(secondUrl,{headers})).ok()).toBe(true);
+  await dialog.getByRole('button',{name:'Reload saved task',exact:true}).click();
+  await expect(dialog.getByRole('alert')).toContainText('no longer available');
+  await expect(dialog.getByLabel('Task',{exact:true})).toHaveValue('Copy the second missing-task draft');
+  await expect(taskStatus).toHaveText('Removed 1 unavailable task from Today.');
+  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button',{name:`Edit task: ${secondText}`,exact:true})).toHaveCount(0);
+  await expect(taskStatus).toHaveText('Removed 2 unavailable tasks from Today.');
+  await expect(page.getByRole('heading',{name:'Your to-dos',exact:true})).toBeFocused();
  }finally{
   await page.unroute(todoRoute);
   expect((await request.delete(url,{headers})).ok()).toBe(true);
+  expect((await request.delete(secondUrl,{headers})).ok()).toBe(true);
  }
 });
 
