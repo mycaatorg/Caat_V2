@@ -89,3 +89,7 @@ The PROD-161 journey uses reserved scholarship fixtures ending `0163` and `0164`
 ### Auth Admin community cleanup (PROD-196)
 
 Fresh bootstrap applies `20261027050000_community_admin_cleanup.sql` and runs `community-admin-cleanup.mjs` against loopback Supabase only. Two disposable accounts exercise real Auth Admin deletion of a post author with peer-authored children, verify all post children disappear, and retain the unrelated peer account/post/children. Peer REST deletion is denied. Cleanup uses only generated fixture IDs. The migration qualifies the existing trigger references and pins its search path; it does not alter RLS or cleanup scope.
+
+### Community write boundary (PROD-187)
+
+Fresh bootstrap applies `20261028010000_community_write_validation.sql` and runs `community-write-validation.mjs` against loopback Supabase only. Disposable authenticated accounts exercise atomic bulk rejection, concurrent REST/REST and REST/RPC daily and retained-post caps, inaccessible private-group rows, idempotent publication retries and rollback, field types/Unicode bounds, timestamp/author tampering, edits at cap and unchanged legacy fields. Trusted service maintenance retains historical fixture/import capability. Authenticated writes preserve existing RLS; the internal trigger functions cannot be called directly. Cleanup deletes only generated accounts and their fixtures. The older RLS poll fixture now has the two options already required by the editor schema.
