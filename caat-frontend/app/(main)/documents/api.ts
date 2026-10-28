@@ -129,28 +129,6 @@ export async function uploadDocument(
   return data as DocumentRow;
 }
 
-export async function updateDocumentStatus(
-  id: string,
-  status: string
-): Promise<DocumentRow> {
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError || !user) throw new Error("Not authenticated");
-
-  const { data, error } = await supabase
-    .from("documents")
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .select()
-    .single();
-
-  if (error) throw new Error(sanitizeError(error));
-  return data as DocumentRow;
-}
-
 export async function deleteDocument(doc: DocumentRow): Promise<void> {
   const {
     data: { user },
