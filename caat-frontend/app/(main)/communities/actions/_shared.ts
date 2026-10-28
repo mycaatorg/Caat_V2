@@ -1,3 +1,4 @@
+import { looksLikeHtml, sanitizePostHtml } from "@/lib/sanitize-html";
 import { createSupabaseServer } from "@/lib/supabase-server";
 import type { CommunityPost, PostAuthor, TopicTag, ResultCard, ScoreCard, PollOption } from "@/types/community";
 
@@ -253,13 +254,21 @@ export async function enrichPosts(
             is_verified: p.is_verified ?? false,
           }
         : null;
+    // Stored rows may come from legacy data or direct authenticated REST writes.
+    // Plain text stays raw for the client escape/newline renderer. A safe wrapper
+    // keeps tagless sanitizer output from being mistaken for raw text and escaped twice.
+    let content = row.content as string;
+    if (looksLikeHtml(content)) {
+      content = sanitizePostHtml(content);
+      if (!looksLikeHtml(content)) content = `<p>${content}</p>`;
+    }
     return {
       id: row.id as string,
       // B1 — anonymise user_id in API responses. Owner still sees their real id
       // so they can edit/delete their own anonymous post; everyone else sees a
       // stable but non-reversible token derived from the post id.
       user_id: isAnon && !isOwnPost ? `anon:${row.id as string}` : realUserId,
-      content: row.content as string,
+      content,
       topic_tag: row.topic_tag as TopicTag,
       group_id: (row.group_id as string | null) ?? null,
       university_id: (row.university_id as number | null) ?? null,

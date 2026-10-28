@@ -2,10 +2,9 @@
 //
 // These deliberately do NOT import sanitize-html: that library (htmlparser2 +
 // its tables) is heavy and was being pulled into the /communities feed bundle
-// just for a length check and a render call (C4). Post/comment HTML is always
-// sanitized server-side at write time (see lib/sanitize-html.ts +
-// communities/actions), so the client only needs to strip tags for validation
-// and to render already-trusted HTML.
+// just for a length check and a render call (C4). Rich post HTML is sanitized
+// by server actions and by enrichPosts on read, including legacy/direct REST
+// rows. This helper renders only that trusted output; it is not a sanitizer.
 
 /** Strip tags to plain text for length / non-empty validation. Uses the
  *  browser DOMParser; falls back to a regex strip when there is no DOM. */
@@ -34,7 +33,7 @@ function escapeHtml(s: string): string {
 
 /**
  * Render-ready HTML for a post body. Rich HTML is already server-sanitized
- * (on write, and returned sanitized from updatePostAction) so it is passed
+ * (by enrichPosts on read and updatePostAction on write) so it is passed
  * through as-is; legacy plain-text bodies are escaped + line-broken. Mirrors
  * lib/sanitize-html.ts::postBodyHtml for the non-HTML branch, minus the
  * server-only re-sanitize.

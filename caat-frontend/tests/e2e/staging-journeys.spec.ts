@@ -2380,3 +2380,40 @@ test('@phone former group member removes own content without seeing peer content
   await request.delete(`${api}/rest/v1/community_groups?id=eq.${group}`,{headers:peer.headers});
  }
 });
+
+test("directly stored community HTML is safe to render (PROD-197)", { tag: "@phone" }, async ({ page, request }, testInfo) => {
+  test.setTimeout(90_000);
+  await signInToIsolatedStudent(page);
+  const api=process.env.NEXT_PUBLIC_SUPABASE_URL!, key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  // Insert as the peer; the signed-in student must receive safe display HTML.
+  const auth=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:'e2e.peer@caat.local.test',password:process.env.E2E_TEST_PASSWORD}});
+  expect(auth.ok()).toBe(true);
+  const session=await auth.json() as {access_token:string;user:{id:string}};
+  const headers={apikey:key,Authorization:`Bearer ${session.access_token}`,Prefer:'return=representation'};
+  const text=marker('Safe stored community post');
+  let id:string|undefined;
+  try {
+    const response=await request.post(`${api}/rest/v1/community_posts`,{headers,data:{user_id:session.user.id,topic_tag:'ADVICE',content:`<p><strong>${text}</strong><img src="/caat-read-safety-probe" onerror="document.documentElement.dataset.caatStoredHtml='executed'"><a href="javascript:void(0)">Unsafe link</a><a href="https://example.com">Safe link</a></p>`}});
+    expect(response.ok()).toBe(true);
+    id=(await response.json())[0].id;
+    await page.goto(`/communities/${id}`);
+    const bodies=page.locator('.community-prose').filter({hasText:text});
+    const body=bodies.last();
+    await expect(body).toBeVisible();
+    await expect(bodies.locator('img,script,svg,[onerror],[onload]')).toHaveCount(0);
+    await expect(body.locator('strong')).toHaveText(text);
+    await expect(body.getByText('Unsafe link',{exact:true})).not.toHaveAttribute('href');
+    await expect(body.getByRole('link',{name:'Safe link',exact:true})).toHaveAttribute('rel','noopener noreferrer nofollow');
+    expect(await page.evaluate(()=>document.documentElement.dataset.caatStoredHtml)).toBeUndefined();
+    await page.screenshot({path:testInfo.outputPath('community-read-safety.png'),fullPage:true});
+    const tagless = await request.patch(`${api}/rest/v1/community_posts?id=eq.${id}&user_id=eq.${session.user.id}`, {
+      headers,
+      data: { content: `<span>${text}: R&D &lt;3</span>` },
+    });
+    expect(tagless.ok()).toBe(true);
+    await page.reload();
+    await expect(body).toHaveText(`${text}: R&D <3`);
+  } finally {
+    if(id)expect((await request.delete(`${api}/rest/v1/community_posts?id=eq.${id}&user_id=eq.${session.user.id}`,{headers})).ok()).toBe(true);
+  }
+});
