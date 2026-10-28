@@ -2417,3 +2417,30 @@ test("directly stored community HTML is safe to render (PROD-197)", { tag: "@pho
     if(id)expect((await request.delete(`${api}/rest/v1/community_posts?id=eq.${id}&user_id=eq.${session.user.id}`,{headers})).ok()).toBe(true);
   }
 });
+
+test('@phone owner history keeps its place across new content and recovers invalid links',async({page,request},testInfo)=>{
+ test.setTimeout(120000);
+ const api=process.env.NEXT_PUBLIC_SUPABASE_URL!,key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ const auth=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:STUDENT_EMAIL,password:process.env.E2E_TEST_PASSWORD}});
+ expect(auth.ok()).toBe(true);const session=await auth.json();
+ const headers={apikey:key,Authorization:`Bearer ${session.access_token}`,Prefer:'return=representation'};
+ const post=crypto.randomUUID(),label=marker(`History-${testInfo.project.name}`);
+ async function write(table:string,data:unknown){const result=await request.post(`${api}/rest/v1/${table}`,{headers,data});expect(result.ok(),await result.text()).toBe(true);}
+ try{
+  await write('community_posts',{id:post,user_id:session.user.id,topic_tag:'ADVICE',content:`${label} post`});
+  await write('community_comments',Array.from({length:42},(_,i)=>({id:crypto.randomUUID(),user_id:session.user.id,post_id:post,content:`${label} comment ${i}`})));
+  await signInToIsolatedStudent(page);await page.goto('/communities/your-content');
+  const rows=page.getByRole('listitem').filter({has:page.getByRole('heading',{name:/^Your (post|comment)$/})});await expect(rows).toHaveCount(20);
+  const texts=()=>rows.locator('p').allTextContents();const first=await texts();
+  await write('community_comments',{id:crypto.randomUUID(),user_id:session.user.id,post_id:post,content:`${label} inserted later`});
+  await page.getByRole('link',{name:'More content',exact:true}).click();await expect(page).toHaveURL(/cursor=/);await expect(rows).toHaveCount(20);
+  const second=await texts();expect(second.filter(text=>first.includes(text))).toEqual([]);
+  await page.getByRole('link',{name:'Previous content',exact:true}).click();await expect.poll(texts).toEqual(first);
+  await page.getByRole('link',{name:'Newest content',exact:true}).click();await expect(page.getByText(`${label} inserted later`,{exact:true})).toBeVisible();
+  await page.goto('/communities/your-content?cursor=broken');await expect(page.getByRole('main').getByRole('alert')).toContainText('no longer valid');
+  await page.getByRole('link',{name:'Newest content',exact:true}).click();await expect(page.getByText(`${label} inserted later`,{exact:true})).toBeVisible();
+  await testInfo.attach('owner-history-cursors',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+ }finally{
+  expect((await request.delete(`${api}/rest/v1/community_posts?id=eq.${post}&user_id=eq.${session.user.id}`,{headers})).ok()).toBe(true);
+ }
+});

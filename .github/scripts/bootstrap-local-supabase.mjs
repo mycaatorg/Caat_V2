@@ -95,6 +95,7 @@ async function main() {
   run('tests/staging/shortlist-sharing-rls.mjs', localOnlyEnv);
   run('tests/staging/community-resume-sharing-rls.mjs', localOnlyEnv);
   run('tests/staging/community-owned-content-rls.mjs', localOnlyEnv);
+  run('tests/staging/community-owned-content-cursors.mjs', localOnlyEnv);
   run('tests/staging/personal-task-validation.mjs', localOnlyEnv);
   const githubEnv = githubPublicEnv(local);
   const { appendFile } = await import('node:fs/promises');
