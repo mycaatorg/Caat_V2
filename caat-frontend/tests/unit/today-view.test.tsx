@@ -355,11 +355,11 @@ it("does not resurrect a missing task when an already-pending Undo settles",asyn
 });
 
 
-it.each(["overview", "expanded"])("updates the same live region for two identically named missing tasks in %s (PROD-194)", async (view) => {
+it.each(["overview", "expanded", "across views"])("updates the active live region for two identically named missing tasks in %s (PROD-194)", async (view) => {
   const todos = ["missing-one", "missing-two"].map(id => ({ id, text: "Check deadline", dueDate: null, priority: 1 }));
   if (view === "expanded") window.history.replaceState(null, "", "/today?view=todos&page=1");
   await mountComponent(<TodayView {...props({ todos })} />);
-  const status = document.querySelector('[role="status"][aria-label="Task updates"]')!;
+  let status = document.querySelector('[role="status"][aria-label="Task updates"]')!;
   expect(status.textContent).toBe("");
   let previous = "";
   for (let removed = 1; removed <= 2; removed++) {
@@ -375,6 +375,14 @@ it.each(["overview", "expanded"])("updates the same live region for two identica
     expect(status.textContent).toContain("Removed");
     previous = status.textContent!;
     expect(document.querySelectorAll('button[aria-label="Edit task: Check deadline"]')).toHaveLength(2 - removed);
+    if (removed === 1 && view === "across views") {
+      await act(async () => {
+        window.history.replaceState(null, "", "/today?view=todos&page=1");
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      });
+      status = document.querySelector('[role="status"][aria-label="Task updates"]')!;
+      expect(status.textContent).toBe(previous);
+    }
   }
   expect(status.textContent).toBe("Removed 2 unavailable tasks from Today.");
   expect(io.editTask).not.toHaveBeenCalled();
