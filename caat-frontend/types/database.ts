@@ -1885,6 +1885,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      list_owned_community_content_page: {Args:{p_created_at?:string;p_id?:string;p_kind?:string;p_direction?:string};Returns:{kind:string;id:string;content:string;created_at:string;removed:boolean}[]}
       list_owned_community_content: {Args:{p_page?:number};Returns:{kind:string;id:string;content:string;created_at:string;removed:boolean}[]}
       remove_owned_community_content: {Args:{p_kind:string;p_id:string};Returns:boolean}
 
