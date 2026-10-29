@@ -1,9 +1,10 @@
 /**
  * Server-side loader for the Today view (PROD-74). One round of parallel
- * owner-scoped reads; essay and document contents are never selected.
+ * owner-scoped paginated reads; essay and document contents are never selected.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { evidencePages } from "@/lib/evidence-pagination";
 import { fetchUnifiedDeadlines } from "@/lib/unified-deadlines";
 import type { ApplicationStatus } from "@/types/applications";
 import type { TodayApplication, TodayInput } from "@/lib/today";
@@ -67,24 +68,16 @@ export interface TodayData {
 
 type Row = Record<string, unknown>;
 
-/** View all needs more than the overview's first six tasks. Read bounded
- * pages with a stable tie-breaker; any failed page invalidates the whole list. */
+/** Complete collections use unique order keys and fail without partial results. */
+const todayRows = (fetchPage: Parameters<typeof evidencePages>[0]) =>
+  evidencePages(fetchPage, "Could not load Today").then(data => ({ data, error: null }));
+
 async function loadOpenTodos(supabase: SupabaseClient, userId: string) {
-  const pageSize = 200;
-  const rows: Row[] = [];
-  for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabase
-      .from("user_todos")
-      .select("id, text, due_date, priority")
-      .eq("user_id", userId)
-      .eq("done", false)
-      .order("due_date", { ascending: true, nullsFirst: false })
-      .order("id", { ascending: true })
-      .range(offset, offset + pageSize - 1);
-    if (error) throw new Error("Could not load Today", { cause: error });
-    rows.push(...(data ?? []));
-    if (!data || data.length < pageSize) return rows;
-  }
+  const result = await todayRows((from, to) => supabase.from("user_todos")
+    .select("id, text, due_date, priority").eq("user_id", userId).eq("done", false)
+    .order("due_date", { ascending: true, nullsFirst: false })
+    .order("id", { ascending: true }).range(from, to));
+  return result.data as Row[];
 }
 
 export async function loadToday(
@@ -101,37 +94,34 @@ export async function loadToday(
         .select("first_name, year_level, student_status, journey_stage, target_majors, preferred_countries, graduation_year, onboarding_completed_at, onboarding_dismissed_at")
         .eq("id", userId)
         .maybeSingle(),
-      supabase
-        .from("user_school_applications")
+      todayRows((from, to) => supabase.from("user_school_applications")
         .select("id, school_id, status, deadline_at, updated_at, schools(name)")
-        .eq("user_id", userId),
-      supabase.from("essay_drafts").select("id, prompt_id, label, school_id, updated_at").eq("user_id", userId),
-      supabase.from("documents").select("category, school_id").eq("user_id", userId),
-      supabase
-        .from("user_bookmarked_scholarships")
-        .select("scholarship_id, status, created_at, scholarships(id, title)")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("user_bookmarked_schools")
-        .select("school_id, created_at, schools(id, name)")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("user_bookmarked_majors")
-        .select("major_id, created_at, majors(id, name)")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false }),
-      supabase.from("user_course_bookmarks").select("course_id, created_at, course_offerings(id, name, institution_name)").eq("user_id", userId).order("created_at", { ascending: false }),
+        .eq("user_id", userId).order("id").range(from, to)),
+      todayRows((from, to) => supabase.from("essay_drafts")
+        .select("id, prompt_id, label, school_id, updated_at").eq("user_id", userId)
+        .order("id").range(from, to)),
+      todayRows((from, to) => supabase.from("documents")
+        .select("category, school_id").eq("user_id", userId).order("id").range(from, to)),
+      todayRows((from, to) => supabase.from("user_bookmarked_scholarships")
+        .select("scholarship_id, status, created_at, scholarships(id, title)").eq("user_id", userId)
+        .order("created_at", { ascending: false }).order("scholarship_id").range(from, to)),
+      todayRows((from, to) => supabase.from("user_bookmarked_schools")
+        .select("school_id, created_at, schools(id, name)").eq("user_id", userId)
+        .order("created_at", { ascending: false }).order("school_id").range(from, to)),
+      todayRows((from, to) => supabase.from("user_bookmarked_majors")
+        .select("major_id, created_at, majors(id, name)").eq("user_id", userId)
+        .order("created_at", { ascending: false }).order("major_id").range(from, to)),
+      todayRows((from, to) => supabase.from("user_course_bookmarks")
+        .select("course_id, created_at, course_offerings(id, name, institution_name)").eq("user_id", userId)
+        .order("created_at", { ascending: false }).order("course_id").range(from, to)),
       loadOpenTodos(supabase, userId),
-      supabase
-        .from("resumes")
-        .select("id, title, updated_at")
-        .eq("user_id", userId)
-        .order("updated_at", { ascending: false })
-        .limit(1),
-      supabase.from("essay_prompts").select("id, title, scope"),
-      supabase.from("custom_essay_prompts").select("id, title").eq("user_id", userId),
+      supabase.from("resumes").select("id, title, updated_at").eq("user_id", userId)
+        .order("updated_at", { ascending: false }).limit(1),
+      todayRows((from, to) => supabase.from("essay_prompts").select("id, title, scope")
+        .order("id").range(from, to)),
+      // Optional recent-work labels keep the existing generic title fallback.
+      todayRows((from, to) => supabase.from("custom_essay_prompts").select("id, title")
+        .eq("user_id", userId).order("id").range(from, to)).catch(() => ({ data: [], error: null })),
       fetchUnifiedDeadlines(supabase, userId, todayISO),
     ]);
 

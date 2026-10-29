@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { createMockSupabase, type QueryContext, type QueryResult } from "./mock-supabase";
+import type { QueryContext, QueryResult } from "./mock-supabase";
+import { createRangedMockSupabase as createMockSupabase } from "./ranged-fixture";
 import {
   fetchUnifiedDeadlines,
   mergeDeadlines,
