@@ -1975,6 +1975,156 @@ test("account download includes all pages, saved courses and only own community 
   }
 });
 
+// PROD-207: reach data beyond the first database page, including a lower server cap.
+test("Today includes late-page tasks and custom deadlines after reload (PROD-207)", { tag: "@phone" }, async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL").origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  async function session(email: string) {
+    const response = await request.post(`${api}/auth/v1/token?grant_type=password`, {
+      headers: { apikey: key }, data: { email, password: process.env.E2E_TEST_PASSWORD },
+    });
+    expect(response.ok()).toBe(true);
+    const value = await response.json() as { access_token: string; user: { id: string } };
+    return { id: value.user.id, headers: { apikey: key, Authorization: `Bearer ${value.access_token}` } };
+  }
+  const student = await session(STUDENT_EMAIL);
+  const peer = await session("e2e.peer@caat.local.test");
+  const title = marker(`Today-pages-${testInfo.project.name}`);
+  const todoIds = Array.from({ length: 201 }, () => crypto.randomUUID()).sort();
+  const awardIds = Array.from({ length: 201 }, () => crypto.randomUUID()).sort();
+  const peerTodo = crypto.randomUUID(), peerAward = crypto.randomUUID();
+  const deadline = new Date(Date.now() + 3 * 86_400_000).toISOString();
+  try {
+    expect((await request.post(`${api}/rest/v1/user_todos`, { headers: student.headers,
+      data: todoIds.map((id, i) => ({ id, user_id: student.id, text: `${title}-task-${i}`, due_date: "2000-01-01" })) })).ok()).toBe(true);
+    expect((await request.post(`${api}/rest/v1/user_scholarships`, { headers: student.headers,
+      data: awardIds.map((id, i) => ({ id, user_id: student.id, title: `${title}-award-${i}`, provider_name: "Isolated test provider",
+        deadline_at: i === 200 ? deadline : "2000-01-01T00:00:00Z" })) })).ok()).toBe(true);
+    expect((await request.post(`${api}/rest/v1/user_todos`, { headers: peer.headers,
+      data: { id: peerTodo, user_id: peer.id, text: `${title}-peer-private`, due_date: "1999-01-01" } })).ok()).toBe(true);
+    expect((await request.post(`${api}/rest/v1/user_scholarships`, { headers: peer.headers,
+      data: { id: peerAward, user_id: peer.id, title: `${title}-peer-private`, provider_name: "Private peer", deadline_at: deadline } })).ok()).toBe(true);
+    if (process.env.CAAT_TODAY_TEST_ROW_CAP) {
+      const cap = Number(process.env.CAAT_TODAY_TEST_ROW_CAP);
+      expect(Number.isInteger(cap) && cap > 0 && cap < 200).toBe(true);
+      await expect.poll(async () => {
+        const response = await request.get(`${api}/rest/v1/user_todos?user_id=eq.${student.id}&order=id&limit=200`, { headers: student.headers });
+        expect(response.ok()).toBe(true);
+        return (await response.json()).length;
+      }).toBe(cap);
+      console.log(`Verified real PostgREST row cap: ${cap}`);
+    }
+    await signInToIsolatedStudent(page);
+    await page.goto("/today?view=todos&page=1");
+    await expect(page.getByRole("region", { name: "Your to-dos" }).getByText(`${title}-task-0`, { exact: true })).toBeVisible();
+    await expect(page.getByText(`${title}-peer-private`, { exact: true })).toHaveCount(0);
+    // These overdue fixtures precede the seed's current/undated tasks, with stable UUID order.
+    await page.goto("/today?view=todos&page=21");
+    const lastTask = page.getByRole("region", { name: "Your to-dos" }).getByText(`${title}-task-200`, { exact: true });
+    await expect(lastTask).toBeVisible();
+    await page.reload();
+    await expect(lastTask).toBeVisible();
+    await page.goto("/today?view=upcoming");
+    const award = page.getByRole("region", { name: "Coming up" }).getByRole("link", { name: new RegExp(`${title}-award-200`) });
+    await expect(award).toBeVisible();
+    await expect(award).toHaveAttribute("href", "/scholarships?view=mine");
+    await expect(page.getByText(`${title}-peer-private`, { exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(award).toBeVisible();
+    await testInfo.attach("today-complete-deadlines", { body: await page.screenshot(), contentType: "image/png" });
+  } finally {
+    const cleanup: Array<() => Promise<unknown>> = [];
+    for (const [table, ids] of [["user_todos", todoIds], ["user_scholarships", awardIds]] as const) {
+      for (let start = 0; start < ids.length; start += 100) {
+        const batch = ids.slice(start, start + 100);
+        cleanup.push(async () => expect((await request.delete(`${api}/rest/v1/${table}?user_id=eq.${student.id}&id=in.(${batch.join(",")})`, { headers: student.headers })).ok()).toBe(true));
+      }
+    }
+    for (const [table, id] of [["user_todos", peerTodo], ["user_scholarships", peerAward]]) {
+      cleanup.push(async () => expect((await request.delete(`${api}/rest/v1/${table}?user_id=eq.${peer.id}&id=eq.${id}`, { headers: peer.headers })).ok()).toBe(true));
+    }
+    await runScopedCleanup(cleanup);
+  }
+});
+
+test("dashboard calendar loads late events and recovers failed sources (PROD-209)", { tag: "@phone" }, async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL").origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  async function session(email: string) {
+    const r = await request.post(`${api}/auth/v1/token?grant_type=password`, { headers: { apikey: key }, data: { email, password: process.env.E2E_TEST_PASSWORD } });
+    expect(r.ok()).toBe(true);
+    const v = await r.json() as { access_token: string; user: { id: string } };
+    return { id: v.user.id, headers: { apikey: key, Authorization: `Bearer ${v.access_token}` } };
+  }
+  const user = await session(STUDENT_EMAIL), peer = await session("e2e.peer@caat.local.test");
+  const title = marker(`Calendar-retry-${testInfo.project.name}`);
+  const ids = Array.from({ length: 201 }, () => crypto.randomUUID()).sort();
+  const widgetId = crypto.randomUUID(), awardId = crypto.randomUUID(), peerId = crypto.randomUUID();
+  const day = await page.evaluate(() => new Intl.DateTimeFormat("en-CA").format(new Date()));
+  let failOverlay = true, failLaterEvents = false;
+  const eventRoute = `${api}/rest/v1/calendar_events?**`, awardRoute = `${api}/rest/v1/user_scholarships?**`;
+  try {
+    expect((await request.post(`${api}/rest/v1/user_dashboard_widgets`, { headers: user.headers,
+      data: { id: widgetId, user_id: user.id, widget_id: "calendar", order: 999, grid_x: 0, grid_y: 50, grid_w: 4, grid_h: 7 } })).ok()).toBe(true);
+    expect((await request.post(`${api}/rest/v1/calendar_events`, { headers: user.headers,
+      data: ids.map((id, i) => ({ id, user_id: user.id, title: `${title}-${i}`, event_date: i === 200 ? day : "2000-01-01" })) })).ok()).toBe(true);
+    expect((await request.post(`${api}/rest/v1/calendar_events`, { headers: peer.headers,
+      data: { id: peerId, user_id: peer.id, title: `${title}-peer-private`, event_date: day } })).ok()).toBe(true);
+    expect((await request.post(`${api}/rest/v1/user_scholarships`, { headers: user.headers,
+      data: { id: awardId, user_id: user.id, title: `${title}-award`, provider_name: "Synthetic provider", deadline_at: day } })).ok()).toBe(true);
+    if (process.env.CAAT_CALENDAR_TEST_ROW_CAP) {
+      const cap = Number(process.env.CAAT_CALENDAR_TEST_ROW_CAP);
+      expect(Number.isInteger(cap) && cap > 0 && cap < 200).toBe(true);
+      await expect.poll(async () => {
+        const r = await request.get(`${api}/rest/v1/calendar_events?user_id=eq.${user.id}&order=id&limit=200`, { headers: user.headers });
+        expect(r.ok()).toBe(true); return (await r.json()).length;
+      }).toBe(cap);
+      console.log(`Verified real calendar PostgREST row cap: ${cap}`);
+    }
+    await signInToIsolatedStudent(page);
+    await page.route(awardRoute, route => failOverlay ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Synthetic deadline failure" }) }) : route.continue());
+    await page.route(eventRoute, route => {
+      const params = new URL(route.request().url()).searchParams;
+      return failLaterEvents && params.get("select")?.includes("description") && Number(params.get("offset")) > 0
+        ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Synthetic later-page failure" }) }) : route.continue();
+    });
+    await page.goto("/dashboard");
+    const widget = page.locator(`[data-widget-id="${widgetId}"]`);
+    await expect(widget.getByText(`${title}-200`, { exact: true })).toBeVisible();
+    await expect(widget.getByRole("alert")).toContainText("Could not load deadlines");
+    await expect(widget.getByText(`${title}-peer-private`, { exact: true })).toHaveCount(0);
+    failOverlay = false;
+    await widget.getByRole("button", { name: "Retry calendar" }).click();
+    await expect(widget.getByRole("alert")).toHaveCount(0);
+    await expect(widget.getByRole("link", { name: `${title}-award`, exact: true })).toBeVisible();
+    failLaterEvents = true;
+    await page.reload();
+    await expect(widget.getByRole("alert")).toContainText("Could not load calendar events");
+    await expect(widget.getByText(`${title}-200`, { exact: true })).toHaveCount(0);
+    await expect(widget.getByText("Nothing on this date", { exact: true })).toHaveCount(0);
+    failLaterEvents = false;
+    await widget.getByRole("button", { name: "Retry calendar" }).click();
+    await expect(widget.getByRole("alert")).toHaveCount(0);
+    await expect(widget.getByText(`${title}-200`, { exact: true })).toBeVisible();
+    await testInfo.attach("calendar-recovered", { body: await widget.screenshot(), contentType: "image/png" });
+  } finally {
+    const cleanup: Array<() => Promise<unknown>> = [
+      async () => { await page.unroute(awardRoute); },
+      async () => { await page.unroute(eventRoute); },
+    ];
+    for (let start = 0; start < ids.length; start += 100) {
+      const batch = ids.slice(start, start + 100);
+      cleanup.push(async () => expect((await request.delete(`${api}/rest/v1/calendar_events?user_id=eq.${user.id}&id=in.(${batch.join(",")})`, { headers: user.headers })).ok()).toBe(true));
+    }
+    for (const [table, id, owner] of [["user_dashboard_widgets", widgetId, user], ["user_scholarships", awardId, user], ["calendar_events", peerId, peer]] as const) {
+      cleanup.push(async () => expect((await request.delete(`${api}/rest/v1/${table}?user_id=eq.${owner.id}&id=eq.${id}`, { headers: owner.headers })).ok()).toBe(true));
+    }
+    await runScopedCleanup(cleanup);
+  }
+});
+
 // PROD-164: document library → named application usage with recovery and refresh.
 test("document usage opens named applications, preserves tailoring and refreshes unlink (PROD-164)", { tag: "@phone" }, async ({ page, request }, testInfo) => {
   test.setTimeout(120_000);

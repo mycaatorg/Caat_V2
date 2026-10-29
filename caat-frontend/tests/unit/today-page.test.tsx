@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createMockSupabase } from "./mock-supabase";
+import { createRangedMockSupabase as createMockSupabase } from "./ranged-fixture";
 import { button, click, link, mountComponent, unmountAll } from "./dom-helpers";
 
 const io = vi.hoisted(() => ({ createServerClient: vi.fn(), refresh: vi.fn() }));

@@ -8,6 +8,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { evidencePages } from "@/lib/evidence-pagination";
 
 /** "custom" is a scholarship the student added themselves (user_scholarships). */
 export type DeadlineSource = "app" | "scholarship" | "custom" | "event";
@@ -131,32 +132,22 @@ export async function fetchUnifiedDeadlines(
   todayISO: string
 ): Promise<UnifiedDeadline[]> {
 
+  const read = (fetchPage: Parameters<typeof evidencePages>[0]) =>
+    evidencePages(fetchPage, "Could not load deadlines").then(data => ({ data }));
   const [appRes, schRes, evtRes, customRes] = await Promise.all([
-    supabase
-      .from("user_school_applications")
-      .select("id, deadline_at, status, schools(name)")
-      .eq("user_id", userId)
-      .not("deadline_at", "is", null),
-    supabase
-      .from("user_bookmarked_scholarships")
-      .select("scholarship_id, scholarships(id, title, deadline_at)")
-      .eq("user_id", userId),
-    supabase
-      .from("calendar_events")
-      .select("id, title, event_date, time_start, time_end")
-      .eq("user_id", userId),
-    supabase
-      .from("user_scholarships")
-      .select("id, title, deadline_at, status")
-      .eq("user_id", userId)
-      .not("deadline_at", "is", null),
+    read((from, to) => supabase.from("user_school_applications")
+      .select("id, deadline_at, status, schools(name)").eq("user_id", userId)
+      .not("deadline_at", "is", null).order("id").range(from, to)),
+    read((from, to) => supabase.from("user_bookmarked_scholarships")
+      .select("scholarship_id, scholarships(id, title, deadline_at)").eq("user_id", userId)
+      .order("scholarship_id").range(from, to)),
+    read((from, to) => supabase.from("calendar_events")
+      .select("id, title, event_date, time_start, time_end").eq("user_id", userId)
+      .order("id").range(from, to)),
+    read((from, to) => supabase.from("user_scholarships")
+      .select("id, title, deadline_at, status").eq("user_id", userId)
+      .not("deadline_at", "is", null).order("id").range(from, to)),
   ]);
-
-  // Supabase returns query failures alongside data; a successful promise is
-  // not proof that every source loaded. Never present a partial feed as empty.
-  for (const result of [appRes, schRes, evtRes, customRes]) {
-    if (result.error) throw new Error("Could not load deadlines", { cause: result.error });
-  }
 
   const apps: RawAppDeadline[] = (appRes.data ?? []).flatMap((row: unknown) => {
     const r = row as {
