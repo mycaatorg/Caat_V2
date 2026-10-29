@@ -1,3 +1,4 @@
+import { rangedFixture } from "./ranged-fixture";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Query = { table: string; filters: Array<{ method: string; args: unknown[] }> };
@@ -69,8 +70,8 @@ describe("settings data export route", () => {
 
   it("scopes owned rows and related child rows to the signed-in account", async () => {
     state.resolve = (query) => {
-      if (query.table === "standardised_test_scores") return { data: [{ id: "score-1" }], error: null };
-      if (query.table === "resumes") return { data: [{ id: "resume-1" }], error: null };
+      if (query.table === "standardised_test_scores") return { data: rangedFixture([{ id: "score-1" }], query.filters), error: null };
+      if (query.table === "resumes") return { data: rangedFixture([{ id: "resume-1" }], query.filters), error: null };
       return { data: [], error: null };
     };
 
@@ -133,8 +134,8 @@ describe("settings data export route", () => {
   ])("returns a generic error instead of a partial export when %s query fails", async (failedTable) => {
     state.resolve = (query) => {
       if (query.table === failedTable) return { data: null, error: { message: "sensitive database details" } };
-      if (query.table === "standardised_test_scores") return { data: [{ id: "score-1" }], error: null };
-      if (query.table === "resumes") return { data: [{ id: "resume-1" }], error: null };
+      if (query.table === "standardised_test_scores") return { data: rangedFixture([{ id: "score-1" }], query.filters), error: null };
+      if (query.table === "resumes") return { data: rangedFixture([{ id: "resume-1" }], query.filters), error: null };
       return { data: [], error: null };
     };
 
@@ -148,7 +149,7 @@ describe("settings data export route", () => {
 });
 
  it.each(["evidence_items", "requirement_evidence_links"])("exports every page of %s", async (table) => {
-   state.resolve = q => ({data:q.table===table?(q.filters.some(f=>f.method==="range"&&f.args[0]===200)?[{id:"last"}]:Array.from({length:200},(_,i)=>({id:`item-${i}`}))):[],error:null});
+   state.resolve = q => ({data:q.table===table?(rangedFixture([...Array.from({length:200},(_,i)=>({id:`item-${i}`})),{id:"last"}],q.filters)):[],error:null});
    const response=await GET();
    expect(response.status).toBe(200);
    expect((await response.json()).data[table]).toHaveLength(201);
@@ -169,7 +170,7 @@ it.each(newCollections)("includes owned %s and fails closed when it cannot be re
 });
 
 it("paginates existing collections and fails rather than downloading a partial later page", async () => {
-  state.resolve = q => ({data:q.table === "user_todos" ? (q.filters.find(f=>f.method === "range")?.args[0] === 200 ? [{id:"last"}] : Array.from({length:200},(_,i)=>({id:String(i)}))) : [],error:null});
+  state.resolve = q => ({data:q.table === "user_todos" ? (rangedFixture([...Array.from({length:200},(_,i)=>({id:String(i)})),{id:"last"}],q.filters)) : [],error:null});
   expect((await (await GET()).json()).data.user_todos).toHaveLength(201);
   state.resolve = q => ({data:q.table === "user_todos" ? Array.from({length:200},(_,i)=>({id:String(i)})) : [],error:q.table === "user_todos" && q.filters.find(f=>f.method === "range")?.args[0] === 200 ? {message:"private failure"} : null});
   const failed = await GET();
@@ -222,7 +223,8 @@ it.each([
   expect(data[child]).toHaveLength(603);
   expect(new Set(data[child].map((r:{id:string})=>r.id)).size).toBe(603);
   const childQueries = state.queries.filter(q=>q.table === child);
-  expect(childQueries).toHaveLength(5);
+  expect(childQueries).toHaveLength(8);
+  expect(childQueries.every(q=>q.filters.some(f=>f.method === "order" && f.args[0] === "id"))).toBe(true);
   expect(childQueries.every(q=>q.filters.some(f=>f.method === "in" && f.args[0] === foreignKey))).toBe(true);
 });
 
@@ -230,7 +232,9 @@ it("documents download scope, skips child reads with no owned parents, and preve
   const response = await GET();
   expect(response.headers.get("Cache-Control")).toBe("no-store");
   const payload = await response.json();
-  expect(payload.scope.excludes).toEqual(expect.arrayContaining(["uploaded_file_contents","authentication_secrets","moderation_reports"]));
+  expect(payload.scope.excludes).toEqual(expect.arrayContaining(["uploaded_file_contents","authentication_secrets","moderation_reports","unrelated_users_records"]));
+  expect(payload.scope.includes).toContain("Notifications addressed to you may mention other people");
+  expect(payload.scope.pagination).toContain("1,000 page requests");
   expect(state.queries.some(q=>["resume_sections","standardised_test_subjects"].includes(q.table))).toBe(false);
   state.user=null;
   expect((await GET()).headers.get("Cache-Control")).toBe("no-store");
@@ -239,10 +243,10 @@ it("documents download scope, skips child reads with no owned parents, and preve
 it.each(["resume_sections", "standardised_test_subjects"])("rejects the whole export when a later %s batch fails", async child => {
   const parent = child === "resume_sections" ? "resumes" : "standardised_test_scores";
   state.resolve = q => {
-    if (q.table === parent) return {data:Array.from({length:101},(_,i)=>({id:`parent-${i}`})),error:null};
+    if (q.table === parent) return {data:rangedFixture(Array.from({length:101},(_,i)=>({id:`parent-${i}`})),q.filters),error:null};
     if (q.table === child) {
       const ids = q.filters.find(f=>f.method === "in")?.args[1] as string[];
-      return {data:ids.map(id=>({id})),error:ids.includes("parent-100") ? {message:"secret child failure"} : null};
+      return {data:rangedFixture(ids.map(id=>({id})),q.filters),error:ids.includes("parent-100") ? {message:"secret child failure"} : null};
     }
     return {data:[],error:null};
   };
@@ -259,4 +263,20 @@ it.each(["client", "auth"])("returns a generic noncached error when %s setup thr
   expect(response.headers.get("Cache-Control")).toBe("no-store");
   expect(await response.json()).toEqual({error:"Could not export your data. Please try again."});
   expect(state.queries).toHaveLength(0);
+});
+
+
+it("exports all owner rows under a server row cap of50 (PROD-165)", async () => {
+  const rows = Array.from({ length: 125 }, (_, i) => ({ id: `owned-${i}`, user_id: "user-1" }));
+  state.resolve = q => {
+    const from = q.filters.find(f => f.method === "range")!.args[0] as number;
+    return { data: q.table === "user_todos" ? rows.slice(from, from + 50) : [], error: null };
+  };
+  const response = await GET();
+  expect(response.status).toBe(200);
+  expect((await response.json()).data.user_todos).toEqual(rows);
+  for (const q of state.queries.filter(q => q.table === "user_todos")) {
+    expect(q.filters).toContainEqual({ method: "eq", args: ["user_id", "user-1"] });
+    expect(q.filters).toContainEqual({ method: "order", args: ["id"] });
+  }
 });

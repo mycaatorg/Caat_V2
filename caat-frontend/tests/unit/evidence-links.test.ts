@@ -1,3 +1,4 @@
+import { rangedFixture } from "./ranged-fixture";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Ctx = { table: string; op: string; calls: { method: string; args: unknown[] }[] };
@@ -111,22 +112,22 @@ describe("reading links", () => {
     expect(docs).toEqual([{ id: "doc-1", fileName: "portfolio.pdf", category: "letters", status: "verified", uploadedAt: "2026-10-01T00:00:00.000Z" }]);
   });
 
-  it("counts the applications each document is used in with one owner-filtered query", async () => {
-    state.resolver = () => ({
-      data: [
+  it("counts the applications each document is used in with owner-filtered pages", async () => {
+    state.resolver = q => ({
+      data: rangedFixture([
         { document_id: "doc-1", application_id: "app-1" },
         { document_id: "doc-1", application_id: "app-2" },
         { document_id: "doc-2", application_id: "app-1" },
-      ],
+      ], q.calls),
       error: null,
     });
     expect(await fetchDocumentUsage()).toEqual({ "doc-1": [{applicationId:"app-1",schoolName:"Application",tailored:false},{applicationId:"app-2",schoolName:"Application",tailored:false}], "doc-2": [{applicationId:"app-1",schoolName:"Application",tailored:false}] });
-    expect(state.queries).toHaveLength(1);
+    expect(state.queries).toHaveLength(2);
     expect(last().table).toBe(LINKS);
     expect(calls(last(), "eq")).toContainEqual(["user_id", "user-1"]);
     expect(calls(last(), "eq")).toContainEqual(["kind", "document"]);
     expect(calls(last(), "order")).toEqual([["id"]]);
-    expect(calls(last(), "range")).toEqual([[0,199]]);
+    expect(calls(last(), "range")).toEqual([[3,202]]);
   });
 
   it("throws when usage cannot be read, so the page never shows a wrong zero", async () => {
@@ -251,7 +252,7 @@ describe("library updated since tailoring", () => {
 });
 
 it("reads all document usage pages with names and tailoring, failing on a later page", async () => {
-  state.resolver = q => ({data:calls(q,"range")[0]?.[0] === 200 ? [{document_id:"doc-1",application_id:"last",tailored_at:"2026-10-25",user_school_applications:{schools:{name:"Last University"}}}] : Array.from({length:200},(_,i)=>({document_id:"doc-1",application_id:`app-${i}`,tailored_at:null})),error:null});
+  state.resolver = q => ({data:rangedFixture([...Array.from({length:200},(_,i)=>({document_id:"doc-1",application_id:`app-${i}`,tailored_at:null})),{document_id:"doc-1",application_id:"last",tailored_at:"2026-10-25",user_school_applications:{schools:{name:"Last University"}}}],q.calls),error:null});
   const usage = await fetchDocumentUsage();
   expect(usage["doc-1"]).toHaveLength(201);
   expect(usage["doc-1"][200]).toEqual({applicationId:"last",schoolName:"Last University",tailored:true});
