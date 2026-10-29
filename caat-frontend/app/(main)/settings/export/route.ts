@@ -59,8 +59,9 @@ export async function GET() {
     const payload = {
       export_version: 1,
       scope: {
-        includes: "Your profile, saved opportunities, workspace records and readable community activity. Document records are included; uploaded files are not bundled.",
-        excludes: ["uploaded_file_contents", "authentication_secrets", "moderation_reports", "other_users_activity"],
+        includes: "Your profile, saved opportunities, workspace records and readable community activity. Document records are included; uploaded files are not bundled. Notifications addressed to you may mention other people.",
+        excludes: ["uploaded_file_contents", "authentication_secrets", "moderation_reports", "unrelated_users_records"],
+        pagination: "Each query is limited to 1,000 page requests, including its final empty page. A failed or incomplete query cancels the download.",
         consistency: "Current account data; edits made while the download is being prepared may affect its contents.",
       },
       generated_at: new Date().toISOString(),

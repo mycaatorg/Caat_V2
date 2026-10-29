@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { rangedFixture } from "./ranged-fixture";
+import { beforeEach, expect, it, vi } from "vitest";
 
 type Ctx = { table: string; op: string; calls: { method: string; args: unknown[] }[] };
 type Result = { data?: unknown; error?: { message: string; code?: string } | null };
@@ -34,14 +35,18 @@ const row = { id:"r1", user_id:"user-1", application_id:"app-1", school_id:1, sc
 const input = { applicationId:"app-1", schoolId:1, scholarshipId:"sch-1", itemKey:"essay", label:"Essay required", source:{kind:"evidence" as const,id:"link-1"} };
 beforeEach(()=>{state.userId="user-1";state.queries=[];state.resolver=()=>({data:[],error:null});});
 it("loads owned associations and application-specific sources with stable pagination",async()=>{
- state.resolver=q=>({data:q.table==="requirement_evidence_links"?[row]:[]});
+ state.resolver=q=>({data:q.table==="requirement_evidence_links"?rangedFixture([row],q.calls):[]});
  const bundle=await fetchRequirementWork("app-1");
  expect(bundle.links).toEqual([row]);
- for(const q of state.queries){ expect(call(q,"eq")).toContainEqual(["user_id","user-1"]); expect(call(q,"range")).toEqual([[0,199]]); }
+ for (const q of state.queries) {
+  expect(call(q, "eq")).toContainEqual(["user_id", "user-1"]);
+  const [from, to] = call(q, "range")[0] as number[];
+  expect(to - from).toBe(199);
+ }
  for(const q of state.queries.filter(q=>q.table!=="essay_drafts")) expect(call(q,"eq")).toContainEqual(["application_id","app-1"]);
 });
 it("paginates past the API cap",async()=>{
- state.resolver=q=>({data:q.table==="requirement_evidence_links"?(call(q,"range")[0][0]===0?Array.from({length:200},(_,i)=>({...row,id:`r${i}`})):[{...row,id:"last"}]):[]});
+ state.resolver=q=>({data:q.table==="requirement_evidence_links"?rangedFixture([...Array.from({length:200},(_,i)=>({...row,id:`r${i}`})),{...row,id:"last"}],q.calls):[]});
  expect((await fetchRequirementWork("app-1")).links).toHaveLength(201);
 });
 it("fails closed on unavailable sources",async()=>{
