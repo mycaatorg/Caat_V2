@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockSupabase, type QueryContext, type QueryResult } from "./mock-supabase";
+import type { QueryContext, QueryResult } from "./mock-supabase";
+import { createRangedMockSupabase as createMockSupabase } from "./ranged-fixture";
 
 import { deriveTasks } from "@/lib/today";
 import { loadToday, resolveTimeZone, sydneyHour, sydneyTodayISO, zonedHour, zonedTodayISO } from "@/lib/today-data";
@@ -207,9 +208,7 @@ describe("loadToday", () => {
     const tasks = Array.from({ length: 205 }, (_, i) => ({ id: `todo-${i}`, text: `Task ${i + 1}`, due_date: null, priority: 2 }));
     const client = createMockSupabase({ resolver: (ctx) => {
       if (ctx.table !== "user_todos") return resolver(ctx);
-      const range = ctx.calls.find((c) => c.method === "range")?.args as [number, number] | undefined;
-      const limit = ctx.calls.find((c) => c.method === "limit")?.args[0] as number | undefined;
-      return { data: range ? tasks.slice(range[0], range[1] + 1) : tasks.slice(0, limit ?? 200), error: null };
+      return { data: tasks, error: null };
     } });
     const data = await loadToday(client as never, "student-1");
     expect(data.todos).toHaveLength(205);
