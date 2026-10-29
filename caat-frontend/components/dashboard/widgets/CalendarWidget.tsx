@@ -12,6 +12,7 @@ import { Plus, Trash2, MapPin, Wifi, Clock, CalendarDays, Pencil } from "lucide-
 import { supabase } from "@/lib/supabase/client";
 import { getClientUserId } from "@/lib/current-user";
 import { toast } from "sonner";
+import { evidencePages } from "@/lib/evidence-pagination";
 import { toDateKey, formatTime } from "@/lib/calendar-utils";
 import {
   CUSTOM_SOURCE_PILL,
@@ -76,43 +77,52 @@ export function CalendarWidget() {
   const [form, setForm] = useState<EventForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+
   useEffect(() => {
+    let active = true;
     async function load() {
-      const userId = await getClientUserId();
-      if (!userId) return;
-
-      const { data, error } = await supabase
-        .from("calendar_events")
-        .select(
-          "id, title, event_date, description, time_start, time_end, location, is_online"
-        )
-        .eq("user_id", userId)
-        .order("time_start", { ascending: true, nullsFirst: true });
-
-      if (error) {
-        toast.error("Could not load calendar events.");
-      } else {
-        setEvents((data ?? []) as CalendarEvent[]);
-      }
-
-      // Pull app + scholarship deadlines for overlay dots.
-      // Events come from calendar_events natively above — exclude them here
-      // to avoid double-rendering.
+      setLoading(true);
+      setLoadError(null);
       try {
-        const all = await fetchUnifiedDeadlines(
-          supabase,
-          userId,
-          // The student's calendar day, as Today computes it (PROD-152).
-          zonedTodayISO(resolveTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone)),
-        );
-        setDeadlines(all.filter((d) => d.source !== "event"));
+        const userId = await getClientUserId();
+        if (!userId) throw new Error("Not authenticated");
+        if (!active) return;
+        // Resolve each source independently so successful data remains useful,
+        // while a failed source is clearly marked as incomplete.
+        const [eventResult, deadlineResult] = await Promise.allSettled([
+          evidencePages<CalendarEvent>((from, to) => supabase.from("calendar_events")
+            .select("id, title, event_date, description, time_start, time_end, location, is_online")
+            .eq("user_id", userId)
+            .order("time_start", { ascending: true, nullsFirst: true }).order("id").range(from, to),
+          "Could not load calendar events."),
+          fetchUnifiedDeadlines(supabase, userId,
+            zonedTodayISO(resolveTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone))),
+        ]);
+        if (!active) return;
+        setEvents(eventResult.status === "fulfilled" ? eventResult.value : []);
+        // Editable events already supply their own dots and rows.
+        setDeadlines(deadlineResult.status === "fulfilled" ? deadlineResult.value.filter(d => d.source !== "event") : []);
+        const errors = [
+          eventResult.status === "rejected" ? "Could not load calendar events." : null,
+          deadlineResult.status === "rejected" ? "Could not load deadlines." : null,
+        ].filter(Boolean);
+        setLoadError(errors.length ? errors.join(" ") : null);
       } catch {
-        // non-critical
+        if (active) {
+          setEvents([]);
+          setDeadlines([]);
+          setLoadError("Could not load your calendar.");
+        }
+      } finally {
+        if (active) setLoading(false);
       }
     }
-
-    load();
-  }, []);
+    void load();
+    return () => { active = false; };
+  }, [reload]);
 
   // Build a per-date map of which deadline sources have an entry.
   // app + scholarship from `deadlines`, event from `events`.
@@ -159,81 +169,85 @@ export function CalendarWidget() {
   }
 
   async function handleSaveEvent() {
-    if (!form.title.trim() || !date) return;
+    if (loading || saving || !form.title.trim() || !date) return;
     setSaving(true);
 
-    const userId = await getClientUserId();
-    if (!userId) {
-      toast.error("Not authenticated.");
+    try {
+      const userId = await getClientUserId();
+      if (!userId) {
+        toast.error("Not authenticated.");
+        return;
+      }
+
+      const payload = {
+        title: form.title.trim(),
+        // B15 — an edit keeps the event's own date; only a new event uses the
+        // currently selected calendar day.
+        event_date: editingId ? form.event_date : toDateKey(date),
+        description: form.description.trim() || null,
+        time_start: form.time_start || null,
+        time_end: form.time_end || null,
+        location: form.is_online ? null : form.location.trim() || null,
+        is_online: form.is_online,
+      };
+
+      if (editingId) {
+        const { data, error } = await supabase
+          .from("calendar_events")
+          .update(payload)
+          .eq("id", editingId)
+          .eq("user_id", userId)
+          .select(
+            "id, title, event_date, description, time_start, time_end, location, is_online"
+          )
+          .single();
+
+        if (error || !data) {
+          toast.error("Could not update event.");
+        } else {
+          setEvents((prev) =>
+            prev.map((e) => (e.id === editingId ? (data as CalendarEvent) : e))
+          );
+          cancelForm();
+        }
+      } else {
+        const { data, error } = await supabase
+          .from("calendar_events")
+          .insert({ user_id: userId, ...payload })
+          .select(
+            "id, title, event_date, description, time_start, time_end, location, is_online"
+          )
+          .single();
+
+        if (error || !data) {
+          toast.error("Could not save event.");
+        } else {
+          setEvents((prev) => [...prev, data as CalendarEvent]);
+          cancelForm();
+        }
+      }
+    } catch {
+      toast.error(editingId ? "Could not update event." : "Could not save event.");
+    } finally {
       setSaving(false);
-      return;
     }
-
-    const payload = {
-      title: form.title.trim(),
-      // B15 — an edit keeps the event's own date; only a new event uses the
-      // currently selected calendar day.
-      event_date: editingId ? form.event_date : toDateKey(date),
-      description: form.description.trim() || null,
-      time_start: form.time_start || null,
-      time_end: form.time_end || null,
-      location: form.is_online ? null : form.location.trim() || null,
-      is_online: form.is_online,
-    };
-
-    if (editingId) {
-      const { data, error } = await supabase
-        .from("calendar_events")
-        .update(payload)
-        .eq("id", editingId)
-        .eq("user_id", userId)
-        .select(
-          "id, title, event_date, description, time_start, time_end, location, is_online"
-        )
-        .single();
-
-      if (error || !data) {
-        toast.error("Could not update event.");
-      } else {
-        setEvents((prev) =>
-          prev.map((e) => (e.id === editingId ? (data as CalendarEvent) : e))
-        );
-        cancelForm();
-      }
-    } else {
-      const { data, error } = await supabase
-        .from("calendar_events")
-        .insert({ user_id: userId, ...payload })
-        .select(
-          "id, title, event_date, description, time_start, time_end, location, is_online"
-        )
-        .single();
-
-      if (error || !data) {
-        toast.error("Could not save event.");
-      } else {
-        setEvents((prev) => [...prev, data as CalendarEvent]);
-        cancelForm();
-      }
-    }
-    setSaving(false);
   }
 
   async function handleDeleteEvent(id: string) {
-    const userId = await getClientUserId();
-    if (!userId) return;
-
-    const { error } = await supabase
-      .from("calendar_events")
-      .delete()
-      .eq("id", id)
-      .eq("user_id", userId);
-
-    if (error) {
-      toast.error("Could not delete event.");
-    } else {
+    if (loading || saving) return;
+    setSaving(true);
+    try {
+      const userId = await getClientUserId();
+      if (!userId) throw new Error("Not authenticated");
+      const { error } = await supabase.from("calendar_events").delete()
+        .eq("id", id).eq("user_id", userId);
+      if (error) throw error;
       setEvents((prev) => prev.filter((e) => e.id !== id));
       if (editingId === id) cancelForm();
+    } catch {
+      toast.error("Could not delete event.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -290,6 +304,7 @@ export function CalendarWidget() {
           <button
             type="button"
             onClick={openAdd}
+            disabled={loading || saving}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-1"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -393,7 +408,7 @@ export function CalendarWidget() {
                 size="sm"
                 className="h-7 text-xs flex-1"
                 onClick={handleSaveEvent}
-                disabled={saving || !form.title.trim()}
+                disabled={loading || saving || !form.title.trim()}
               >
                 {saving ? "Saving..." : editingId ? "Update" : "Save"}
               </Button>
@@ -417,7 +432,14 @@ export function CalendarWidget() {
             : "Select a date"}
         </p>
 
-        {eventsForDay.length === 0 && deadlinesForDay.length === 0 ? (
+        {loading && <p role="status" className="text-xs text-muted-foreground">Loading calendar…</p>}
+        {loadError && (
+          <div role="alert" className="rounded-lg border p-3 text-xs space-y-2">
+            <p>{loadError} Your saved work is safe.</p>
+            <Button variant="outline" size="sm" disabled={loading || saving} onClick={() => setReload(value => value + 1)}>Retry calendar</Button>
+          </div>
+        )}
+        {!loading && !loadError && eventsForDay.length === 0 && deadlinesForDay.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-1.5 py-10 text-center">
             <CalendarDays className="h-8 w-8 text-muted-foreground/30" />
             <p className="text-xs text-muted-foreground">Nothing on this date</p>
@@ -425,7 +447,7 @@ export function CalendarWidget() {
               Click &quot;Add event&quot; to add one
             </p>
           </div>
-        ) : (
+        ) : !loading ? (
           <>
           {deadlinesForDay.length > 0 && (
             <ul className="space-y-2 mb-2">
@@ -462,6 +484,7 @@ export function CalendarWidget() {
                       type="button"
                       onClick={() => openEdit(ev)}
                       className="text-muted-foreground hover:text-foreground transition-colors"
+                      disabled={loading || saving}
                       aria-label="Edit event"
                     >
                       <Pencil className="h-3.5 w-3.5" />
@@ -470,6 +493,7 @@ export function CalendarWidget() {
                       type="button"
                       onClick={() => handleDeleteEvent(ev.id)}
                       className="text-muted-foreground hover:text-destructive transition-colors"
+                      disabled={loading || saving}
                       aria-label="Delete event"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -508,7 +532,7 @@ export function CalendarWidget() {
             ))}
           </ul>
           </>
-        )}
+        ) : null}
       </div>
     </div>
   );
