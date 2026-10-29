@@ -4,6 +4,7 @@
  */
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import routeCoverage from "./route-coverage.json";
+import { runScopedCleanup } from "./scoped-cleanup";
 
 const STUDENT_EMAIL = "e2e.student@caat.local.test";
 const SCHOOL_ID = 900001;
@@ -1925,6 +1926,16 @@ test("account download includes all pages, saved courses and only own community 
         addedFollows.push({ headers: from.headers, query });
       }
     }
+    if (process.env.CAAT_EXPORT_TEST_ROW_CAP) {
+      const cap = Number(process.env.CAAT_EXPORT_TEST_ROW_CAP);
+      expect(Number.isInteger(cap) && cap > 0 && cap < 200).toBe(true);
+      await expect.poll(async () => {
+        const response = await request.get(`${api}/rest/v1/user_todos?user_id=eq.${student.id}&order=id&limit=200`, { headers: student.headers });
+        expect(response.ok()).toBe(true);
+        return (await response.json()).length;
+      }).toBe(cap);
+      console.log(`Verified real PostgREST row cap: ${cap}`);
+    }
     await signInToIsolatedStudent(page);
     await page.goto("/settings");
     await expect(page.getByText(/Includes document details, but not/)).toBeVisible();
@@ -1947,16 +1958,20 @@ test("account download includes all pages, saved courses and only own community 
     expect(payload.data.community_follows).toContainEqual(expect.objectContaining({ follower_id: student.id, followee_id: peer.id }));
     expect(payload.data.community_follows.every((row: { follower_id: string }) => row.follower_id === student.id)).toBe(true);
     expect(payload.scope.excludes).toContain("uploaded_file_contents");
+    expect(payload.scope.includes).toContain("Notifications addressed to you may mention other people");
     await expect(page.getByRole("button", { name: "Export my data", exact: true })).toBeEnabled();
     await testInfo.attach("account-download-settings", { body: await page.screenshot(), contentType: "image/png" });
   } finally {
-    // Delete only IDs created by this run; never remove existing account data.
+    // Attempt every exact fixture deletion even if an earlier one fails.
+    const cleanup: Array<() => Promise<unknown>> = [];
     for (let start = 0; start < ids.length; start += 100) {
-      expect((await request.delete(`${api}/rest/v1/user_todos?user_id=eq.${student.id}&id=in.(${ids.slice(start,start+100).join(",")})`, { headers: student.headers })).ok()).toBe(true);
+      const batch = ids.slice(start, start + 100);
+      cleanup.push(async () => expect((await request.delete(`${api}/rest/v1/user_todos?user_id=eq.${student.id}&id=in.(${batch.join(",")})`, { headers: student.headers })).ok()).toBe(true));
     }
-    expect((await request.delete(`${api}/rest/v1/user_todos?user_id=eq.${peer.id}&id=eq.${peerTodo}`, { headers: peer.headers })).ok()).toBe(true);
-    if (!hasCourse) expect((await request.delete(`${api}/rest/v1/user_course_bookmarks?${courseQuery}`, { headers: student.headers })).ok()).toBe(true);
-    for (const follow of addedFollows) expect((await request.delete(`${api}/rest/v1/community_follows?${follow.query}`, { headers: follow.headers })).ok()).toBe(true);
+    cleanup.push(async () => expect((await request.delete(`${api}/rest/v1/user_todos?user_id=eq.${peer.id}&id=eq.${peerTodo}`, { headers: peer.headers })).ok()).toBe(true));
+    if (!hasCourse) cleanup.push(async () => expect((await request.delete(`${api}/rest/v1/user_course_bookmarks?${courseQuery}`, { headers: student.headers })).ok()).toBe(true));
+    for (const follow of addedFollows) cleanup.push(async () => expect((await request.delete(`${api}/rest/v1/community_follows?${follow.query}`, { headers: follow.headers })).ok()).toBe(true));
+    await runScopedCleanup(cleanup);
   }
 });
 

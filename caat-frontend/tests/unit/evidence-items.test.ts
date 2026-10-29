@@ -1,3 +1,4 @@
+import { rangedFixture } from "./ranged-fixture";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Ctx = { table: string; op: string; calls: { method: string; args: unknown[] }[] };
@@ -37,7 +38,7 @@ const call = (q: Ctx, method: string) => q.calls.filter(c=>c.method===method).ma
 beforeEach(()=>{state.userId="user-1";state.queries=[];state.resolver=()=>({data:[],error:null});});
 describe("evidence library writes",()=>{
  it("reads beyond the first API page without dropping saved items",async()=>{
-  state.resolver=q=>({data:call(q,"range")[0]?.[0]===200 ? [{...source,id:"last-item"}] : Array.from({length:200},(_,i)=>({...source,id:`item-${i}`}))});
+  state.resolver=q=>({data:rangedFixture([...Array.from({length:200},(_,i)=>({...source,id:`item-${i}`})),{...source,id:"last-item"}],q.calls)});
   const result=await items.listEvidenceItems();
   expect(result).toHaveLength(201);
   expect(result[200].id).toBe("last-item");
@@ -70,19 +71,19 @@ describe("evidence library writes",()=>{
 });
 describe("item links",()=>{
  it("can tailor a maximum-length description together with its metadata",async()=>{
-  state.resolver=()=>({data:[row]});
+  state.resolver=q=>({data:rangedFixture([row],q.calls)});
   const [seen]=await links.fetchItemLinks("app-1");
   const full=items.evidenceText({...input,description:"x".repeat(10000),organisation:"o".repeat(200),role:"r".repeat(200)});
   await expect(links.tailorItem(seen,{title:"Complete version",body:full})).resolves.toMatchObject({id:"link-1"});
  });
  it("reads only owned item links and maps their current source",async()=>{
-  state.resolver=()=>({data:[row]});
+  state.resolver=q=>({data:rangedFixture([row],q.calls)});
   const result=await links.fetchItemLinks("app-1");
   expect(result[0].item?.title).toBe("Debate");
   expect(call(state.queries[0],"eq")).toEqual([["user_id","user-1"],["application_id","app-1"],["kind","item"]]);
  });
  it("snapshots complete text and acknowledges only the source that was seen",async()=>{
-  state.resolver=()=>({data:[row]});
+  state.resolver=q=>({data:rangedFixture([row],q.calls)});
   const [seen]=await links.fetchItemLinks("app-1");
   state.queries=[];
   await links.tailorItem(seen,{title:"For this school",body:"My snapshot"});
@@ -92,13 +93,13 @@ describe("item links",()=>{
   expect(call(write,"eq")).toContainEqual(["revision","r1"]);
  });
  it("detects a new source revision without comparing device clocks",async()=>{
-  state.resolver=()=>({data:[{...row,tailored_at:"1900-01-01",tailored_title:"Mine",source_revision:"v0"}]});
+  state.resolver=q=>({data:rangedFixture([{...row,tailored_at:"1900-01-01",tailored_title:"Mine",source_revision:"v0"}],q.calls)});
   const [seen]=await links.fetchItemLinks("app-1");
   expect(links.itemSourceChanged(seen)).toBe(true);
   expect(links.itemSourceChanged({...seen,sourceRevision:"v1"})).toBe(false);
  });
  it("refuses silent zero-row tailoring/unlink and touches only links",async()=>{
-  state.resolver=()=>({data:[row]});
+  state.resolver=q=>({data:rangedFixture([row],q.calls)});
   const [seen]=await links.fetchItemLinks("app-1");
   state.resolver=()=>({data:[]});state.queries=[];
   await expect(links.tailorItem(seen,{title:"Mine",body:""})).rejects.toThrow(/changed|removed/i);

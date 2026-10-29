@@ -1,3 +1,4 @@
+import { rangedFixture } from "./ranged-fixture";
 import {beforeEach,it,expect,vi} from 'vitest';
 import {createMockSupabase} from './mock-supabase';
 const io=vi.hoisted(()=>({client:null as unknown}));
@@ -7,7 +8,7 @@ import {fetchCoursePreparation,saveCoursePreparation} from '@/lib/course-prepara
 import type {CourseOffering} from '@/types/courses';
 beforeEach(()=>{io.client=createMockSupabase({resolver:()=>({data:[]})});});
 it('refreshes current bookmarks and scopes them to the application school instead of stale UI props',async()=>{
- const client=createMockSupabase({resolver:q=>({data:q.table==='user_course_bookmarks'?[{course_id:'saved-now'}]:q.table==='course_preparation_checks'?[{course_id:'unsaved-plan'}]:[]})});io.client=client;
+ const client=createMockSupabase({resolver:q=>({data:rangedFixture(q.table==='user_course_bookmarks'?[{course_id:'saved-now'}]:q.table==='course_preparation_checks'?[{course_id:'unsaved-plan'}]:[],q.calls)})});io.client=client;
  const result=await fetchCoursePreparation('app',1);
  expect(result.savedCourseIds).toEqual(['saved-now']);
  const bookmark=client.queries.find(q=>q.table==='user_course_bookmarks');
