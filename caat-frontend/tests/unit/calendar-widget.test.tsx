@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMockSupabase, type QueryContext, type QueryResult } from "./mock-supabase";
-import { button, click, mountComponent, unmountAll } from "./dom-helpers";
+import { button, change, click, mountComponent, unmountAll } from "./dom-helpers";
 
 const io = vi.hoisted(() => ({ client: null as unknown, user: vi.fn() }));
 vi.mock("@/lib/supabase/client", () => ({ get supabase() { return io.client; } }));
 vi.mock("@/lib/current-user", () => ({ getClientUserId: io.user }));
 vi.mock("@/components/ui/calendar", () => ({ Calendar: () => null, CalendarDayButton: () => null }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
+import { toast } from "sonner";
 import { CalendarWidget } from "@/components/dashboard/widgets/CalendarWidget";
 
 const day = new Intl.DateTimeFormat("en-CA").format(new Date());
@@ -76,6 +77,24 @@ describe("calendar complete reads and recovery", () => {
     await act(async () => { finish("student-1"); });
     expect(button("Retry calendar").disabled).toBe(false);
     expect(document.body.textContent).not.toContain("Event 0");
+  });
+  it.each(["auth", "insert", "update"])("unlocks retry and preserves the draft after a rejected %s during save", async failure => {
+    client(ctx => {
+      if (ctx.table === "calendar_events" && ctx.op === failure) throw new Error("private write failure");
+      return ctx.table === "user_scholarships" ? { data: null, error: { message: "unavailable" } } : undefined;
+    });
+    await mountComponent(<CalendarWidget />);
+    await click(button(failure === "update" ? "Edit event" : "Add event"));
+    const title = document.querySelector<HTMLInputElement>('input[placeholder="e.g. SAT Exam"]')!;
+    await change(title, "Keep this event draft");
+    if (failure === "auth") io.user.mockRejectedValueOnce(new Error("private auth failure"));
+    const saveLabel = failure === "update" ? "Update" : "Save";
+    await click(button(saveLabel));
+    expect(button("Retry calendar").disabled).toBe(false);
+    expect(button(saveLabel).disabled).toBe(false);
+    expect(toast.error).toHaveBeenCalledWith(failure === "update" ? "Could not update event." : "Could not save event.");
+    expect(title.value).toBe("Keep this event draft");
+    expect(document.body.textContent).not.toContain("private auth failure");
   });
   it("handles authentication rejection as a recoverable calendar failure", async () => {
     client(); io.user.mockRejectedValue(new Error("private auth failure"));

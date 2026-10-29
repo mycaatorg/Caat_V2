@@ -172,61 +172,65 @@ export function CalendarWidget() {
     if (loading || saving || !form.title.trim() || !date) return;
     setSaving(true);
 
-    const userId = await getClientUserId();
-    if (!userId) {
-      toast.error("Not authenticated.");
+    try {
+      const userId = await getClientUserId();
+      if (!userId) {
+        toast.error("Not authenticated.");
+        return;
+      }
+
+      const payload = {
+        title: form.title.trim(),
+        // B15 — an edit keeps the event's own date; only a new event uses the
+        // currently selected calendar day.
+        event_date: editingId ? form.event_date : toDateKey(date),
+        description: form.description.trim() || null,
+        time_start: form.time_start || null,
+        time_end: form.time_end || null,
+        location: form.is_online ? null : form.location.trim() || null,
+        is_online: form.is_online,
+      };
+
+      if (editingId) {
+        const { data, error } = await supabase
+          .from("calendar_events")
+          .update(payload)
+          .eq("id", editingId)
+          .eq("user_id", userId)
+          .select(
+            "id, title, event_date, description, time_start, time_end, location, is_online"
+          )
+          .single();
+
+        if (error || !data) {
+          toast.error("Could not update event.");
+        } else {
+          setEvents((prev) =>
+            prev.map((e) => (e.id === editingId ? (data as CalendarEvent) : e))
+          );
+          cancelForm();
+        }
+      } else {
+        const { data, error } = await supabase
+          .from("calendar_events")
+          .insert({ user_id: userId, ...payload })
+          .select(
+            "id, title, event_date, description, time_start, time_end, location, is_online"
+          )
+          .single();
+
+        if (error || !data) {
+          toast.error("Could not save event.");
+        } else {
+          setEvents((prev) => [...prev, data as CalendarEvent]);
+          cancelForm();
+        }
+      }
+    } catch {
+      toast.error(editingId ? "Could not update event." : "Could not save event.");
+    } finally {
       setSaving(false);
-      return;
     }
-
-    const payload = {
-      title: form.title.trim(),
-      // B15 — an edit keeps the event's own date; only a new event uses the
-      // currently selected calendar day.
-      event_date: editingId ? form.event_date : toDateKey(date),
-      description: form.description.trim() || null,
-      time_start: form.time_start || null,
-      time_end: form.time_end || null,
-      location: form.is_online ? null : form.location.trim() || null,
-      is_online: form.is_online,
-    };
-
-    if (editingId) {
-      const { data, error } = await supabase
-        .from("calendar_events")
-        .update(payload)
-        .eq("id", editingId)
-        .eq("user_id", userId)
-        .select(
-          "id, title, event_date, description, time_start, time_end, location, is_online"
-        )
-        .single();
-
-      if (error || !data) {
-        toast.error("Could not update event.");
-      } else {
-        setEvents((prev) =>
-          prev.map((e) => (e.id === editingId ? (data as CalendarEvent) : e))
-        );
-        cancelForm();
-      }
-    } else {
-      const { data, error } = await supabase
-        .from("calendar_events")
-        .insert({ user_id: userId, ...payload })
-        .select(
-          "id, title, event_date, description, time_start, time_end, location, is_online"
-        )
-        .single();
-
-      if (error || !data) {
-        toast.error("Could not save event.");
-      } else {
-        setEvents((prev) => [...prev, data as CalendarEvent]);
-        cancelForm();
-      }
-    }
-    setSaving(false);
   }
 
   async function handleDeleteEvent(id: string) {
