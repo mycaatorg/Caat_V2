@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import { evidencePages } from "@/lib/evidence-pagination";
 
 export interface UserScholarship {
   id: string;
@@ -44,16 +45,18 @@ export async function fetchUserScholarships(): Promise<UserScholarship[]> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return [];
+  if (!user) throw new Error("Not authenticated");
 
-  const { data, error } = await supabase
+  return evidencePages<UserScholarship>(async (from, to) => {
+    const { data, error } = await supabase
     .from("user_scholarships")
     .select("*")
     .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-
-  if (error) throw error;
-  return data ?? [];
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: true })
+    .range(from, to);
+    return { data, error };
+  }, "Could not load all your scholarships.");
 }
 
 export async function addUserScholarship(
@@ -101,11 +104,13 @@ export async function deleteUserScholarship(id: string): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("user_scholarships")
     .delete()
     .eq("id", id)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("id");
 
   if (error) throw error;
+  if (!data?.length) throw new Error("Scholarship not found");
 }

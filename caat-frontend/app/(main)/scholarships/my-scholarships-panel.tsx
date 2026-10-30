@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { DeadlineCalendarDownload } from "@/components/today/deadline-calendar-download";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   Plus,
@@ -31,7 +33,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { format, differenceInCalendarDays } from "date-fns";
-import { parseLocalDate } from "@/lib/local-date";
+import { scholarshipDateKey, scholarshipDeadlineGroup, selectPersonalScholarships, type ScholarshipFilter, type ScholarshipSort } from "@/lib/personal-scholarship-workspace";
+import { todayKey, parseLocalDate } from "@/lib/local-date";
 import {
   fetchUserScholarships,
   addUserScholarship,
@@ -87,8 +90,8 @@ const EMPTY_FORM: UserScholarshipInput = {
 // Helpers
 // ---------------------------------------------------------------------------
 function deadlineLabel(deadline_at: string | null): string | null {
-  if (!deadline_at) return null;
-  const days = differenceInCalendarDays(parseLocalDate(deadline_at.slice(0, 10)), new Date());
+  if (!scholarshipDateKey(deadline_at)) return null;
+  const days = differenceInCalendarDays(parseLocalDate(scholarshipDateKey(deadline_at)!), new Date());
   if (days < 0) return "Deadline passed";
   if (days === 0) return "Due today";
   if (days === 1) return "Due tomorrow";
@@ -96,8 +99,8 @@ function deadlineLabel(deadline_at: string | null): string | null {
 }
 
 function deadlineColor(deadline_at: string | null): string {
-  if (!deadline_at) return "";
-  const days = differenceInCalendarDays(parseLocalDate(deadline_at.slice(0, 10)), new Date());
+  if (!scholarshipDateKey(deadline_at)) return "";
+  const days = differenceInCalendarDays(parseLocalDate(scholarshipDateKey(deadline_at)!), new Date());
   if (days < 0) return "text-muted-foreground line-through";
   if (days <= 7) return "font-bold text-foreground";
   if (days <= 30) return "text-foreground";
@@ -127,6 +130,8 @@ function ScholarshipFormDialog({
   const isEdit = !!initial;
   const [form, setForm] = useState<UserScholarshipInput>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [errors, setErrors] = useState<{ title?: string; provider_name?: string }>({});
 
   // Populate form when editing
@@ -134,6 +139,7 @@ function ScholarshipFormDialog({
     if (open) {
        
       setErrors({});
+      setSaveError(null);
       if (initial) {
         setForm({
           title: initial.title,
@@ -178,8 +184,10 @@ function ScholarshipFormDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!validate()) return;
+    if (savingRef.current || !validate()) return;
+    savingRef.current = true;
     setSaving(true);
+    setSaveError(null);
 
     // Clean up empty strings → null
     const payload: UserScholarshipInput = {
@@ -201,14 +209,15 @@ function ScholarshipFormDialog({
       onOpenChange(false);
       toast.success(isEdit ? "Scholarship updated." : "Scholarship added.");
     } catch {
-      toast.error("Failed to save scholarship. Please try again.");
+      setSaveError("Could not save your scholarship. Your changes are still here. Please try again.");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={(next) => { if (!savingRef.current) onOpenChange(next); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         {/* Centering wrapper: offset by sidebar width (16rem) on md+ so the dialog is centred in the content area, not the full viewport */}
@@ -217,6 +226,7 @@ function ScholarshipFormDialog({
           <Dialog.Title className="sr-only">
             {isEdit ? "Edit Scholarship" : "Add Scholarship"}
           </Dialog.Title>
+          <Dialog.Description className="sr-only">Save details and a deadline for a scholarship you found.</Dialog.Description>
 
           <form onSubmit={handleSubmit}>
             {/* Header */}
@@ -225,14 +235,15 @@ function ScholarshipFormDialog({
                 {isEdit ? "Edit Scholarship" : "Add Scholarship"}
               </h2>
               <Dialog.Close asChild>
-                <Button variant="ghost" size="icon" type="button">
+                <Button variant="ghost" size="icon" type="button" aria-label="Close scholarship form" disabled={saving}>
                   <X className="h-4 w-4" />
                 </Button>
               </Dialog.Close>
             </div>
 
             {/* Body */}
-            <div className="px-6 py-5 space-y-5">
+            <fieldset disabled={saving} className="px-6 py-5 space-y-5 min-w-0">
+              {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
               {/* Required section */}
               <div className="space-y-4">
                 <p className="text-[11px] font-code tracking-[0.15em] uppercase text-muted-foreground">
@@ -336,6 +347,7 @@ function ScholarshipFormDialog({
                   <div className="space-y-1.5">
                     <Label htmlFor="s-frequency">Frequency</Label>
                     <Select
+                      disabled={saving}
                       value={form.frequency || undefined}
                       onValueChange={(v) => set("frequency", v || null)}
                     >
@@ -470,7 +482,7 @@ function ScholarshipFormDialog({
                   />
                 </div>
               </div>
-            </div>
+            </fieldset>
 
             {/* Footer */}
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t">
@@ -510,6 +522,7 @@ function UserScholarshipCard({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const deadline = scholarshipDateKey(scholarship.deadline_at);
   const daysLabel = deadlineLabel(scholarship.deadline_at);
   const daysColor = deadlineColor(scholarship.deadline_at);
 
@@ -530,11 +543,11 @@ function UserScholarshipCard({
     scholarship.study_level.length > 0 || scholarship.funding_type.length > 0;
 
   return (
-    <Card className="flex flex-col h-full transition-colors duration-100 hover:border-foreground">
+    <Card className="flex min-w-0 flex-col h-full break-words transition-colors duration-100 hover:border-foreground">
       <CardHeader className="pb-3 gap-2">
         {/* Provider + actions */}
         <div className="flex items-start justify-between gap-2">
-          <span className="text-[10px] font-code tracking-[0.12em] uppercase text-muted-foreground leading-tight">
+          <span className="text-[10px] font-code tracking-[0.12em] uppercase text-muted-foreground leading-tight min-w-0 [overflow-wrap:anywhere]">
             {scholarship.provider_name}
           </span>
           <div className="flex items-center gap-1 shrink-0">
@@ -577,7 +590,7 @@ function UserScholarshipCard({
         </div>
 
         {/* Title */}
-        <h3 className="font-semibold text-[15px] leading-snug">
+        <h3 className="font-semibold text-[15px] leading-snug [overflow-wrap:anywhere]">
           {scholarship.title}
         </h3>
 
@@ -614,10 +627,10 @@ function UserScholarshipCard({
 
         {/* Deadline */}
         {scholarship.deadline_at && (
-          <div className="flex items-center gap-1.5 text-sm">
+          <div className="flex flex-wrap items-center gap-1.5 text-sm">
             <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             <span className="text-muted-foreground">
-              {format(parseLocalDate(scholarship.deadline_at.slice(0, 10)), "MMM d, yyyy")}
+              {deadline ? format(parseLocalDate(deadline), "MMM d, yyyy") : "Check deadline"}
             </span>
             {daysLabel && (
               <span className={`font-medium text-xs ${daysColor}`}>
@@ -670,15 +683,33 @@ function UserScholarshipCard({
 export default function MyScholarshipsPanel() {
   const [scholarships, setScholarships] = useState<UserScholarship[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<ScholarshipFilter>("all");
+  const [sort, setSort] = useState<ScholarshipSort>("deadline");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<UserScholarship | null>(null);
 
   useEffect(() => {
+    let active = true;
     fetchUserScholarships()
-      .then(setScholarships)
-      .catch(() => toast.error("Could not load your scholarships."))
-      .finally(() => setLoading(false));
-  }, []);
+      .then(rows => { if (active) setScholarships(rows); })
+      .catch(() => { if (active) setLoadError(true); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reload]);
+
+  const today = todayKey();
+  const visible = selectPersonalScholarships(scholarships, query, filter, sort, today);
+  const groups: { value: ScholarshipFilter; label: string; count: number }[] = [
+    { value: 'all', label: 'All', count: scholarships.length },
+    ...(['upcoming', 'past', 'undated'] as const).map(value => ({
+      value, label: { upcoming: 'Upcoming', past: 'Past deadlines', undated: 'No deadline' }[value],
+      count: scholarships.filter(row => scholarshipDeadlineGroup(row, today) === value).length,
+    })),
+  ];
+  function resetFilters() { setQuery(''); setFilter('all'); setSort('deadline'); }
 
   const handleSaved = useCallback((saved: UserScholarship) => {
     setScholarships((prev) => {
@@ -708,7 +739,7 @@ export default function MyScholarshipsPanel() {
   return (
     <div className="space-y-6">
       {/* Panel header */}
-      <div className="flex items-center justify-between pb-6 border-b border-border">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-6 border-b border-border">
         <div>
           <h2 className="text-xl font-bold">My Scholarships</h2>
           <p className="text-sm text-muted-foreground mt-1">
@@ -717,6 +748,7 @@ export default function MyScholarshipsPanel() {
         </div>
         <Button
           onClick={openAdd}
+          disabled={loading || loadError}
           className="gap-2 bg-[#9a1a27] hover:bg-[#7d1520] text-white font-code tracking-[0.1em] uppercase text-[11px] transition-colors duration-100"
         >
           <Plus className="h-4 w-4" strokeWidth={1.5} />
@@ -724,6 +756,30 @@ export default function MyScholarshipsPanel() {
         </Button>
       </div>
 
+      <nav aria-label="Scholarship planning" className="flex flex-wrap gap-4 text-sm underline underline-offset-4">
+        <Link href="/today">Today</Link>
+      </nav>
+      <DeadlineCalendarDownload />
+      {!loading && !loadError && scholarships.length > 0 && (
+        <section aria-label="Your scholarship deadlines" className="space-y-4">
+          <p className="text-sm text-muted-foreground">Your own collection. Dates and award details are entered by you; check the provider before applying.</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            {groups.map(group => <Button key={group.value} variant={filter === group.value ? 'default' : 'outline'} aria-pressed={filter === group.value} aria-label={group.label} onClick={() => setFilter(group.value)} className="h-auto min-h-16 flex flex-col gap-1">
+              <span className="text-xl font-bold">{group.count}</span><span>{group.label}</span>
+            </Button>)}
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Input aria-label="Search my scholarships" placeholder="Search name, provider or country" value={query} onChange={e => setQuery(e.target.value)} className="flex-1 min-w-0" />
+            <select aria-label="Sort my scholarships" value={sort} onChange={e => setSort(e.target.value as ScholarshipSort)} className="h-9 border border-input bg-background px-3 text-sm">
+              <option value="deadline">Deadline first</option><option value="newest">Newest added</option><option value="name">Name A–Z</option>
+            </select>
+          </div>
+          <div className="flex flex-wrap justify-between items-center gap-2 text-sm">
+            <p role="status" aria-label="Scholarship results">Showing {visible.length} of {scholarships.length} scholarships</p>
+            <Button variant="ghost" onClick={resetFilters}>Reset filters</Button>
+          </div>
+        </section>
+      )}
       {/* Content */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -732,6 +788,12 @@ export default function MyScholarshipsPanel() {
               <Skeleton className="h-40 w-full" />
             </div>
           ))}
+        </div>
+      ) : loadError ? (
+        <div role="alert" className="border p-6 space-y-3">
+          <p>Could not load your scholarships.</p>
+          <p className="text-sm text-muted-foreground">Try again to see your complete collection.</p>
+          <Button onClick={() => { setLoading(true); setLoadError(false); setReload(value => value + 1); }}>Try again</Button>
         </div>
       ) : scholarships.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center gap-6 border border-border">
@@ -752,9 +814,11 @@ export default function MyScholarshipsPanel() {
             Add your first scholarship
           </Button>
         </div>
+      ) : visible.length === 0 ? (
+        <div className="border p-8 text-center"><p>No scholarships match your search and filters.</p></div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {scholarships.map((s) => (
+          {visible.map((s) => (
             <UserScholarshipCard
               key={s.id}
               scholarship={s}
