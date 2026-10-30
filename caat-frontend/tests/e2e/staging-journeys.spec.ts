@@ -1978,6 +1978,7 @@ test("account download includes all pages, saved courses and only own community 
 // PROD-207: reach data beyond the first database page, including a lower server cap.
 test("Today seven-day workspace connects dated work and updates after completion (PROD-213)", { tag: "@phone" }, async ({ page, request, browserName }, testInfo) => {
   test.setTimeout(120_000);
+  page.setDefaultTimeout(15_000);
   const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL").origin;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   async function session(email: string) {
@@ -1991,6 +1992,7 @@ test("Today seven-day workspace connects dated work and updates after completion
   const student = await session(STUDENT_EMAIL), peer = await session("e2e.peer@caat.local.test");
   const taskId = crypto.randomUUID(), awardId = crypto.randomUUID(), peerId = crypto.randomUUID();
   const title = marker(`Week-plan-${testInfo.project.name}`);
+  const awardTitle = `${title} ${"Scholarship".repeat(12)}`;
   const taskTitle = `${title} Ask my teacher for a reference and check the supporting document requirements`;
   await signInToIsolatedStudent(page);
   // Keep browser/server date semantics explicit and identical for these fixtures.
@@ -2004,13 +2006,14 @@ test("Today seven-day workspace connects dated work and updates after completion
     expect((await request.post(`${api}/rest/v1/user_todos`, { headers: student.headers,
       data: { id: taskId, user_id: student.id, text: taskTitle, due_date: today, priority: 0 } })).ok()).toBe(true);
     expect((await request.post(`${api}/rest/v1/user_scholarships`, { headers: student.headers,
-      data: { id: awardId, user_id: student.id, title: `${title} Community award`, provider_name: "Isolated test provider", deadline_at: tomorrow.toISOString() } })).ok()).toBe(true);
+      data: { id: awardId, user_id: student.id, title: awardTitle, provider_name: "Isolated test provider", deadline_at: tomorrow.toISOString() } })).ok()).toBe(true);
     expect((await request.post(`${api}/rest/v1/user_todos`, { headers: peer.headers,
       data: { id: peerId, user_id: peer.id, text: `${title} peer private`, due_date: today } })).ok()).toBe(true);
     await page.reload();
     const agenda = page.getByRole("region", { name: "Your next seven days" });
     const dates = agenda.getByRole("group", { name: "Choose an agenda day" }).getByRole("button");
     await expect(dates).toHaveCount(7);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
     await expect(agenda.getByRole("button", { name: new RegExp(taskTitle) })).toBeVisible();
     await expect(page.getByText(`${title} peer private`, { exact: true })).toHaveCount(0);
     await dates.nth(0).focus();
@@ -2020,25 +2023,32 @@ test("Today seven-day workspace connects dated work and updates after completion
     else await page.keyboard.press("Tab");
     await page.keyboard.press("Enter");
     await expect(dates.nth(1)).toHaveAttribute("aria-pressed", "true");
-    const award = agenda.getByRole("link", { name: new RegExp(`${title} Community award`) });
+    const award = agenda.getByRole("link", { name: new RegExp(awardTitle) });
     await expect(award).toBeVisible();
     await expect(award).toHaveAttribute("href", "/scholarships?view=mine");
     await expect(award).toContainText("Your own scholarship");
     await dates.nth(0).click();
-    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
     await agenda.scrollIntoViewIfNeeded();
     await testInfo.attach("today-week-workspace", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     await agenda.getByRole("button", { name: new RegExp(taskTitle) }).click();
     await expect(page).toHaveURL(/view=todos/);
+    await expect(page.getByRole("checkbox", { name: `Mark "${taskTitle}" done`, exact: true })).toBeFocused();
     await page.getByRole("checkbox", { name: `Mark "${taskTitle}" done`, exact: true }).click();
     await expect(page.getByText("To-do completed", { exact: true })).toBeVisible();
-    await page.goto("/today");
-    await expect(agenda).toBeVisible();
-    await expect(agenda.getByRole("button", { name: new RegExp(taskTitle) })).toHaveCount(0);
-    const workspace = page.getByRole("navigation", { name: "Your workspace" });
-    await workspace.getByRole("link", { name: /My shortlist/ }).click();
-    await expect(page).toHaveURL(/\/shortlist/);
-    await expect(page.getByRole("main")).toBeVisible();
+    // A fresh tab verifies persisted state without racing this tab's pending
+    // post-save router.refresh (WebKit can interrupt a competing page.goto).
+    const fresh = await page.context().newPage();
+    try {
+      await fresh.goto("/today");
+      const persistedAgenda = fresh.getByRole("region", { name: "Your next seven days" });
+      await expect(persistedAgenda).toBeVisible();
+      await expect(persistedAgenda.getByRole("button", { name: new RegExp(taskTitle) })).toHaveCount(0);
+      const workspace = fresh.getByRole("navigation", { name: "Your workspace" });
+      await workspace.getByRole("link", { name: /My shortlist/ }).click();
+      await expect(fresh).toHaveURL(/\/shortlist/);
+      await expect(fresh.getByRole("main")).toBeVisible();
+    } finally { await fresh.close(); }
   } finally {
     await runScopedCleanup([
       async () => expect((await request.delete(`${api}/rest/v1/user_todos?user_id=eq.${student.id}&id=eq.${taskId}`, { headers: student.headers })).ok()).toBe(true),

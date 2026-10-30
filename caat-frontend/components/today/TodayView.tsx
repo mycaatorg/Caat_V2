@@ -132,7 +132,7 @@ function TaskRows({ items, compact = false }: { items: TodayTask[]; compact?: bo
             <Link href={task.href} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 outline-none focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#9a1a27]">
               <Icon className={`h-4 w-4 shrink-0 ${urgent ? MAROON : "text-muted-foreground"}`} strokeWidth={1.5} />
               <span className="flex-1 min-w-0">
-                <span className={`block text-sm font-medium ${urgent ? MAROON : ""}`}>{task.title}</span>
+                <span className={`block break-words text-sm font-medium ${urgent ? MAROON : ""}`}>{task.title}</span>
                 {!compact ? <span className="block text-xs text-muted-foreground">{task.detail}</span> : null}
               </span>
               <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -339,6 +339,7 @@ export function TodayView(props: TodayViewProps) {
     return { view, page: Number.isInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, pageCount(items.length)) : 1 };
   });
   const focusedHeadingRef = useRef<HTMLHeadingElement>(null);
+  const agendaTaskFocusRef = useRef<string | null>(null);
   const todoSectionRef = useRef<HTMLElement>(null);
   const [removedTaskCount, setRemovedTaskCount] = useState(0);
   const taskNotice = removedTaskCount > 0
@@ -380,7 +381,14 @@ export function TodayView(props: TodayViewProps) {
       focusMountedRef.current = true;
       return;
     }
-    if (focus.view) focusedHeadingRef.current?.focus();
+    const agendaTaskId = agendaTaskFocusRef.current;
+    agendaTaskFocusRef.current = null;
+    if (focus.view === "todos" && agendaTaskId) {
+      const control = document.getElementById(`todo-${agendaTaskId}`);
+      control?.focus();
+      if (document.activeElement !== control) focusedHeadingRef.current?.focus();
+    }
+    else if (focus.view) focusedHeadingRef.current?.focus();
     else todayHeadingRef.current?.focus();
   }, [focus.view, visiblePage]);
 
@@ -391,6 +399,7 @@ export function TodayView(props: TodayViewProps) {
   }
 
   function showAgendaTodo(taskId?: string) {
+    agendaTaskFocusRef.current = taskId ?? null;
     const index = taskId ? todos.findIndex(todo => todo.id === taskId) : 0;
     const page = Math.floor(Math.max(0, index) / PAGE_SIZE) + 1;
     setFocus({ view: "todos", page });
@@ -520,9 +529,9 @@ export function TodayView(props: TodayViewProps) {
 
       {/* The one thing to do next, chosen from real state. */}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-      <section aria-labelledby="next-step" className="rounded-xl bg-[#9a1a27] text-white p-5 sm:p-7 flex flex-col items-start">
+      <section aria-labelledby="next-step" className="min-w-0 rounded-xl bg-[#9a1a27] text-white p-5 sm:p-7 flex flex-col items-start">
         <p className="text-sm text-white/85">Your next step</p>
-        <h2 id="next-step" className="text-2xl sm:text-3xl font-bold tracking-tight mt-2 break-words">
+        <h2 id="next-step" className="max-w-full text-2xl sm:text-3xl font-bold tracking-tight mt-2 break-words">
           {nextStep.title}
         </h2>
         <p className="mt-3 mb-5 max-w-prose text-sm leading-relaxed text-white/90">{nextStep.body}</p>

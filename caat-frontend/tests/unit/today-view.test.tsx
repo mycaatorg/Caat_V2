@@ -27,8 +27,8 @@ const props = (patch: Partial<TodayViewProps> = {}): TodayViewProps => ({
   name: "Mia",
   hour: 15,
   todayISO: "2026-10-07",
-  nextStep: { kind: "task", title: "Add the deadline for Harbourside University", body: "Deadlines drive reminders.", cta: "Do this now", href: "/applications/a1" },
-  tasks: [{ id: "deadline-a1", kind: "set-deadline", title: "Add the deadline for Harbourside University", detail: "Deadlines drive reminders.", href: "/applications/a1" }],
+  nextStep: { kind: "task", title: "Add the deadline for Harbourside University", body: "Add a date to see this application in your upcoming deadlines.", cta: "Do this now", href: "/applications/a1" },
+  tasks: [{ id: "deadline-a1", kind: "set-deadline", title: "Add the deadline for Harbourside University", detail: "Add a date to see this application in your upcoming deadlines.", href: "/applications/a1" }],
   comingUp: [{ id: "app-a2", source: "app", title: "Banksia College", dateISO: "2026-10-10", href: "/applications/a2" }],
   recent: [{ kind: "essay", title: "Why engineering", detail: "Draft 1", href: "/essays?prompt=p1", updatedAt: "2026-10-06T10:00:00Z" }],
   todos: [
@@ -78,7 +78,7 @@ describe("Today", () => {
     expect(agenda.textContent).not.toContain("Past task");
     await click(Array.from(agenda.querySelectorAll('button')).find(b => b.textContent?.includes("Prepare reference"))!);
     expect(window.location.search).toBe("?view=todos&page=1");
-    expect(document.activeElement?.textContent).toBe("Your to-dos");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe('Mark "Prepare reference" done');
   });
 
   it("updates the agenda after completion, failure and Undo using the same task state", async () => {
@@ -108,6 +108,7 @@ describe("Today", () => {
     await click(Array.from(agenda.querySelectorAll('button')).find(b => b.textContent?.includes("Plan item 11"))!);
     expect(window.location.search).toBe("?view=todos&page=2");
     expect(document.querySelector('input[aria-label=\'Mark "Plan item 11" done\']')).not.toBeNull();
+    expect(document.activeElement?.getAttribute("aria-label")).toBe('Mark "Plan item 11" done');
   });
 
   it("moves edited tasks between agenda dates and removes confirmed missing tasks", async () => {
@@ -151,7 +152,7 @@ describe("Today", () => {
     await click(Array.from(agenda.querySelectorAll('button')).find(b => b.textContent?.includes("All to-dos"))!);
     expect(document.body.textContent).toContain("Book open day");
     await click(button(/Back to Today/));
-    expect(document.querySelector('[aria-labelledby="next-step"]')?.textContent).toContain("Deadlines drive reminders.");
+    expect(document.querySelector('[aria-labelledby="next-step"]')?.textContent).toContain("Add a date to see this application in your upcoming deadlines.");
     const nav = document.querySelector('nav[aria-label="Your workspace"]')!;
     expect(Array.from(nav.querySelectorAll('a')).map(a => a.getAttribute('href'))).toEqual(["/scholarships", "/shortlist", "/applications"]);
   });

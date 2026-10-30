@@ -215,6 +215,20 @@ describe("comingUp", () => {
 });
 
 describe("chooseNextStep", () => {
+  it("does not promise reminders when asking for an application deadline", () => {
+    const step = chooseNextStep(base({ applications: [app("a1", { deadlineAt: null, status: "researching" })] }));
+    expect(step.kind).toBe("task");
+    expect(step.body).not.toMatch(/reminder/i);
+    expect(step.body).toMatch(/upcoming deadlines/i);
+  });
+
+  it.each([false, true])("does not declare personal work complete without knowing todos (has deadline: %s)", (hasDeadline) => {
+    const step = chooseNextStep(base({ applications: [app("a1", { status: "submitted" })], deadlines: hasDeadline ? [{ id: "evt-1", source: "event", title: "Open day", dateISO: "2026-10-08", href: "/dashboard" }] : [] }));
+    expect(step.kind).toBe(hasDeadline ? "deadline" : "explore");
+    expect(`${step.title} ${step.body}`).not.toMatch(/No open tasks|Nothing else needs you|on top of things/i);
+    expect(step.body).toMatch(/to-dos/i);
+  });
+
   it("offers onboarding to a brand new student", () => {
     const step = chooseNextStep(base({ onboarding: { completed: false, dismissed: false, hasBasics: false } }));
     expect(step).toMatchObject({ kind: "onboarding", href: "/welcome" });

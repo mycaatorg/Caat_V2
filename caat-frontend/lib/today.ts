@@ -88,7 +88,7 @@ export function deriveTasks(input: TodayInput): TodayTask[] {
         id: `deadline-${app.id}`,
         kind: "set-deadline",
         title: `Add the deadline for ${app.schoolName}`,
-        detail: "Deadlines drive your reminders and what shows up here first.",
+        detail: "Add a date to see this application in your upcoming deadlines.",
         href: hub,
       });
     } else {
@@ -234,15 +234,15 @@ export function chooseNextStep(input: TodayInput, tasks: TodayTask[] = deriveTas
     return {
       kind: "deadline",
       title: `${nearest.title} is ${dueLabel(days)}`,
-      body: "Nothing else needs you right now. This is the next date on your calendar.",
+      body: "This is the next date on your calendar. Check your personal to-dos alongside it.",
       cta: "Open it",
       href: nearest.href,
     };
   }
   return {
     kind: "explore",
-    title: "You are on top of things",
-    body: "No open tasks or upcoming deadlines. A good time to look for more scholarships.",
+    title: "Keep exploring your options",
+    body: "Browse more scholarships, or use your to-dos to plan what comes next.",
     cta: "Explore scholarships",
     href: "/scholarships",
   };
