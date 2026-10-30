@@ -422,16 +422,36 @@ test("seeded major detail bookmark persists after reload and appears in the book
   }
 });
 
+function activeDocumentRow(page: Page, fileName: string) {
+  // All accessible mains: a second visible row must remain a strict failure.
+  return page.getByRole("main").getByRole("article", { name: fileName, exact: true });
+}
+
+test("document rows exclude hidden page copies but retain visible duplicate detection (PROD-226)", async ({ page }) => {
+  const row = '<div role="article" aria-label="transcript.pdf"><div><div><span>transcript.pdf</span></div></div></div>';
+  await page.setContent(`<aside>${row}</aside><main hidden>${row}</main><main>${row}<div hidden>${row}</div><div role="article" aria-label="other-transcript.pdf">transcript.pdf</div></main>`);
+  const active = activeDocumentRow(page, 'transcript.pdf');
+  await expect(active).toHaveCount(1);
+  await expect(active).toHaveAttribute('aria-label', 'transcript.pdf');
+  await page.evaluate(html => { const duplicate = document.createElement('main'); duplicate.id = 'duplicate'; duplicate.innerHTML = html; document.body.append(duplicate); }, row);
+  await expect(active).toHaveCount(2);
+  await page.locator('#duplicate').evaluate(node => node.remove());
+  await expect(active).toHaveCount(1);
+});
+
 async function removeDocument(page: Page, fileName: string) {
-  const name = page.getByText(fileName, { exact: true });
-  if (!(await name.count())) return;
-  const row = name.locator("xpath=../../..");
+  const row = activeDocumentRow(page, fileName);
+  if (!(await row.count())) return;
+  await expect(row).toHaveCount(1);
   await row.getByRole("button", { name: "More options" }).click();
   await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(page.getByText(fileName, { exact: true })).toHaveCount(0, { timeout: 10_000 });
+  // The modal temporarily aria-hides the background; absence is meaningful only after it closes.
+  await expect(dialog).toBeHidden({ timeout: 10_000 });
+  await expect(page.getByRole("main")).toBeVisible();
+  await expect(row).toHaveCount(0, { timeout: 10_000 });
 }
 
 test("valid document upload persists file metadata after reload", async ({ page }) => {
@@ -440,7 +460,7 @@ test("valid document upload persists file metadata after reload", async ({ page 
   await page.goto("/documents");
   await expect(page.getByRole("heading", { name: "Document Vault" })).toBeVisible({ timeout: 15_000 });
 
-  try {
+  await withScopedCleanup(async () => {
     await page.getByRole("button", { name: "Upload New" }).click();
     await page.locator('input[type="file"]').last().setInputFiles({
       name: fileName,
@@ -448,17 +468,18 @@ test("valid document upload persists file metadata after reload", async ({ page 
       buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"),
     });
     await page.getByRole("button", { name: "Upload", exact: true }).click();
-    await expect(page.getByText(fileName, { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(activeDocumentRow(page, fileName)).toBeVisible({ timeout: 20_000 });
     // Scope to this file's row: a reused isolated database may hold other documents.
-    const uploadedRow = () => page.getByText(fileName, { exact: true }).locator("xpath=../../..");
+    const uploadedRow = () => activeDocumentRow(page, fileName);
     await expect(uploadedRow().getByText("In Review", { exact: true })).toBeVisible();
 
     await page.reload();
-    await expect(page.getByText(fileName, { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(activeDocumentRow(page, fileName)).toBeVisible({ timeout: 20_000 });
     await expect(uploadedRow().getByText("Transcripts", { exact: true })).toBeVisible();
-  } finally {
-    await removeDocument(page, fileName).catch(() => {});
-  }
+  }, () => removeDocument(page, fileName));
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Document Vault" })).toBeVisible();
+  await expect(activeDocumentRow(page, fileName)).toHaveCount(0);
 });
 
 async function untrackSeedScholarship(page: Page) {
@@ -815,11 +836,11 @@ test("document upload and delete recover from failed requests, and deletion remo
     await expect(page.getByText("Document uploaded successfully", { exact: true })).toBeVisible({ timeout: 20_000 });
     await page.unroute(STORAGE_UPLOADS);
     await page.reload();
-    const listed = page.getByText(fileName, { exact: true });
+    const listed = activeDocumentRow(page, fileName);
     await expect(listed).toHaveCount(1, { timeout: 20_000 });
 
     // The stored file is reachable through the owner's signed link.
-    const row = listed.locator("xpath=../../..");
+    const row = listed;
     // Headless Chromium downloads a PDF instead of displaying it, so the popup
     // never commits a URL; read the link from the app's own signing response.
     const popupPromise = page.waitForEvent("popup");
@@ -872,7 +893,7 @@ test("document upload and delete recover from failed requests, and deletion remo
     await page.unroute(DOCUMENT_ROWS);
     await page.reload();
     await expect(page.getByRole("heading", { name: "Document Vault" })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(fileName, { exact: true })).toHaveCount(0);
+    await expect(activeDocumentRow(page, fileName)).toHaveCount(0);
     // The object itself is gone, not just hidden from the list.
     await expect.poll(async () => (await page.request.get(signedUrl)).status()).not.toBe(200);
   } finally {
@@ -1512,7 +1533,7 @@ test("a library document links to an application, keeps its tailoring when the f
   await signInToIsolatedStudent(page);
   const fileName = `${marker("portfolio")}.pdf`;
   const tailoredTitle = `Arts portfolio ${RUN_ID}`;
-  const docRow = () => page.getByText(fileName, { exact: true }).locator("xpath=../../..");
+  const docRow = () => activeDocumentRow(page, fileName);
   const linked = page.getByRole("main").getByRole("region", { name: "Linked from your documents", exact: true });
   const prep = page.locator("[data-prep-checklist]");
   try {
@@ -1597,7 +1618,7 @@ test("a library document links to an application, keeps its tailoring when the f
     await page.reload();
     await expect(linked.getByText("You haven't linked a document from your library to this application.")).toBeVisible({ timeout: 15_000 });
     await page.goto("/documents");
-    await expect(page.getByText(fileName, { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(activeDocumentRow(page, fileName)).toBeVisible({ timeout: 15_000 });
     await expect(docRow().getByText(/^Used in /)).toHaveCount(0);
 
     // Delete the application.
@@ -1619,7 +1640,7 @@ test("a library document links to an application, keeps its tailoring when the f
   // Cleanup persisted: the document is gone after a reload.
   await page.goto("/documents");
   await expect(page.getByRole("heading", { name: "Document Vault" })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText(fileName, { exact: true })).toHaveCount(0);
+  await expect(activeDocumentRow(page, fileName)).toHaveCount(0);
 });
 
 test('library activities, awards and experience import once and tailor independently across two applications (PROD-153)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
