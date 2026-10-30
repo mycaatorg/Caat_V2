@@ -3098,7 +3098,7 @@ test('workspace search opens exact owned files and writing and recovers missing 
   }
   const own = `user_id=eq.${student.id}`, titleQuery = encodeURIComponent(`${title}*`);
   await withScopedCleanup(async () => {
-    await insert('documents', docIds.map((id, i) => ({ id, user_id: student.id, file_name: `${title}-Doc-${String(i).padStart(3,'0')}.pdf`, category: 'transcripts', status: 'pending_review', storage_path: `${student.id}/isolated-metadata/${id}.pdf` })));
+    await insert('documents', docIds.map((id, i) => ({ id, user_id: student.id, file_name: `${title}-Doc-${String(i).padStart(3,'0')}.pdf`, category: 'transcripts', status: 'pending_review', school_id: SCHOOL_ID, storage_path: `${student.id}/isolated-metadata/${id}.pdf` })));
     await insert('custom_essay_prompts', promptIds.map((id, i) => ({ id, user_id: student.id, title: `${title} prompt ${i}`, created_at: i === 50 ? '2030-01-01T00:00:00Z' : '2020-01-01T00:00:00Z' })));
     await insert('essay_drafts', draftIds.map((id, i) => ({ id, user_id: student.id, prompt_id: promptId, prompt_slug: `custom-${promptId}`, label: `${title}-Essay-${i}`, content: i ? 'Target body not searchable' : 'Other draft body', is_current: i === 0 })));
     await insert('resumes', resumeIds.map((id, i) => ({ id, user_id: student.id, title: i < 2 ? `${title}-Resume-${i}` : `Supporting ${title}-writing-${i}`, created_at: i === 1 ? '2000-01-01T00:00:00Z' : '2026-01-01T00:00:00Z' })));
@@ -3144,6 +3144,14 @@ test('workspace search opens exact owned files and writing and recovers missing 
     const school = await request.get(`${api}/rest/v1/schools?id=eq.${SCHOOL_ID}&select=name`, { headers: student.headers });
     expect(school.ok()).toBe(true); await search.fill((await school.json())[0].name);
     await applicationLink.click(); await expect(page).toHaveURL(new RegExp(`/applications/${app.id}$`));
+    // PROD-230: the hub must include every school document, including the page tail.
+    const hubDocuments = main.locator('li').filter({ hasText: `${title}-Doc-` });
+    await expect(hubDocuments).toHaveCount(51);
+    await page.route('**/rest/v1/documents?*', route => route.fulfill({ status:503,contentType:'application/json',body:JSON.stringify({message:'temporary core read outage'}) }));
+    await page.reload(); await expect(main.getByRole('alert')).toContainText('Could not load application preparation. Try again.');
+    await expect(hubDocuments).toHaveCount(0);
+    await page.unroute('**/rest/v1/documents?*'); await main.getByRole('button',{name:'Retry application',exact:true}).click();
+    await expect(hubDocuments).toHaveCount(51); await expect(main.getByRole('alert')).toHaveCount(0);
     await page.goto('/workspace/search');
     await page.route('**/rest/v1/documents?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'temporary index outage' }) }));
     await main.getByRole('button', { name: 'Refresh results', exact: true }).click();

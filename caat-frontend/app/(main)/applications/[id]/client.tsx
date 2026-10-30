@@ -102,6 +102,7 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
   const load = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await fetchApplicationHub(applicationId);
       setHub(data);
     } catch (e) {
@@ -235,7 +236,8 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
     return (
       <div className="p-6">
         <div className="max-w-5xl mx-auto py-20 text-center">
-          <p className="text-muted-foreground mb-4">{error ?? "Application not found."}</p>
+          <p role="alert" className="text-muted-foreground mb-4">{error ?? "Application not found."}</p>
+          <Button variant="outline" className="mb-4" onClick={() => void load()}>Retry application</Button>
           <Link href="/applications" className="text-sm text-[#9a1a27] dark:text-[#e06b78] hover:underline">
             ← Back to applications
           </Link>
