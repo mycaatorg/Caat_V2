@@ -578,3 +578,11 @@ describe('planning workspace (PROD-218)',()=>{
   expect(io.updateApplication).not.toHaveBeenCalled();
  });
 });
+
+it('keeps keyboard focus on filters when a status move hides its card',async()=>{
+ await mount();await click(button('In Progress'));
+ statusOf('Alpha University').focus();
+ await change(statusOf('Alpha University'),'accepted');await flush();
+ expect(queryLink(/Alpha University/)).toBeNull();
+ expect(document.activeElement).toBe(button('All'));
+});

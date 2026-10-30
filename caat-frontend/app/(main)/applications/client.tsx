@@ -95,8 +95,9 @@ export default function ApplicationsClient() {
     const id=focusAfterMove.current;
     if(id){
       focusAfterMove.current=null;
-      Array.from(workspaceRef.current?.querySelectorAll<HTMLElement>('[data-application-id]')??[])
-        .find(card=>card.dataset.applicationId===id)?.querySelector<HTMLElement>('[data-status-control]')?.focus();
+      const control=Array.from(workspaceRef.current?.querySelectorAll<HTMLElement>('[data-application-id]')??[])
+        .find(card=>card.dataset.applicationId===id)?.querySelector<HTMLElement>('[data-status-control]');
+      (control??workspaceRef.current?.querySelector<HTMLElement>('[data-all-applications]'))?.focus();
     }
   },[apps]);
 
@@ -475,6 +476,7 @@ export default function ApplicationsClient() {
         {!loadError && FILTERS.map((f) => (
           <button
             key={f.key}
+            data-all-applications={f.key==='all'?'':undefined}
             aria-pressed={filter===f.key}
             onClick={() => setFilter(f.key)}
             className={`inline-flex items-center rounded-md px-3 py-1 text-sm font-medium transition-colors border ${
