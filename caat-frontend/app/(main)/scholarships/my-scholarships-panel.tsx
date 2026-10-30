@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { DeadlineCalendarDownload } from "@/components/today/deadline-calendar-download";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   Plus,
@@ -756,8 +757,9 @@ export default function MyScholarshipsPanel() {
       </div>
 
       <nav aria-label="Scholarship planning" className="flex flex-wrap gap-4 text-sm underline underline-offset-4">
-        <Link href="/today">Today</Link><Link href="/today/calendar">Deadline calendar</Link>
+        <Link href="/today">Today</Link>
       </nav>
+      <DeadlineCalendarDownload />
       {!loading && !loadError && scholarships.length > 0 && (
         <section aria-label="Your scholarship deadlines" className="space-y-4">
           <p className="text-sm text-muted-foreground">Your own collection. Dates and award details are entered by you; check the provider before applying.</p>
@@ -773,7 +775,7 @@ export default function MyScholarshipsPanel() {
             </select>
           </div>
           <div className="flex flex-wrap justify-between items-center gap-2 text-sm">
-            <p role="status">Showing {visible.length} of {scholarships.length} scholarships</p>
+            <p role="status" aria-label="Scholarship results">Showing {visible.length} of {scholarships.length} scholarships</p>
             <Button variant="ghost" onClick={resetFilters}>Reset filters</Button>
           </div>
         </section>

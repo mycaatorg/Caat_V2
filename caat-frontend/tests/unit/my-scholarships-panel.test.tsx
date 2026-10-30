@@ -84,3 +84,15 @@ it('retains a failed new scholarship draft and retries a single creation', async
  expect(titles().filter(title => title === 'New award')).toHaveLength(1);
  expect(dialog()).toBeNull();
 });
+it('keeps calendar download failures and empty calendars inside the workspace', async () => {
+ const fetcher = vi.fn().mockResolvedValueOnce(new Response(null,{status:503})).mockResolvedValueOnce(new Response(null,{status:204}));
+ vi.stubGlobal('fetch',fetcher);
+ try {
+  await mount(); await click(button('Download deadline calendar')); await flush();
+  expect(hasText('Could not prepare your calendar. Please try again.')).toBe(true);
+  expect(titles()).toHaveLength(3);
+  await click(button('Download deadline calendar')); await flush();
+  expect(hasText('No upcoming application or scholarship deadlines. Add a due date to get started.')).toBe(true);
+  expect(hasText('Could not prepare your calendar. Please try again.')).toBe(false);
+ } finally { vi.unstubAllGlobals(); }
+});
