@@ -528,3 +528,69 @@ describe("importing bookmarks", () => {
     expect(queryLink(/Delta University/)).not.toBeNull();
   });
 });
+
+describe('planning workspace (PROD-218)',()=>{
+ it('shows stage counts, supports search/reset and switches to a sorted list',async()=>{
+  await mount();
+  expect(button('Board view').getAttribute('aria-pressed')).toBe('true');
+  expect(document.querySelector('[aria-label="Researching applications"]')?.textContent).toContain('Alpha University');
+  expect(document.querySelector('[aria-label="Preparing applications"]')?.textContent).toContain('Beta College');
+  await change(document.querySelector('input[aria-label="Search tracked universities"]') as HTMLInputElement,'not tracked');
+  expect(hasText('No applications match this filter')).toBe(true);
+  await click(button('Reset filters'));
+  await click(button('List view'));
+  await change(document.querySelector('select[aria-label="Sort applications"]') as HTMLSelectElement,'deadline');
+  expect(schoolNames()).toEqual(['Beta College','Alpha University']);
+ });
+ it('keeps unsent notes and save feedback across view changes and lane moves',async()=>{
+  await mount();
+  await click(button('Notes',card('Alpha University')));
+  await change(notesOf('Alpha University'),'Keep this unsent draft');
+  await click(button('List view'));
+  expect(notesOf('Alpha University').value).toBe('Keep this unsent draft');
+  await click(button('Board view'));
+  await change(statusOf('Alpha University'),'applying');
+  expect(notesOf('Alpha University').value).toBe('Keep this unsent draft');
+  await advance(800);await flush();
+  expect(indicator('Alpha University')).toBe('Saved');
+  expect(io.updateApplication).toHaveBeenCalledWith('app-1',{notes:'Keep this unsent draft'});
+ });
+ it('keeps failed drafts after filtering and retries the same text',async()=>{
+  await mount();
+  io.updateApplication.mockRejectedValueOnce(new Error('offline'));
+  await click(button('Notes',card('Alpha University')));
+  await change(notesOf('Alpha University'),'Retry my draft');await advance(800);await flush();
+  expect(indicator('Alpha University')).toBe('Not saved');
+  await click(button('Outcome'));await click(button('All'));
+  expect(notesOf('Alpha University').value).toBe('Retry my draft');
+  expect(indicator('Alpha University')).toBe('Not saved');
+  await click(button('Save',card('Alpha University')));await flush();
+  expect(indicator('Alpha University')).toBe('Saved');
+ });
+ it('cancels an unsent note on deletion and retains it if removal fails',async()=>{
+  await mount();io.deleteApplication.mockRejectedValueOnce(new Error('offline'));
+  await click(button('Notes',card('Alpha University')));
+  await change(notesOf('Alpha University'),'Retain after failed delete');
+  await click(button('Remove application',card('Alpha University')));
+  await click(button('Confirm',card('Alpha University')));await flush();await advance(800);
+  expect(notesOf('Alpha University').value).toBe('Retain after failed delete');
+  expect(indicator('Alpha University')).toBe('Not saved');
+  expect(io.updateApplication).not.toHaveBeenCalled();
+ });
+});
+
+it('keeps keyboard focus on filters when a status move hides its card',async()=>{
+ await mount();await click(button('In Progress'));
+ statusOf('Alpha University').focus();
+ await change(statusOf('Alpha University'),'accepted');await flush();
+ expect(queryLink(/Alpha University/)).toBeNull();
+ expect(document.activeElement).toBe(button('All'));
+});
+
+it('sends pending notes when navigating away before the autosave delay',async()=>{
+ await mount();await click(button('Notes',card('Alpha University')));
+ await change(notesOf('Alpha University'),'Keep this when opening my application');
+ expect(io.updateApplication).not.toHaveBeenCalled();
+ unmountAll();await flush();await advance(850);await flush();
+ expect(io.updateApplication.mock.calls).toEqual([['app-1',{notes:'Keep this when opening my application'}]]);
+});
