@@ -3059,9 +3059,10 @@ test('workspace search opens exact owned files and writing and recovers missing 
     return { id: data.user.id as string, headers: { apikey: key, Authorization: `Bearer ${data.access_token}`, Prefer: 'return=representation' } };
   }
   const student = await session(STUDENT_EMAIL), peer = await session('e2e.peer@caat.local.test');
-  const title = marker(`Search-${testInfo.project.name}`), promptId = crypto.randomUUID();
+  const title = marker(`Search-${testInfo.project.name}`);
+  const promptIds = Array.from({ length: 51 }, () => crypto.randomUUID()), promptId = promptIds[50];
   const docIds = Array.from({ length: 51 }, () => crypto.randomUUID()).sort();
-  const draftIds = [crypto.randomUUID(), crypto.randomUUID()], resumeIds = [crypto.randomUUID(), crypto.randomUUID()], peerResume = crypto.randomUUID();
+  const draftIds = [crypto.randomUUID(), crypto.randomUUID()], resumeIds = Array.from({ length: 51 }, () => crypto.randomUUID()), peerResume = crypto.randomUUID();
   let addedApplication: string | null = null;
   async function rows(table: string, owner = student, query = '') {
     const r = await request.get(`${api}/rest/v1/${table}?user_id=eq.${owner.id}&${query}`, { headers: owner.headers });
@@ -3077,9 +3078,9 @@ test('workspace search opens exact owned files and writing and recovers missing 
   const own = `user_id=eq.${student.id}`, titleQuery = encodeURIComponent(`${title}*`);
   await withScopedCleanup(async () => {
     await insert('documents', docIds.map((id, i) => ({ id, user_id: student.id, file_name: `${title}-Doc-${String(i).padStart(3,'0')}.pdf`, category: 'transcripts', status: 'pending_review', storage_path: `${student.id}/isolated-metadata/${id}.pdf` })));
-    await insert('custom_essay_prompts', { id: promptId, user_id: student.id, title: `${title} prompt` });
+    await insert('custom_essay_prompts', promptIds.map((id, i) => ({ id, user_id: student.id, title: `${title} prompt ${i}`, created_at: i === 50 ? '2030-01-01T00:00:00Z' : '2020-01-01T00:00:00Z' })));
     await insert('essay_drafts', draftIds.map((id, i) => ({ id, user_id: student.id, prompt_id: promptId, prompt_slug: `custom-${promptId}`, label: `${title}-Essay-${i}`, content: i ? 'Target body not searchable' : 'Other draft body', is_current: i === 0 })));
-    await insert('resumes', resumeIds.map((id, i) => ({ id, user_id: student.id, title: `${title}-Resume-${i}` })));
+    await insert('resumes', resumeIds.map((id, i) => ({ id, user_id: student.id, title: i < 2 ? `${title}-Resume-${i}` : `Supporting ${title}-writing-${i}`, created_at: i === 1 ? '2000-01-01T00:00:00Z' : '2026-01-01T00:00:00Z' })));
     await insert('resume_sections', { resume_id: resumeIds[1], section_key: 'custom', label: 'Requested section', mode: 'free', sort_order: 0, content_html: '<p>Exact second resume body</p>' });
     await insert('resumes', { id: peerResume, user_id: peer.id, title: `${title}-Peer-private` }, peer);
     expect(await rows('resumes', student, `id=eq.${peerResume}`)).toEqual([]);
@@ -3088,6 +3089,8 @@ test('workspace search opens exact owned files and writing and recovers missing 
     const app = existing[0] ?? (await insert('user_school_applications', { id: addedApplication, user_id: student.id, school_id: SCHOOL_ID, status: 'researching' }))[0];
     if (process.env.CAAT_EXPORT_TEST_ROW_CAP) {
       expect((await rows('documents', student, `file_name=like.${titleQuery}&order=id&limit=200`)).length).toBe(50);
+      expect((await rows('custom_essay_prompts', student, `title=like.${titleQuery}&order=created_at.asc,id.asc&limit=200`)).map((r: { id: string }) => r.id)).not.toContain(promptId);
+      expect((await rows('resumes', student, 'order=created_at.desc,id.asc&limit=200')).map((r: { id: string }) => r.id)).not.toContain(resumeIds[1]);
       console.log('Verified real workspace-search PostgREST row cap: 50');
     }
     await signInToIsolatedStudent(page);
@@ -3096,7 +3099,7 @@ test('workspace search opens exact owned files and writing and recovers missing 
     await expect(main.getByRole('heading', { name: 'Find your work', exact: true })).toBeVisible();
     const search = main.getByLabel('Search your work', { exact: true });
     await search.fill(title);
-    await expect(main.getByRole('status', { name: 'Search results' })).toContainText('55 results');
+    await expect(main.getByRole('status', { name: 'Search results' })).toContainText('104 results');
     await expect(main.getByText(`${title}-Peer-private`, { exact: true })).toHaveCount(0);
     await expect(main.locator('[data-search-result]')).toHaveCount(20);
     await main.getByRole('button', { name: 'Next results', exact: true }).click();
@@ -3127,7 +3130,7 @@ test('workspace search opens exact owned files and writing and recovers missing 
     await expect(main.getByRole('status', { name: 'Search results' })).toHaveCount(0);
     await page.unroute('**/rest/v1/documents?*');
     await main.getByRole('button', { name: 'Retry', exact: true }).click(); await search.fill(title);
-    await expect(main.getByRole('status', { name: 'Search results' })).toContainText('55 results');
+    await expect(main.getByRole('status', { name: 'Search results' })).toContainText('104 results');
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await testInfo.attach('workspace-search', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
     const before = await rows('resumes', student, 'select=id&order=id');
@@ -3141,7 +3144,7 @@ test('workspace search opens exact owned files and writing and recovers missing 
     await runScopedCleanup([
       async () => { if (!page.isClosed()) await page.close(); },
       () => remove('essay_drafts', `${own}&prompt_id=eq.${promptId}`),
-      () => remove('custom_essay_prompts', `${own}&id=eq.${promptId}`),
+      () => remove('custom_essay_prompts', `${own}&id=in.(${promptIds.join(',')})`),
       () => remove('resume_sections', `resume_id=in.(${resumeIds.join(',')})`),
       () => remove('resumes', `${own}&id=in.(${resumeIds.join(',')})`),
       () => remove('documents', `${own}&file_name=like.${titleQuery}`),

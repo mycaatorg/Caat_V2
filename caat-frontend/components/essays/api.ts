@@ -1,3 +1,4 @@
+import { evidencePages } from "@/lib/evidence-pagination";
 import { supabase } from "@/lib/supabase/client";
 
 export type CustomEssayPrompt = {
@@ -195,14 +196,13 @@ export async function fetchCustomPrompts(): Promise<CustomEssayPrompt[]> {
   if (authError) throw authError;
   if (!user) return [];
 
-  const { data, error } = await supabase
+  return evidencePages<CustomEssayPrompt>((from, to) => supabase
     .from("custom_essay_prompts")
     .select("*")
     .eq("user_id", user.id)
-    .order("created_at", { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as CustomEssayPrompt[];
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .range(from, to), "Could not load all your custom essay prompts. Please try again.");
 }
 
 export async function createCustomPrompt(title: string): Promise<CustomEssayPrompt> {
