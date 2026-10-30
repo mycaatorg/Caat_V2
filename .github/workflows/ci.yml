@@ -271,15 +271,20 @@ jobs:
       - name: Production browser journeys (one build + server)
         run: npm run test:e2e:ci
 
+      - name: Low-row-cap completeness gate (reuse production build)
+        run: node ../.github/scripts/low-row-cap-e2e.mjs "$RUNNER_TEMP/caat-supabase-status.env"
+
       - name: Publish write-journey coverage boundary
         if: always()
         working-directory: .
         run: node .github/scripts/report-write-e2e-boundary.js
 
       - name: Upload Playwright report on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report
-          path: caat-frontend/playwright-report
+          path: |
+            caat-frontend/playwright-report
+            caat-frontend/playwright-report-low-cap
           retention-days: 7

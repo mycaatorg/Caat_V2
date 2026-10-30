@@ -16,6 +16,7 @@ repomix-output.xml
 # testing
 /coverage
 /playwright-report
+/playwright-report-low-cap
 /test-results
 /tests/e2e/.auth
 

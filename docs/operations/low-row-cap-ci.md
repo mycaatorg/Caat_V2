@@ -1,0 +1,9 @@
+# Low-row-cap completeness gate
+
+CI runs the ordinary production browser suite first, then runs three existing export/Today/calendar completeness journeys against the same disposable Supabase stack and production build. The second phase starts its own local app server and temporarily limits PostgREST responses to50 rows. Each journey confirms the actual API cap before checking complete results and cleans up its own fixtures.
+
+Runner: `.github/scripts/low-row-cap-e2e.mjs <private-supabase-status-file>`. It requires the normal isolated E2E environment, matching loopback API/database test ports and an existing `.next/BUILD_ID`. It refuses remote databases and passes only public connection settings to Playwright. PostgreSQL credentials stay in the private child environment, never connection arguments or printed errors.
+
+The runner owns the app server independently of Playwright, refuses an already occupied app port, and waits for both process groups to stop before restoring SQL. It forwards cancellation as SIGINT for Playwright teardown, then uses bounded forced termination if needed. The previous authenticator/database override is restored and read back after success, test failure, partial setup failure and handled SIGINT/SIGTERM. Cancellation during restoration still fails the run after restoring. SIGKILL or runner loss cannot execute cleanup; this is why the gate only uses an ephemeral runner database. Never use it against production or a shared database.
+
+The gate fails on test, fixture-cleanup or restoration errors. It does not retry failed journeys. Failure artifacts retain the ordinary `playwright-report` and separate `playwright-report-low-cap` directories; low-cap traces are retained on failure. An empty test selection fails. Existing whole-suite coverage and flaky-test rules remain in force.

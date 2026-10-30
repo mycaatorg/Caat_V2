@@ -2430,7 +2430,9 @@ test("Today task editing preserves other fields and recovers from conflicts and 
   await expect(page.getByRole('button',{name:`Edit task: ${finalText}`,exact:true})).toBeFocused();
   const stored=(await(await request.get(url,{headers})).json())[0];
   expect(stored).toMatchObject({text:finalText,due_date:'2026-11-05',done:false,priority:1});
-  await page.reload();await expect(page.getByText(finalText,{exact:true})).toBeVisible();
+  // Scope to the visible task workspace: streamed reloads can retain hidden
+  // copies, and the weekly agenda can also display this task's text.
+  await page.reload();await expect(page.getByRole('region',{name:'Your to-dos',exact:true}).getByText(finalText,{exact:true})).toBeVisible();
   const peer=await login('e2e.peer@caat.local.test');
   const peerHeaders={apikey:key,Authorization:`Bearer ${peer.access_token}`,Prefer:'return=representation'};
   const peerRead=await request.get(`${api}/rest/v1/user_todos?id=eq.${task.id}`,{headers:peerHeaders});
