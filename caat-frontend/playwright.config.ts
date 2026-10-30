@@ -41,6 +41,7 @@ export default defineConfig({
         /public-smoke\.spec\.ts/,
         /route-guard\.spec\.ts/,
         /staging-(?:journeys|community|auth)\.spec\.ts/,
+        /community-(?:features|smoke)\.spec\.ts/,
         /mobile-(?:public|staging)\.spec\.ts/,
       ],
       dependencies: ["setup"],
