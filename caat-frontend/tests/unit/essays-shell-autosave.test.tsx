@@ -8,6 +8,8 @@ import type { EssayDraft, EssayPrompt } from "@/components/essays/api";
 
 const mocks = vi.hoisted(() => ({
   fetchDraftsForPrompt: vi.fn(),
+  fetchDraftForPrompt: vi.fn(),
+  params: new URLSearchParams(),
   updateDraft: vi.fn(),
   createDraft: vi.fn(),
   createCustomPrompt: vi.fn(),
@@ -17,10 +19,12 @@ const mocks = vi.hoisted(() => ({
   onAuthStateChange: vi.fn(),
 }));
 const mountedRoots: Root[] = [];
+beforeEach(() => { mocks.params = new URLSearchParams(); });
 
 vi.mock("@/components/essays/api", () => ({
   fetchEssayPrompts: vi.fn(),
   fetchDraftsForPrompt: mocks.fetchDraftsForPrompt,
+  fetchDraftForPrompt: mocks.fetchDraftForPrompt,
   updateDraft: mocks.updateDraft,
   createDraft: mocks.createDraft,
   deleteDraft: vi.fn(),
@@ -40,7 +44,7 @@ vi.mock("@/lib/supabase/client", () => ({
     },
   },
 }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => mocks.params }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 vi.mock("lucide-react", () => {
   const Icon = () => null;
@@ -175,6 +179,32 @@ function controlledPersistence(seed: EssayDraft[]) {
   });
   return { persisted, writes, get maxActiveWrites() { return maxActiveWrites; } };
 }
+
+describe("exact essay draft destinations", () => {
+  beforeEach(() => {
+    vi.clearAllMocks(); mocks.fetchCustomPrompts.mockResolvedValue([]);
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  });
+  afterEach(() => { act(() => { for (const root of mountedRoots.splice(0)) root.unmount(); }); document.body.innerHTML = ''; });
+  it('opens the requested non-current draft even if it is beyond the existing list page', async () => {
+    const targetId = '22222222-2222-4222-8222-222222222222';
+    mocks.params.set('draft', targetId);
+    const requested = draft(targetId, 'Requested draft', 'Targeted content');
+    mocks.fetchDraftForPrompt.mockResolvedValue(requested);
+    await mountEditor([draft('default', 'Current draft', 'Wrong content', true)]);
+    expect(mocks.fetchDraftForPrompt).toHaveBeenCalledWith(prompt.id, targetId);
+    expect(editorElement().value).toBe('Targeted content');
+    expect(mocks.updateDraft).not.toHaveBeenCalled();
+  });
+  it('does not silently open another draft when the exact target was removed', async () => {
+    mocks.params.set('draft', '22222222-2222-4222-8222-222222222222');
+    mocks.fetchDraftForPrompt.mockResolvedValue(null);
+    await mountEditor([draft('default', 'Current draft', 'Wrong content', true)]);
+    expect(document.body.textContent).toContain('requested draft');
+    expect(document.querySelector('textarea[placeholder="Start writing your essay here."]')).toBeNull();
+    expect(mocks.updateDraft).not.toHaveBeenCalled();
+  });
+});
 
 describe("essay draft autosave coordination", () => {
   beforeEach(() => {

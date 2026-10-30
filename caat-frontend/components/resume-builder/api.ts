@@ -1,4 +1,5 @@
 // components/resume-builder/api.ts
+import { evidencePages } from "@/lib/evidence-pagination";
 import { supabase } from "@/lib/supabase/client";
 import { sanitizeError } from "@/lib/safe-error";
 import type {
@@ -66,14 +67,13 @@ export async function requireUserId(): Promise<string> {
 /** List all resumes for the current user (for switcher). */
 export async function listResumes(): Promise<Pick<ResumeRow, "id" | "title" | "created_at">[]> {
 	const userId = await requireUserId();
-	const { data, error } = await supabase
-		.from("resumes")
-		.select("id, title, created_at")
-		.eq("user_id", userId)
-		.order("created_at", { ascending: false });
-
-	if (error) throw new Error(sanitizeError(error));
-	return (data ?? []) as Pick<ResumeRow, "id" | "title" | "created_at">[];
+  return evidencePages<Pick<ResumeRow, "id" | "title" | "created_at">>((from, to) => supabase
+    .from("resumes")
+    .select("id, title, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: true })
+    .range(from, to), "Could not load all your resumes. Please try again.");
 }
 
 /** Load a specific resume by id (sections included). */

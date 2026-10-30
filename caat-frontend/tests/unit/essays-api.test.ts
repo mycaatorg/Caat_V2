@@ -42,6 +42,7 @@ import {
   createDraft,
   deleteDraft,
   fetchDraftsForPrompt,
+  fetchDraftForPrompt,
   setCurrentDraft,
   updateDraft,
 } from "@/components/essays/api";
@@ -240,3 +241,15 @@ describe("essay draft persistence API", () => {
     expect(state.queries).toHaveLength(0);
   });
 });
+
+ it('loads an exact draft only inside the owner and requested prompt', async () => {
+   state.resolve = () => ({ data: existingDraft, error: null });
+   await expect(fetchDraftForPrompt('prompt-1', 'draft-1')).resolves.toEqual(existingDraft);
+   expect(state.queries[0].calls).toEqual([
+     { method: 'select', args: ['*'] }, { method: 'eq', args: ['user_id', 'user-1'] },
+     { method: 'eq', args: ['prompt_id', 'prompt-1'] }, { method: 'eq', args: ['id', 'draft-1'] },
+   ]);
+   state.user = null; state.queries = [];
+   await expect(fetchDraftForPrompt('prompt-1', 'draft-1')).rejects.toThrow('Not signed in');
+   expect(state.queries).toEqual([]);
+ });

@@ -1,3 +1,4 @@
+import { evidencePages } from "@/lib/evidence-pagination";
 import { supabase } from "@/lib/supabase/client";
 
 export type CustomEssayPrompt = {
@@ -58,6 +59,17 @@ export async function fetchDraftsForPrompt(promptId: string): Promise<EssayDraft
 
   if (error) throw error;
   return (data ?? []) as EssayDraft[];
+}
+
+/** Exact deep links must not depend on the switcher's page size or current draft. */
+export async function fetchDraftForPrompt(promptId: string, draftId: string): Promise<EssayDraft | null> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('Not signed in');
+  const { data, error } = await supabase.from('essay_drafts').select('*')
+    .eq('user_id', user.id).eq('prompt_id', promptId).eq('id', draftId).maybeSingle();
+  if (error) throw new Error('Could not load the requested draft. Please try again.');
+  return data as EssayDraft | null;
 }
 
 /* ---------------------------
@@ -184,14 +196,13 @@ export async function fetchCustomPrompts(): Promise<CustomEssayPrompt[]> {
   if (authError) throw authError;
   if (!user) return [];
 
-  const { data, error } = await supabase
+  return evidencePages<CustomEssayPrompt>((from, to) => supabase
     .from("custom_essay_prompts")
     .select("*")
     .eq("user_id", user.id)
-    .order("created_at", { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as CustomEssayPrompt[];
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .range(from, to), "Could not load all your custom essay prompts. Please try again.");
 }
 
 export async function createCustomPrompt(title: string): Promise<CustomEssayPrompt> {

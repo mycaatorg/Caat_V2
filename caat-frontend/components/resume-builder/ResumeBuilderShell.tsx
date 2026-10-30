@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import {
   DndContext,
@@ -82,6 +83,9 @@ function makeSavePayload(
 }
 
 export default function ResumeBuilderShell() {
+  const searchParams = useSearchParams();
+  // Capture the destination at entry; a query change must not discard an open editor.
+  const [requestedResumeId] = useState(() => searchParams?.get("resume") ?? null);
   const [sections, setSections] = useState<ResumeSection[]>([]);
   const [activeSectionId, setActiveSectionId] = useState<string>("");
   const [settings, setSettings] = useState<ResumeSettings>(DEFAULT_SETTINGS);
@@ -207,7 +211,9 @@ export default function ResumeBuilderShell() {
         setIsLoading(true);
         setLoadError(false);
 
-        const state = await loadOrCreateResumeState();
+        if (requestedResumeId !== null && !/^[0-9a-f-]{36}$/i.test(requestedResumeId)) throw new Error("Invalid resume destination");
+        const state = requestedResumeId !== null ? await loadResumeById(requestedResumeId) : await loadOrCreateResumeState();
+        if (!state) throw new Error("Requested resume is unavailable");
         if (cancelled) return;
 
         setResumeId(state.resumeId);
@@ -225,7 +231,7 @@ export default function ResumeBuilderShell() {
         setResumeList(list.map((r) => ({ id: r.id, title: r.title ?? "Untitled" })));
 
         // If user has no sections yet, seed defaults once and save them
-        if (!state.sections || state.sections.length === 0) {
+        if (requestedResumeId === null && (!state.sections || state.sections.length === 0)) {
           const defaults = getDefaultSections();
 
           sectionsRef.current = defaults;
@@ -277,7 +283,7 @@ export default function ResumeBuilderShell() {
       cancelled = true;
     };
      
-  }, [reloadNonce, currentSavePayload, enqueueSave]);
+  }, [reloadNonce, currentSavePayload, enqueueSave, requestedResumeId]);
 
   // --------------------------------------------------
   // Drag & drop ordering
@@ -734,9 +740,9 @@ export default function ResumeBuilderShell() {
         <div className="max-w-md space-y-2">
           <h2 className="text-lg font-semibold">We could not load your resume</h2>
           <p className="text-sm text-muted-foreground">
-            Something went wrong reaching your saved resume. To avoid overwriting
-            your work, we did not open a blank editor. Please retry.
+            {requestedResumeId !== null ? "The requested resume is unavailable or could not be loaded. Retry or return to workspace search." : "Something went wrong reaching your saved resume. To avoid overwriting your work, we did not open a blank editor. Please retry."}
           </p>
+          {requestedResumeId !== null && <a className="inline-block text-sm underline" href="/workspace/search">Back to workspace search</a>}
         </div>
         <button
           type="button"

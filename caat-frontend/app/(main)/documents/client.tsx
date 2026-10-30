@@ -403,6 +403,7 @@ export default function DocumentVaultClient({
   const [uploadSchoolId, setUploadSchoolId] = useState<number | null>(null);
   const [mySchools, setMySchools] = useState<MySchool[]>([]);
   const searchParams = useSearchParams();
+  const [documentTarget, setDocumentTarget] = useState(() => searchParams.get("document"));
 
   // Delete modal
   const [deleteTarget, setDeleteTarget] = useState<DocumentRow | null>(null);
@@ -554,9 +555,9 @@ export default function DocumentVaultClient({
   }
 
   // Filtering & pagination
-  const filteredDocs = selectDocuments(docs, query, TAB_CATEGORY_MAP[activeTab] ?? "all", statusFilter, sort);
-  const hasFilters = query.trim() !== "" || activeTab !== "All Files" || statusFilter !== "all";
-  function resetFilters() { setQuery(""); setActiveTab("All Files"); setStatusFilter("all"); setSort("newest"); setPage(1); }
+  const filteredDocs = selectDocuments(documentTarget !== null ? docs.filter(doc => doc.id === documentTarget) : docs, query, TAB_CATEGORY_MAP[activeTab] ?? "all", statusFilter, sort);
+  const hasFilters = documentTarget !== null || query.trim() !== "" || activeTab !== "All Files" || statusFilter !== "all";
+  function resetFilters() { setDocumentTarget(null); setQuery(""); setActiveTab("All Files"); setStatusFilter("all"); setSort("newest"); setPage(1); }
 
   const totalPages = Math.max(1, Math.ceil(filteredDocs.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -638,6 +639,7 @@ export default function DocumentVaultClient({
       {/* ------------------------------------------------------------------ */}
       {!loading && !loadError && (
         <section aria-label="Find documents" className="space-y-3 mb-4">
+          {documentTarget !== null && <p className="text-sm text-muted-foreground">Showing the selected document. Reset filters to browse your full vault.</p>}
           <Input aria-label="Search documents" placeholder="Search filenames" value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} />
           <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
             <select aria-label="Filter by review status" value={statusFilter} onChange={e => { setStatusFilter(e.target.value as DocumentStatusFilter); setPage(1); }} className="min-w-0 flex-1 h-9 border bg-background px-3 text-sm">
@@ -819,7 +821,7 @@ export default function DocumentVaultClient({
         ) : (
           <div className="py-16 text-center">
             <p className="text-sm text-muted-foreground">
-              {hasFilters ? "No documents match your search and filters." : "No documents uploaded yet."}
+              {documentTarget !== null && !docs.some(doc => doc.id === documentTarget) ? "The selected document is unavailable. Reset filters to browse your full vault." : hasFilters ? "No documents match your search and filters." : "No documents uploaded yet."}
             </p>
             {!hasFilters && (
               <Button
