@@ -17,6 +17,7 @@ import {
   Bookmark,
   Sun,
   ListChecks,
+  Search,
 } from "lucide-react"
 
 import {
@@ -46,6 +47,7 @@ const navGroups: { label: string | null; items: NavItem[] }[] = [
     label: null,
     items: [
       { title: "Today", icon: Sun, url: "/today" },
+      { title: "Search my work", icon: Search, url: "/workspace/search" },
       { title: "My shortlist", icon: ListChecks, url: "/shortlist" },
       { title: "My applications", icon: ClipboardList, url: "/applications" },
     ],

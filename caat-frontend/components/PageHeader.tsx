@@ -7,6 +7,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { NotificationBell } from "@/components/communities/NotificationBell";
+import Link from "next/link";
+import { Search } from "lucide-react";
 
 interface PageHeaderProps {
   title: string;
@@ -29,6 +31,7 @@ export function PageHeader({ title, hideOnMobile = false }: PageHeaderProps) {
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
+      <Link href="/workspace/search" aria-label="Search my work" className="inline-flex size-9 items-center justify-center hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"><Search className="size-4" /></Link>
       <NotificationBell />
     </header>
   );

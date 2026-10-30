@@ -3047,3 +3047,106 @@ test('Document Vault finds late files and preserves phone actions (PROD-222)', {
     const remaining = await request.get(`${ownedUrl}&select=id`, { headers }); expect(remaining.ok()).toBe(true); expect(await remaining.json()).toEqual([]);
   });
 });
+
+
+test('workspace search opens exact owned files and writing and recovers missing targets (PROD-224)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, 'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  async function session(email: string) {
+    const r = await request.post(`${api}/auth/v1/token?grant_type=password`, { headers: { apikey: key }, data: { email, password: process.env.E2E_TEST_PASSWORD } });
+    expect(r.ok()).toBe(true); const data = await r.json();
+    return { id: data.user.id as string, headers: { apikey: key, Authorization: `Bearer ${data.access_token}`, Prefer: 'return=representation' } };
+  }
+  const student = await session(STUDENT_EMAIL), peer = await session('e2e.peer@caat.local.test');
+  const title = marker(`Search-${testInfo.project.name}`), promptId = crypto.randomUUID();
+  const docIds = Array.from({ length: 51 }, () => crypto.randomUUID()).sort();
+  const draftIds = [crypto.randomUUID(), crypto.randomUUID()], resumeIds = [crypto.randomUUID(), crypto.randomUUID()], peerResume = crypto.randomUUID();
+  let addedApplication: string | null = null;
+  async function rows(table: string, owner = student, query = '') {
+    const r = await request.get(`${api}/rest/v1/${table}?user_id=eq.${owner.id}&${query}`, { headers: owner.headers });
+    expect(r.ok()).toBe(true); return await r.json();
+  }
+  async function insert(table: string, data: unknown, owner = student) {
+    const r = await request.post(`${api}/rest/v1/${table}`, { headers: owner.headers, data });
+    expect(r.ok(), `create ${table}`).toBe(true); return await r.json();
+  }
+  async function remove(table: string, query: string, owner = student) {
+    expect((await request.delete(`${api}/rest/v1/${table}?${query}`, { headers: owner.headers })).ok()).toBe(true);
+  }
+  const own = `user_id=eq.${student.id}`, titleQuery = encodeURIComponent(`${title}*`);
+  await withScopedCleanup(async () => {
+    await insert('documents', docIds.map((id, i) => ({ id, user_id: student.id, file_name: `${title}-Doc-${String(i).padStart(3,'0')}.pdf`, category: 'transcripts', status: 'pending_review', storage_path: `${student.id}/isolated-metadata/${id}.pdf` })));
+    await insert('custom_essay_prompts', { id: promptId, user_id: student.id, title: `${title} prompt` });
+    await insert('essay_drafts', draftIds.map((id, i) => ({ id, user_id: student.id, prompt_id: promptId, prompt_slug: `custom-${promptId}`, label: `${title}-Essay-${i}`, content: i ? 'Target body not searchable' : 'Other draft body', is_current: i === 0 })));
+    await insert('resumes', resumeIds.map((id, i) => ({ id, user_id: student.id, title: `${title}-Resume-${i}` })));
+    await insert('resume_sections', { resume_id: resumeIds[1], section_key: 'custom', label: 'Requested section', mode: 'free', sort_order: 0, content_html: '<p>Exact second resume body</p>' });
+    await insert('resumes', { id: peerResume, user_id: peer.id, title: `${title}-Peer-private` }, peer);
+    expect(await rows('resumes', student, `id=eq.${peerResume}`)).toEqual([]);
+    const existing = await rows('user_school_applications', student, `school_id=eq.${SCHOOL_ID}`);
+    if (!existing.length) addedApplication = crypto.randomUUID();
+    const app = existing[0] ?? (await insert('user_school_applications', { id: addedApplication, user_id: student.id, school_id: SCHOOL_ID, status: 'researching' }))[0];
+    if (process.env.CAAT_EXPORT_TEST_ROW_CAP) {
+      expect((await rows('documents', student, `file_name=like.${titleQuery}&order=id&limit=200`)).length).toBe(50);
+      console.log('Verified real workspace-search PostgREST row cap: 50');
+    }
+    await signInToIsolatedStudent(page);
+    await page.getByRole('main').getByRole('link', { name: 'Search my work', exact: true }).click();
+    const main = page.getByRole('main');
+    await expect(main.getByRole('heading', { name: 'Find your work', exact: true })).toBeVisible();
+    const search = main.getByLabel('Search your work', { exact: true });
+    await search.fill(title);
+    await expect(main.getByRole('status', { name: 'Search results' })).toContainText('55 results');
+    await expect(main.getByText(`${title}-Peer-private`, { exact: true })).toHaveCount(0);
+    await expect(main.locator('[data-search-result]')).toHaveCount(20);
+    await main.getByRole('button', { name: 'Next results', exact: true }).click();
+    await search.fill(`${title}-Doc-050`);
+    await main.getByRole('link', { name: new RegExp(`${title}-Doc-050`) }).click();
+    await expect(page).toHaveURL(new RegExp(`document=${docIds[50]}`));
+    await expect(main.getByRole('article', { name: `${title}-Doc-050.pdf`, exact: true })).toBeVisible();
+    await expect(main.getByRole('article')).toHaveCount(1);
+    await page.goto('/workspace/search'); await search.fill(`${title}-Essay-1`);
+    await main.getByRole('link', { name: new RegExp(`${title}-Essay-1`) }).click();
+    await expect(main.getByPlaceholder('Start writing your essay here.')).toHaveValue('Target body not searchable');
+    await page.reload(); await expect(main.getByPlaceholder('Start writing your essay here.')).toHaveValue('Target body not searchable');
+    await page.goto('/workspace/search'); await search.fill('Target body not searchable');
+    await expect(main.getByText('No saved work matches this search.', { exact: true })).toBeVisible();
+    await search.fill(`${title}-Resume-1`); await main.getByRole('link', { name: new RegExp(`${title}-Resume-1`) }).click();
+    await expect(page).toHaveURL(new RegExp(`resume=${resumeIds[1]}`));
+    await expect(main.getByRole('combobox', { name: 'Switch resume', exact: true })).toContainText(`${title}-Resume-1`);
+    await page.goto('/workspace/search'); await search.fill('CAAT E2E');
+    const applicationLink = main.locator(`a[href="/applications/${app.id}"]`);
+    // Search the actual fixture school name, independent of renamed UI fixtures.
+    const school = await request.get(`${api}/rest/v1/schools?id=eq.${SCHOOL_ID}&select=name`, { headers: student.headers });
+    expect(school.ok()).toBe(true); await search.fill((await school.json())[0].name);
+    await applicationLink.click(); await expect(page).toHaveURL(new RegExp(`/applications/${app.id}$`));
+    await page.goto('/workspace/search');
+    await page.route('**/rest/v1/documents?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'temporary index outage' }) }));
+    await main.getByRole('button', { name: 'Refresh results', exact: true }).click();
+    await expect(main.getByRole('alert')).toContainText('Could not load your workspace');
+    await expect(main.getByRole('status', { name: 'Search results' })).toHaveCount(0);
+    await page.unroute('**/rest/v1/documents?*');
+    await main.getByRole('button', { name: 'Retry', exact: true }).click(); await search.fill(title);
+    await expect(main.getByRole('status', { name: 'Search results' })).toContainText('55 results');
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await testInfo.attach('workspace-search', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    const before = await rows('resumes', student, 'select=id&order=id');
+    await page.goto(`/resume-builder?resume=${peerResume}`);
+    await expect(main.getByRole('heading', { name: 'We could not load your resume', exact: true })).toBeVisible();
+    expect(await rows('resumes', student, 'select=id&order=id')).toEqual(before);
+    await page.goto(`/essays?prompt=${promptId}&draft=${crypto.randomUUID()}`);
+    await expect(main.getByText(/The requested draft is unavailable/)).toBeVisible();
+    await expect(main.getByPlaceholder('Start writing your essay here.')).toHaveCount(0);
+  }, async () => {
+    await runScopedCleanup([
+      async () => { if (!page.isClosed()) await page.close(); },
+      () => remove('essay_drafts', `${own}&prompt_id=eq.${promptId}`),
+      () => remove('custom_essay_prompts', `${own}&id=eq.${promptId}`),
+      () => remove('resume_sections', `resume_id=in.(${resumeIds.join(',')})`),
+      () => remove('resumes', `${own}&id=in.(${resumeIds.join(',')})`),
+      () => remove('documents', `${own}&file_name=like.${titleQuery}`),
+      () => remove('resumes', `user_id=eq.${peer.id}&id=eq.${peerResume}`, peer),
+      async () => { if (addedApplication) await remove('user_school_applications', `${own}&id=eq.${addedApplication}`); },
+    ]);
+  });
+});
