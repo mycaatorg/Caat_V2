@@ -297,6 +297,13 @@
       "kind": "static",
       "coverage": "authenticated-content",
       "expected": "Your community content"
+    },
+    {
+      "route": "/workspace/search",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Find your work"
     }
   ],
   "writeJourneys": [

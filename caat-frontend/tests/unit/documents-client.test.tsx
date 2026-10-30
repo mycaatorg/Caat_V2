@@ -486,3 +486,21 @@ describe("document workspace", () => {
     await act(async () => read.resolve([transcript()])); await flush(); expect(button('Upload').disabled).toBe(false);
   });
 });
+
+it('lands on one exact document and lets the student reset to the full vault', async () => {
+  const id = '22222222-2222-4222-8222-222222222222'; io.params.set('document', id);
+  const container = await mountComponent(<DocumentVaultClient initialDocs={[transcript(), doc(id, 'Requested file.pdf')]} />);
+  await flush();
+  expect(container.querySelectorAll('[role="article"]')).toHaveLength(1);
+  expect(container.querySelector('[role="article"]')?.getAttribute('aria-label')).toBe('Requested file.pdf');
+  expect(io.getDocumentSignedUrl).not.toHaveBeenCalled();
+  await click(button('Reset filters', container)); await flush();
+  expect(container.querySelectorAll('[role="article"]')).toHaveLength(2);
+});
+
+it('shows missing selected document rather than another file', async () => {
+  io.params.set('document', '22222222-2222-4222-8222-222222222222');
+  const container = await mountComponent(<DocumentVaultClient initialDocs={[transcript()]} />);
+  await flush(); expect(container.querySelectorAll('[role="article"]')).toHaveLength(0);
+  expect(container.textContent).toContain('selected document');
+});
