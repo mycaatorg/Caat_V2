@@ -4,6 +4,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import routeCoverage from "./route-coverage.json";
+import { withScopedCleanup } from "./scoped-cleanup";
 
 declare global {
   interface Window { __caatClipboardWrites?: string[] }
@@ -177,10 +178,25 @@ test("seeded community post, comment, and save persist across detail reloads", a
   }
 });
 
-test("community post draft survives a failed request and retry persists once", async ({ page }) => {
+test("community post draft survives a failed request and retry persists once (PROD-95)", async ({ page, request }) => {
   await signInToLocalStudent(page);
   await page.goto(GROUP_URL);
   const content = `E2E community retry ${RUN_ID}`;
+  const api = assertLocalUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL").origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const auth = await request.post(`${api}/auth/v1/token?grant_type=password`, {
+    headers: { apikey: key }, data: { email: STUDENT_EMAIL, password: process.env.E2E_TEST_PASSWORD },
+  });
+  expect(auth.ok()).toBe(true);
+  const session = await auth.json();
+  const headers = { apikey: key, Authorization: `Bearer ${session.access_token}` };
+  const ownedUrl = `${api}/rest/v1/community_posts?user_id=eq.${session.user.id}&content=like.${encodeURIComponent(`*${content}*`)}`;
+  async function savedRows(): Promise<{ id: string }[]> {
+    const response = await request.get(`${ownedUrl}&select=id`, { headers });
+    expect(response.ok()).toBe(true);
+    return response.json();
+  }
+
   const main = page.getByRole("main").last();
   await main.locator("div.cursor-text").filter({ hasText: "Share your experience, results, or advice" }).click();
   const editor = main.locator(".ProseMirror").first();
@@ -200,7 +216,7 @@ test("community post draft survives a failed request and retry persists once", a
     }
     await route.continue();
   });
-  try {
+  await withScopedCleanup(async () => {
     await page.getByRole("button", { name: "Post", exact: true }).click();
     await expect.poll(() => failedRequests).toBe(1);
     await expect(page.locator("[data-sonner-toast]").filter({ hasText: /could not|failed|try again/i }).first()).toBeVisible();
@@ -210,8 +226,19 @@ test("community post draft survives a failed request and retry persists once", a
 
     await page.getByRole("button", { name: "Post", exact: true }).click();
     await expect(page.getByText("Post shared.", { exact: true })).toBeVisible();
+    const beforeReload = await savedRows();
+    expect(beforeReload).toHaveLength(1);
     await page.reload();
-    const cards = page.getByRole("main").locator("div.bg-card").filter({ hasText: content });
+    await expect.poll(savedRows).toEqual(beforeReload);
+    const cards = page.getByRole("main").locator('[data-slot="card"]:visible').filter({ has: page.locator(".community-prose").filter({ hasText: content }) });
+    await expect(cards).toHaveCount(1);
+    // Model a hidden streaming replica deterministically. This does not assert
+    // the historical CI incident's exact cause, which has not been reproduced.
+    await cards.evaluate(card => {
+      const hidden = document.createElement('div');
+      hidden.hidden = true; hidden.dataset.retryReplica = 'hidden';
+      hidden.append(card.cloneNode(true)); card.parentElement!.append(hidden);
+    });
     await expect(cards).toHaveCount(1);
     // Ignore hidden streaming page copies; still reject duplicate active cards.
     // Assert the complete rendered body, not matching descendant paragraphs.
@@ -219,8 +246,28 @@ test("community post draft survives a failed request and retry persists once", a
     const bodies = cards.locator(".community-prose");
     await expect(bodies).toHaveText([content]);
     await expect(bodies).toBeVisible();
-  } finally {
-    await page.unroute("**/communities/**");
-    if (!page.isClosed()) await removeSyntheticPost(page, content);
-  }
+    // A second visible card must still fail uniqueness: never mask a real duplicate.
+    await cards.evaluate(card => {
+      const visible = card.cloneNode(true) as HTMLElement;
+      visible.dataset.retryReplica = 'visible'; card.parentElement!.append(visible);
+    });
+    await expect(cards).toHaveCount(2);
+    await page.locator('[data-retry-replica]').evaluateAll(nodes => nodes.forEach(node => node.remove()));
+    await expect(cards).toHaveCount(1);
+    await expect.poll(savedRows).toEqual(beforeReload);
+    // Simulate an unavailable browser after persistence; API cleanup must still run.
+    await page.close();
+  }, async () => {
+    try {
+      if (!page.isClosed()) {
+        await page.unroute("**/communities/**").catch(() => {});
+        await page.locator('[data-retry-replica]').evaluateAll(nodes => nodes.forEach(node => node.remove())).catch(() => {});
+        await removeSyntheticPost(page, content).catch(() => {});
+      }
+    } finally {
+      // Browser cleanup must never prevent owner-scoped database cleanup.
+      expect((await request.delete(ownedUrl, { headers })).ok()).toBe(true);
+      expect(await savedRows()).toEqual([]);
+    }
+  });
 });
