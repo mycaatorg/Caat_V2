@@ -1938,10 +1938,18 @@ test("account download includes all pages, saved courses and only own community 
     }
     await signInToIsolatedStudent(page);
     await page.goto("/settings");
-    await expect(page.getByText(/Includes document details, but not/)).toBeVisible();
+    // PROD-221: Next streaming can retain a hidden copy of the settings region.
+    await page.getByRole('region', { name: 'Data and account', exact: true }).evaluate(region => {
+      const hidden = document.createElement('div');
+      hidden.hidden = true; hidden.dataset.exportReplica = 'hidden';
+      hidden.append(region.cloneNode(true)); document.body.append(hidden);
+    });
+    const exportRegion = page.getByRole('region', { name: 'Data and account', exact: true });
+    await expect(exportRegion).toHaveCount(1);
+    await expect(exportRegion.getByText(/Includes document details, but not/)).toBeVisible();
     const downloadPromise = page.waitForEvent("download");
     const responsePromise = page.waitForResponse(r => new URL(r.url()).pathname === "/settings/export");
-    await page.getByRole("button", { name: "Export my data", exact: true }).click();
+    await exportRegion.getByRole("button", { name: "Export my data", exact: true }).click();
     const download = await downloadPromise;
     const response = await responsePromise;
     expect(response.status()).toBe(200);
