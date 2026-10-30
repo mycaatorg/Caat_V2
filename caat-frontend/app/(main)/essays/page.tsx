@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import EssaysClient from "./client";
 import { createServerClient } from "@/lib/supabase/server";
@@ -20,6 +21,7 @@ export default async function EssaysPage() {
   return (
     <>
       <PageHeader title="Essays" />
+      <div className="px-6 pt-3"><Link href="/workspace/writing" className="text-sm text-primary underline">Back to Writing desk</Link></div>
       <EssaysClient initialPrompts={initialPrompts} />
     </>
   );

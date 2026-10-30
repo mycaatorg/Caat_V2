@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import ResumeBuilderClient from "./client";
 import { 
@@ -16,13 +17,14 @@ export default function ResumeBuilderPage() {
               orientation="vertical"
               className="mr-2 data-[orientation=vertical]:h-4"
         />
-        <Breadcrumb>
+        <Breadcrumb className="flex-1">
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink>Resume Builder</BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
+        <Link href="/workspace/writing" className="text-sm text-primary underline">Writing desk</Link>
       </header>
       
     <ResumeBuilderClient />
