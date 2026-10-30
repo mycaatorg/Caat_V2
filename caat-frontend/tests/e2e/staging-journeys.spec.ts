@@ -2823,8 +2823,18 @@ test('Applications board preserves drafts across views and recovers status moves
   await page.reload();await card.getByRole('button',{name:'Notes',exact:true}).click();
   await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(failedNote);
   await expect(status()).toContainText('Applying');
-  const stored=await request.get(url,{headers});expect(stored.ok()).toBe(true);
-  expect((await stored.json())[0]).toMatchObject({status:'applying',notes:failedNote,deadline_at:'2026-12-01'});
+  // Leave before the 800ms debounce: ordinary workspace navigation still saves.
+  const navigationNote=`${note} before navigation`;
+  await page.clock.pauseAt(new Date());
+  await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(navigationNote);
+  await page.getByRole('link',{name:'Plan today',exact:true}).click();
+  await page.waitForURL(/\/today(?:$|\?)/);await page.clock.resume();
+  await expect.poll(async()=>{
+    const stored=await request.get(url,{headers});expect(stored.ok()).toBe(true);
+    return (await stored.json())[0];
+  }).toMatchObject({status:'applying',notes:navigationNote,deadline_at:'2026-12-01'});
+  await page.goto('/applications');await card.getByRole('button',{name:'Notes',exact:true}).click();
+  await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(navigationNote);
  } finally {
   await page.unroute(APPLICATION_WRITES);
   expect((await request.delete(url,{headers})).ok()).toBe(true);

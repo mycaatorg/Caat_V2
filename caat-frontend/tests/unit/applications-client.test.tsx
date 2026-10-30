@@ -586,3 +586,11 @@ it('keeps keyboard focus on filters when a status move hides its card',async()=>
  expect(queryLink(/Alpha University/)).toBeNull();
  expect(document.activeElement).toBe(button('All'));
 });
+
+it('sends pending notes when navigating away before the autosave delay',async()=>{
+ await mount();await click(button('Notes',card('Alpha University')));
+ await change(notesOf('Alpha University'),'Keep this when opening my application');
+ expect(io.updateApplication).not.toHaveBeenCalled();
+ unmountAll();await flush();await advance(850);await flush();
+ expect(io.updateApplication.mock.calls).toEqual([['app-1',{notes:'Keep this when opening my application'}]]);
+});

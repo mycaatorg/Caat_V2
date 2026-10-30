@@ -12,7 +12,7 @@ Search tracked university names/countries case-insensitively; keep All/In Progre
 Fetch the complete owner-scoped application set using evidencePages and stable created_at/id ordering, continuing after short pages until empty. Any page failure yields the existing retryable load error; no partial totals or fabricated zero stage counts. No schema or external integration changes.
 
 ## Drafts and accessibility
-Lift note text, open state, save status, debounce timers and sequence tracking into a keyed workspace hook. Switching board/list, changing filters, sorting and moving lanes preserves pending and failed drafts. Retain 800ms debounce, clear/retry and ordered writes; cancel queued note save on delete to prevent an update after deletion. Failed deletion restores the row and its draft. Clean up timers on workspace unmount. No cross-session draft persistence claim.
+Lift note text, open state, save status, debounce timers and sequence tracking into a keyed workspace hook. Switching board/list, changing filters, sorting and moving lanes preserves pending and failed drafts. Retain 800ms debounce, clear/retry and ordered writes; cancel queued note save on delete to prevent an update after deletion. Failed deletion restores the row and its draft. Flush pending saves through the existing ordered write queue when ordinary navigation unmounts the workspace, then clean up timers. No cross-session draft persistence claim.
 
 Use labelled search/sort/status controls, pressed view/filter buttons, labelled lanes and stage counts. Preserve focus after lane moves and failed status rollback; avoid drag-only interactions. Long names and date inputs must fit phone screens. Reuse existing failure/ownership rules.
 
