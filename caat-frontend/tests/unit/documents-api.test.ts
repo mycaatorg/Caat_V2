@@ -151,6 +151,7 @@ beforeEach(() => {
     builder.select = (...args: unknown[]) => { context.selects.push(args); return builder; };
     builder.eq = (column: string, value: unknown) => { context.filters.push([column, value]); return builder; };
     builder.order = (...args: unknown[]) => { context.orders.push(args); return builder; };
+    builder.range = () => builder;
     builder.insert = (payload: unknown) => { context.op = "insert"; context.payload = payload; return builder; };
     builder.update = (payload: unknown) => { context.op = "update"; context.payload = payload; return builder; };
     builder.delete = () => { context.op = "delete"; return builder; };
@@ -485,16 +486,24 @@ describe("replacement failures", () => {
 });
 
 describe("listing and access failures", () => {
+  it("loads subsequent short pages and rejects a later page outage", async () => {
+    const first = documentRow(), second = documentRow({ id: "document-2" });
+    io.queryResults.push(queryResult([first]), queryResult([second]), queryResult([]));
+    await expect(fetchDocuments()).resolves.toEqual([first, second]);
+    io.queryResults.push(queryResult([first]), { data: null, error: { message: "backend details" } });
+    await expect(fetchDocuments()).rejects.toThrow("Could not load all your documents.");
+  });
+
   it("lists only the caller's documents, newest first", async () => {
-    io.queryResults.push(queryResult([documentRow()]));
+    io.queryResults.push(queryResult([documentRow()]), queryResult([]));
     await expect(fetchDocuments()).resolves.toHaveLength(1);
     expect(latestQuery("documents", "select").filters).toEqual([["user_id", "user-1"]]);
-    expect(latestQuery("documents", "select").orders).toEqual([["uploaded_at", { ascending: false }]]);
+    expect(latestQuery("documents", "select").orders).toEqual([["uploaded_at", { ascending: false }], ["id", { ascending: true }]]);
   });
 
   it("surfaces a sanitized list failure", async () => {
     io.queryResults.push({ data: null, error: { message: "relation documents does not exist" } });
-    await expect(fetchDocuments()).rejects.toThrow("Something went wrong");
+    await expect(fetchDocuments()).rejects.toThrow("Could not load all your documents.");
   });
 
   it("refuses signed links for signed-out callers and reports storage failures", async () => {

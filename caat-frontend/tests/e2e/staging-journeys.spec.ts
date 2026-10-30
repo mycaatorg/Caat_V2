@@ -4,7 +4,7 @@
  */
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import routeCoverage from "./route-coverage.json";
-import { runScopedCleanup } from "./scoped-cleanup";
+import { runScopedCleanup, withScopedCleanup } from "./scoped-cleanup";
 
 const STUDENT_EMAIL = "e2e.student@caat.local.test";
 const SCHOOL_ID = 900001;
@@ -2951,4 +2951,99 @@ test('personal scholarships plan deadlines and recover read/write failures (PROD
     await page.unroute(routePattern);
     for (const id of ids) expect((await request.delete(`${api}/rest/v1/user_scholarships?id=eq.${id}&user_id=eq.${session.user.id}`, { headers })).ok()).toBe(true);
   }
+});
+
+// PROD-222: a real upload plus enough owned metadata to cross the server row cap.
+test('Document Vault finds late files and preserves phone actions (PROD-222)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, 'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const auth = await request.post(`${api}/auth/v1/token?grant_type=password`, { headers: { apikey: key }, data: { email: STUDENT_EMAIL, password: process.env.E2E_TEST_PASSWORD } });
+  expect(auth.ok()).toBe(true); const session = await auth.json();
+  const headers = { apikey: key, Authorization: `Bearer ${session.access_token}`, Prefer: 'return=representation' };
+  const prefix = marker(`Vault-${testInfo.project.name}`), originalName = `${prefix}-Original.pdf`, revisedName = `${prefix}-Revised.pdf`;
+  const ids = Array.from({ length: 50 }, () => crypto.randomUUID());
+  const paths = new Set<string>();
+  const own = `user_id=eq.${session.user.id}`;
+  const ownedUrl = `${api}/rest/v1/documents?${own}&file_name=like.${encodeURIComponent(`${prefix}*`)}`;
+  const readFile = async (name: string) => {
+    const result = await request.get(`${api}/rest/v1/documents?${own}&file_name=eq.${encodeURIComponent(name)}`, { headers });
+    expect(result.ok()).toBe(true); return (await result.json())[0];
+  };
+  const pdf = (name: string) => ({ name, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n') });
+  const storageRoute = '**/storage/v1/object/user-documents/**';
+  await withScopedCleanup(async () => {
+    await signInToIsolatedStudent(page); await page.goto('/documents');
+    const main = page.getByRole('main');
+    await main.getByRole('button', { name: 'Upload New', exact: true }).click();
+    await page.getByRole('dialog').locator('input[type=file]').setInputFiles(pdf(originalName));
+    await page.getByRole('button', { name: 'Upload', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(main.getByRole('article', { name: originalName, exact: true })).toBeVisible();
+    const original = await readFile(originalName); expect(original).toBeTruthy(); paths.add(original.storage_path);
+    const seeded = await request.post(`${api}/rest/v1/documents`, { headers, data: ids.map((id, index) => ({
+      id, user_id: session.user.id, file_name: `${prefix}-${String(index).padStart(3, '0')}.pdf`,
+      category: index % 2 ? 'identity' : 'transcripts', status: 'pending_review',
+      storage_path: `${session.user.id}/isolated-metadata/${id}.pdf`, uploaded_at: new Date(Date.UTC(2025, 0, index + 1)).toISOString(),
+    })) });
+    expect(seeded.ok()).toBe(true);
+    if (process.env.CAAT_EXPORT_TEST_ROW_CAP) {
+      const capped = await request.get(`${ownedUrl}&order=id&limit=200`, { headers });
+      expect(capped.ok()).toBe(true); expect((await capped.json()).length).toBe(Number(process.env.CAAT_EXPORT_TEST_ROW_CAP));
+      console.log(`Verified real document PostgREST row cap: ${process.env.CAAT_EXPORT_TEST_ROW_CAP}`);
+    }
+    // Reload exercises server first paint through the complete shared reader.
+    await page.reload();
+    const search = main.getByLabel('Search documents', { exact: true });
+    await search.fill(prefix);
+    await expect(main.getByRole('status', { name: 'Document results' })).toContainText('Showing 8 of 51 matching documents');
+    await main.getByRole('button', { name: 'Next page', exact: true }).click();
+    await search.fill(`${prefix}-000`);
+    await expect(main.getByRole('article', { name: `${prefix}-000.pdf`, exact: true })).toBeVisible();
+    await main.getByLabel('Filter by review status').selectOption('verified');
+    await expect(main.getByText('No documents match your search and filters.', { exact: true })).toBeVisible();
+    await main.getByRole('button', { name: 'Reset filters', exact: true }).click(); await search.fill(prefix);
+    await main.getByRole('button', { name: 'Passport & ID', exact: true }).click();
+    await expect(main.getByRole('status', { name: 'Document results' })).toContainText('of 25 matching documents');
+    await main.getByRole('button', { name: 'All Files', exact: true }).click();
+    await main.getByLabel('Sort documents', { exact: true }).selectOption('oldest');
+    await expect(main.getByRole('article').first()).toHaveAttribute('aria-label', `${prefix}-000.pdf`);
+    await main.getByLabel('Sort documents', { exact: true }).selectOption('name');
+    await expect(main.getByRole('article').first()).toHaveAttribute('aria-label', `${prefix}-000.pdf`);
+    await main.getByLabel('Sort documents', { exact: true }).selectOption('newest');
+    await expect(main.getByRole('article').first()).toHaveAttribute('aria-label', originalName);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await testInfo.attach('document-vault-workspace', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    const row = main.getByRole('article', { name: originalName, exact: true });
+    await row.getByRole('button', { name: 'More options', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Re-upload', exact: true }).click();
+    const sheet = page.getByRole('dialog');
+    await sheet.locator('input[type=file]').setInputFiles(pdf(revisedName));
+    await page.route(storageRoute, route => route.request().method() === 'POST'
+      ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'temporary storage outage' }) }) : route.continue());
+    await sheet.getByRole('button', { name: 'Replace', exact: true }).click();
+    await expect(sheet.getByRole('button', { name: 'Replace', exact: true })).toBeEnabled();
+    await expect(sheet.getByText(revisedName, { exact: true })).toBeVisible();
+    expect((await readFile(originalName)).storage_path).toBe(original.storage_path);
+    await page.unroute(storageRoute);
+    await sheet.getByRole('button', { name: 'Replace', exact: true }).click();
+    await expect(sheet).toHaveCount(0);
+    const updated = await readFile(revisedName); expect(updated.id).toBe(original.id); paths.add(updated.storage_path);
+    await page.reload(); await search.fill(revisedName);
+    const replaced = main.getByRole('article', { name: revisedName, exact: true });
+    await expect(replaced).toBeVisible();
+    await replaced.getByRole('button', { name: 'More options', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+    // The modal hides background articles from the accessibility tree before the request settles.
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(replaced).toHaveCount(0); expect(await readFile(revisedName)).toBeUndefined();
+  }, async () => {
+    if (!page.isClosed()) await page.unroute(storageRoute).catch(() => {});
+    await runScopedCleanup([
+      async () => { expect((await request.delete(ownedUrl, { headers })).ok()).toBe(true); },
+      async () => { if (paths.size) expect((await request.delete(`${api}/storage/v1/object/user-documents`, { headers, data: { prefixes: [...paths] } })).ok()).toBe(true); },
+    ]);
+    const remaining = await request.get(`${ownedUrl}&select=id`, { headers }); expect(remaining.ok()).toBe(true); expect(await remaining.json()).toEqual([]);
+  });
 });

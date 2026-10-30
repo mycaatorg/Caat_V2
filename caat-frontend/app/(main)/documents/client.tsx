@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { selectDocuments, type DocumentSort, type DocumentStatusFilter } from "@/lib/document-workspace";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { DocumentUsageButton, useDocumentUsage } from "@/components/evidence/document-usage";
@@ -118,9 +120,9 @@ function StatCard({
 }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
-    <div className="rounded-xl border bg-card p-5 shadow-sm">
+    <div className="rounded-xl border bg-card p-3 sm:p-5 shadow-sm min-w-0">
       <div className="flex items-start justify-between mb-1">
-        <span className="text-sm text-muted-foreground">{label}</span>
+        <span className="text-xs sm:text-sm text-muted-foreground">{label}</span>
         {icon}
       </div>
       <p className="text-4xl font-bold tracking-tight mb-4">
@@ -383,6 +385,10 @@ export default function DocumentVaultClient({
   const [loadError, setLoadError] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("All Files");
   const [page, setPage] = useState(1);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<DocumentStatusFilter>("all");
+  const [sort, setSort] = useState<DocumentSort>("newest");
+  const readSequence = useRef({ version: 0 });
 
   // Sheet (upload / re-upload)
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -413,7 +419,10 @@ export default function DocumentVaultClient({
        
       loadDocs();
     }
-    fetchMySchools().then(setMySchools).catch(() => {});
+    let active = true;
+    const requests = readSequence.current;
+    fetchMySchools().then(schools => { if (active) setMySchools(schools); }).catch(() => {});
+    return () => { active = false; requests.version++; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -432,17 +441,19 @@ export default function DocumentVaultClient({
   }, [searchParams]);
 
   async function loadDocs() {
+    const sequence = ++readSequence.current.version;
     try {
       setLoading(true);
       setLoadError(false);
       const data = await fetchDocuments();
-      setDocs(data);
+      if (sequence === readSequence.current.version) setDocs(data);
     } catch {
+      if (sequence !== readSequence.current.version) return;
       // A failed load is not an empty vault: never invite a "first" upload.
       setLoadError(true);
       toast.error("Failed to load documents");
     } finally {
-      setLoading(false);
+      if (sequence === readSequence.current.version) setLoading(false);
     }
   }
 
@@ -471,6 +482,7 @@ export default function DocumentVaultClient({
   }
 
   async function handleUpload() {
+    if (loading) return;
     if (!uploadFile) {
       toast.error("Please select a file");
       return;
@@ -542,10 +554,9 @@ export default function DocumentVaultClient({
   }
 
   // Filtering & pagination
-  const filteredDocs =
-    activeTab === "All Files"
-      ? docs
-      : docs.filter((d) => d.category === TAB_CATEGORY_MAP[activeTab]);
+  const filteredDocs = selectDocuments(docs, query, TAB_CATEGORY_MAP[activeTab] ?? "all", statusFilter, sort);
+  const hasFilters = query.trim() !== "" || activeTab !== "All Files" || statusFilter !== "all";
+  function resetFilters() { setQuery(""); setActiveTab("All Files"); setStatusFilter("all"); setSort("newest"); setPage(1); }
 
   const totalPages = Math.max(1, Math.ceil(filteredDocs.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -575,7 +586,7 @@ export default function DocumentVaultClient({
       {/* ------------------------------------------------------------------ */}
       {/* Page header                                                         */}
       {/* ------------------------------------------------------------------ */}
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Document Vault</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -584,6 +595,7 @@ export default function DocumentVaultClient({
         </div>
         <Button
           onClick={openUploadSheet}
+          disabled={loading}
           className="gap-2 bg-[#9a1a27] hover:bg-[#7d1520] text-white shrink-0"
         >
           <Upload className="h-4 w-4" />
@@ -595,8 +607,8 @@ export default function DocumentVaultClient({
       {/* Stats cards                                                         */}
       {/* ------------------------------------------------------------------ */}
       {/* Zero counts would be false while the list failed to load. */}
-      {!loadError && (
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      {!loading && !loadError && (
+      <div aria-label="Document review overview" className="grid grid-cols-3 gap-2 sm:gap-4 mb-8">
         <StatCard
           label="Verified"
           count={verified}
@@ -624,19 +636,34 @@ export default function DocumentVaultClient({
       {/* ------------------------------------------------------------------ */}
       {/* Filter tabs + document table                                        */}
       {/* ------------------------------------------------------------------ */}
+      {!loading && !loadError && (
+        <section aria-label="Find documents" className="space-y-3 mb-4">
+          <Input aria-label="Search documents" placeholder="Search filenames" value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} />
+          <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
+            <select aria-label="Filter by review status" value={statusFilter} onChange={e => { setStatusFilter(e.target.value as DocumentStatusFilter); setPage(1); }} className="min-w-0 flex-1 h-9 border bg-background px-3 text-sm">
+              <option value="all">All statuses</option><option value="pending_review">Pending review</option><option value="verified">Verified</option><option value="resubmit">Needs attention</option>
+            </select>
+            <select aria-label="Sort documents" value={sort} onChange={e => { setSort(e.target.value as DocumentSort); setPage(1); }} className="min-w-0 flex-1 h-9 border bg-background px-3 text-sm">
+              <option value="newest">Newest uploaded</option><option value="oldest">Oldest uploaded</option><option value="name">Name A–Z</option>
+            </select>
+            <Button variant="ghost" onClick={resetFilters}>Reset filters</Button>
+          </div>
+        </section>
+      )}
       <div className="rounded-xl border bg-card shadow-sm mb-6">
 
         {/* Tabs */}
-        <div className="flex overflow-x-auto border-b">
+        <div className="flex flex-wrap border-b">
           {TABS.map((tab) => (
             <button
               key={tab}
+              aria-pressed={activeTab === tab}
               onClick={() => {
                 setActiveTab(tab);
                 setPage(1);
               }}
               className={cn(
-                "shrink-0 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap",
+                "px-3 py-3 text-xs sm:text-sm font-medium transition-colors",
                 activeTab === tab
                   ? "border-b-2 border-primary text-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -648,9 +675,9 @@ export default function DocumentVaultClient({
         </div>
 
         {/* Table header */}
-        <div className="overflow-x-auto">
-        <div className="min-w-[640px]">
-        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.6fr)] px-5 py-3 border-b">
+        <div>
+        <div>
+        <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.6fr)] px-5 py-3 border-b">
           {["DOCUMENT NAME", "CATEGORY", "STATUS", "DATE UPLOADED", "ACTION"].map(
             (col) => (
               <span
@@ -669,7 +696,7 @@ export default function DocumentVaultClient({
             <div
               key={i}
               className={cn(
-                "grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.6fr)] items-center px-5 py-4",
+                "grid grid-cols-2 md:grid-cols-5 gap-3 items-center px-5 py-4",
                 i < 3 && "border-b"
               )}
             >
@@ -693,16 +720,18 @@ export default function DocumentVaultClient({
           pagedDocs.map((doc, idx) => (
             <div
               key={doc.id}
+              role="article"
+              aria-label={doc.file_name}
               className={cn(
-                "grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.6fr)] items-center px-5 py-3.5",
+                "grid min-w-0 grid-cols-2 gap-y-3 md:gap-y-0 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.6fr)] items-center px-4 sm:px-5 py-4",
                 idx < pagedDocs.length - 1 && "border-b"
               )}
             >
               {/* Name */}
-              <div className="flex items-center gap-2.5 overflow-hidden pr-3">
+              <div className="col-span-2 md:col-span-1 min-w-0 flex items-center gap-2.5 overflow-hidden pr-3">
                 <FileIcon fileName={doc.file_name} status={doc.status} />
                 <div className="overflow-hidden">
-                  <span className="text-sm font-medium truncate block">
+                  <span className="text-sm font-medium truncate block whitespace-normal md:whitespace-nowrap [overflow-wrap:anywhere]">
                     {doc.file_name}
                   </span>
                   {doc.file_size && (
@@ -712,7 +741,7 @@ export default function DocumentVaultClient({
                   )}
                   <DocumentUsageButton documentId={doc.id} fileName={doc.file_name} usage={usage} />
                   {doc.review_notes && (
-                    <span className="mt-0.5 block text-xs text-amber-600 dark:text-amber-400 truncate" title={doc.review_notes}>
+                    <span className="mt-0.5 block text-xs text-amber-600 dark:text-amber-400 break-words" title={doc.review_notes}>
                       Note: {doc.review_notes}
                     </span>
                   )}
@@ -731,11 +760,12 @@ export default function DocumentVaultClient({
 
               {/* Date */}
               <span className="text-sm text-muted-foreground">
+                <span className="md:hidden">Uploaded </span>
                 {formatDate(doc.uploaded_at)}
               </span>
 
               {/* Action */}
-              <div className="flex justify-end items-center gap-1">
+              <div className="flex justify-end items-center gap-1 min-w-0">
                 {doc.status === "resubmit" && (
                   <Button
                     size="sm"
@@ -789,11 +819,9 @@ export default function DocumentVaultClient({
         ) : (
           <div className="py-16 text-center">
             <p className="text-sm text-muted-foreground">
-              {activeTab === "All Files"
-                ? "No documents uploaded yet."
-                : "No documents in this category."}
+              {hasFilters ? "No documents match your search and filters." : "No documents uploaded yet."}
             </p>
-            {activeTab === "All Files" && (
+            {!hasFilters && (
               <Button
                 size="sm"
                 variant="outline"
@@ -807,20 +835,20 @@ export default function DocumentVaultClient({
           </div>
         )}
 
-        </div>{/* end min-w wrapper */}
-        </div>{/* end overflow-x-auto */}
+        </div>
+        </div>
 
         {/* Table footer */}
-        <div className="flex items-center justify-between border-t px-5 py-3">
-          <span className="text-sm text-muted-foreground">
+        <div className="flex flex-wrap gap-3 items-center justify-between border-t px-4 sm:px-5 py-3">
+          <span role="status" aria-label="Document results" className="text-sm text-muted-foreground">
             {loading
               ? "Loading…"
-              : `Showing ${pagedDocs.length} of ${filteredDocs.length} document${filteredDocs.length !== 1 ? "s" : ""}`}
+              : loadError ? "Documents unavailable" : `Showing ${pagedDocs.length} of ${filteredDocs.length} matching documents (${docs.length} total)`}
           </span>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={safePage <= 1}
+              disabled={loading || loadError || safePage <= 1}
               aria-label="Previous page"
               className="inline-flex h-7 w-7 items-center justify-center rounded border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -831,7 +859,7 @@ export default function DocumentVaultClient({
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={safePage >= totalPages}
+              disabled={loading || loadError || safePage >= totalPages}
               aria-label="Next page"
               className="inline-flex h-7 w-7 items-center justify-center rounded border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -1002,9 +1030,9 @@ export default function DocumentVaultClient({
             <Button
               onClick={isReupload ? handleReupload : handleUpload}
               disabled={
-                isReupload
+                loading || (isReupload
                   ? isReuploading || !reuploadFile
-                  : isUploading || !uploadFile
+                  : isUploading || !uploadFile)
               }
               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
             >
