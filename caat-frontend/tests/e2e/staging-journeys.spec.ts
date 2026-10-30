@@ -2840,3 +2840,95 @@ test('Applications board preserves drafts across views and recovers status moves
   expect((await request.delete(url,{headers})).ok()).toBe(true);
  }
 });
+
+// PROD-220: the personal collection is complete, searchable and recoverable.
+test('personal scholarships plan deadlines and recover read/write failures (PROD-220)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, 'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const auth = await request.post(`${api}/auth/v1/token?grant_type=password`, {
+    headers: { apikey: key }, data: { email: STUDENT_EMAIL, password: process.env.E2E_TEST_PASSWORD },
+  });
+  expect(auth.ok()).toBe(true);
+  const session = await auth.json();
+  const headers = { apikey: key, Authorization: `Bearer ${session.access_token}`, Prefer: 'return=representation' };
+  const prefix = marker(`Scholarship workspace ${testInfo.project.name}`);
+  const names = [`${prefix} Future`, `${prefix} Past`, `${prefix} Undated`];
+  const routePattern = '**/rest/v1/user_scholarships*';
+  const ids: string[] = [];
+  let revised = '';
+  try {
+    for (const [index, title] of names.entries()) {
+      const saved = await request.post(`${api}/rest/v1/user_scholarships`, { headers, data: {
+        user_id: session.user.id, title, provider_name: `${prefix} Foundation`, country: 'Australia',
+        deadline_at: ['2099-12-01', '2000-01-01', null][index], amount_display: 'Tuition support',
+      } });
+      expect(saved.ok()).toBe(true); ids.push((await saved.json())[0].id);
+    }
+    await signInToIsolatedStudent(page);
+    await page.route(routePattern, route => {
+      const req = route.request();
+      return req.method() === 'GET' && Number(new URL(req.url()).searchParams.get('offset')) > 0
+        ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'later page outage' }) })
+        : route.continue();
+    });
+    await page.goto('/scholarships?view=mine');
+    const main = page.getByRole('main');
+    await expect(main.getByText('Could not load your scholarships.', { exact: true })).toBeVisible();
+    await expect(main.getByRole('region', { name: 'Your scholarship deadlines' })).toHaveCount(0);
+    await expect(main.getByRole('button', { name: 'Add Scholarship', exact: true })).toBeDisabled();
+    await page.unroute(routePattern);
+    await main.getByRole('button', { name: 'Try again', exact: true }).click();
+    const search = main.getByLabel('Search my scholarships', { exact: true });
+    await search.fill(prefix);
+    await expect(main.getByRole('status')).toContainText('Showing 3 of');
+    await main.getByRole('button', { name: 'Upcoming', exact: true }).click();
+    await expect(customScholarshipCard(page, names[0])).toBeVisible();
+    await expect(customScholarshipCard(page, names[1])).toHaveCount(0);
+    await main.getByRole('button', { name: 'Past deadlines', exact: true }).click();
+    await expect(customScholarshipCard(page, names[1])).toBeVisible();
+    await main.getByRole('button', { name: 'No deadline', exact: true }).click();
+    await expect(customScholarshipCard(page, names[2])).toBeVisible();
+    await search.fill('no-such-scholarship-220');
+    await expect(main.getByText('No scholarships match your search and filters.', { exact: true })).toBeVisible();
+    await main.getByRole('button', { name: 'Reset filters', exact: true }).click();
+    await search.fill(prefix);
+    await main.getByLabel('Sort my scholarships', { exact: true }).selectOption('name');
+    await expect(main.getByRole('heading', { level: 3 })).toHaveText(names);
+    await customScholarshipCard(page, names[0]).getByRole('button', { name: 'Edit scholarship', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Edit Scholarship', exact: true });
+    revised = `${names[0]} revised`;
+    await dialog.getByLabel(/Scholarship Name/).fill(revised);
+    await page.route(routePattern, route => route.request().method() === 'PATCH'
+      ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'write outage' }) }) : route.continue());
+    await dialog.getByRole('button', { name: 'Save Changes', exact: true }).click();
+    await expect(dialog.getByRole('alert')).toContainText('Could not save');
+    await expect(dialog.getByLabel(/Scholarship Name/)).toHaveValue(revised);
+    await testInfo.attach('scholarship-draft-recovery', { body: await page.screenshot(), contentType: 'image/png' });
+    await page.unroute(routePattern);
+    await dialog.getByRole('button', { name: 'Save Changes', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(customScholarshipCard(page, revised)).toBeVisible();
+    await page.reload(); await search.fill(prefix);
+    await expect(customScholarshipCard(page, revised)).toBeVisible();
+    const stored = await request.get(`${api}/rest/v1/user_scholarships?id=eq.${ids[0]}`, { headers });
+    expect(stored.ok()).toBe(true); expect((await stored.json())[0].title).toBe(revised);
+    await page.route(routePattern, route => route.request().method() === 'DELETE'
+      ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'delete outage' }) }) : route.continue());
+    const card = customScholarshipCard(page, revised);
+    await card.getByRole('button', { name: 'Delete scholarship', exact: true }).click();
+    await card.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(page.getByText('Failed to remove scholarship. Please try again.', { exact: true })).toBeVisible();
+    await expect(card).toBeVisible(); await page.unroute(routePattern);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await testInfo.attach('personal-scholarship-workspace', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    await card.getByRole('button', { name: 'Delete scholarship', exact: true }).click();
+    await card.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(card).toHaveCount(0);
+    const removed = await request.get(`${api}/rest/v1/user_scholarships?id=eq.${ids[0]}`, { headers });
+    expect(removed.ok()).toBe(true); expect(await removed.json()).toEqual([]);
+  } finally {
+    await page.unroute(routePattern);
+    for (const id of ids) expect((await request.delete(`${api}/rest/v1/user_scholarships?id=eq.${id}&user_id=eq.${session.user.id}`, { headers })).ok()).toBe(true);
+  }
+});
