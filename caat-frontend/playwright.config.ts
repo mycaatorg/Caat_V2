@@ -57,7 +57,7 @@ export default defineConfig({
     {
       name: "staging",
       use: { ...devices["Desktop Chrome"] },
-      testMatch: [/staging-journeys\.spec\.ts/, /staging-community\.spec\.ts/, /staging-auth\.spec\.ts/],
+      testMatch: [/staging-journeys\.spec\.ts/, /staging-community\.spec\.ts/, /staging-auth\.spec\.ts/, /community-(?:features|smoke)\.spec\.ts/],
     },
     // Phones (PROD-91): Android-sized Chromium and iPhone-sized WebKit. Opt-in
     // with CAAT_PHONE=1 (npm run test:e2e:phone:public / test:e2e:phone), so a

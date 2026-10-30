@@ -3,6 +3,7 @@
  * The staging Playwright project must opt into this spec explicitly.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { activeCommunityPosts, removeOwnedSyntheticPosts } from "./community-locators";
 import routeCoverage from "./route-coverage.json";
 import { withScopedCleanup } from "./scoped-cleanup";
 
@@ -58,14 +59,14 @@ async function signInToLocalStudent(page: Page) {
 
 async function removeSyntheticPost(page: Page, content: string) {
   await page.goto(GROUP_URL);
-  const card = page.locator("div.bg-card").filter({ hasText: content }).first();
+  const card = activeCommunityPosts(page, content);
   if (!(await card.count())) return;
   await card.getByRole("button", { name: "More options" }).click();
   await page.getByRole("menuitem", { name: "Delete post", exact: true }).click();
-  await expect(page.locator("div.bg-card").filter({ hasText: content })).toHaveCount(0, { timeout: 15_000 });
+  await expect(activeCommunityPosts(page, content)).toHaveCount(0, { timeout: 15_000 });
 }
 
-test("seeded community post, comment, and save persist across detail reloads", async ({ page }) => {
+test("seeded community post, comment, and save persist across detail reloads", async ({ page, request }) => {
   await signInToLocalStudent(page);
   await page.addInitScript(() => {
     const writes: string[] = [];
@@ -84,8 +85,8 @@ test("seeded community post, comment, and save persist across detail reloads", a
   const content = `E2E community journey ${RUN_ID}`;
   const comment = `E2E community comment ${RUN_ID}`;
 
-  try {
-    const groupMain = page.getByRole("main").last();
+  await withScopedCleanup(async () => {
+    const groupMain = page.getByRole("main");
     const composer = groupMain.locator("div.cursor-text").filter({ hasText: "Share your experience, results, or advice" });
     await expect(composer).toHaveCount(1);
     await composer.click();
@@ -97,7 +98,8 @@ test("seeded community post, comment, and save persist across detail reloads", a
     await page.getByRole("option", { name: "Advice", exact: true }).click();
     await page.getByRole("button", { name: "Post", exact: true }).click();
 
-    const groupPost = page.locator("div.bg-card").filter({ hasText: content }).first();
+    const groupPost = activeCommunityPosts(page, content);
+    await expect(groupPost).toHaveCount(1);
     await expect(groupPost.getByText(content, { exact: true })).toBeVisible({ timeout: 15_000 });
 
     // Feed cards never get fresh props, so a successful like must still show
@@ -127,7 +129,8 @@ test("seeded community post, comment, and save persist across detail reloads", a
     expect(postUrl.pathname).toMatch(/^\/communities\/[0-9a-f-]{36}$/i);
 
     await page.goto(postUrl.pathname);
-    const detailCard = page.locator("div.bg-card").filter({ hasText: content }).first();
+    const detailCard = activeCommunityPosts(page, content);
+    await expect(detailCard).toHaveCount(1);
     await expect(detailCard.getByText(content, { exact: true })).toBeVisible({ timeout: 15_000 });
 
     await detailCard.getByRole("button", { name: /Show comments/ }).click();
@@ -143,7 +146,8 @@ test("seeded community post, comment, and save persist across detail reloads", a
     await expect(page.getByText("Post saved", { exact: true })).toBeVisible({ timeout: 10_000 });
 
     await page.reload();
-    const reloadedCard = page.locator("div.bg-card").filter({ hasText: content }).first();
+    const reloadedCard = activeCommunityPosts(page, content);
+    await expect(reloadedCard).toHaveCount(1);
     await expect(reloadedCard.getByText(content, { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(reloadedCard.getByRole("button", { name: "Unsave post", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(reloadedCard.getByRole("button", { name: "Unlike post, 1 like", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -152,11 +156,13 @@ test("seeded community post, comment, and save persist across detail reloads", a
 
     await page.goto("/communities/saved");
     await expect(page.getByRole("heading", { name: "Saved Posts", exact: true })).toBeVisible({ timeout: 15_000 });
-    const savedCard = page.locator("div.bg-card").filter({ hasText: content }).first();
+    const savedCard = activeCommunityPosts(page, content);
+    await expect(savedCard).toHaveCount(1);
     await expect(savedCard.getByText(content, { exact: true })).toBeVisible({ timeout: 15_000 });
     await page.reload();
-    const reloadedSavedCard = page.locator("div.bg-card").filter({ hasText: content }).first();
-    await expect(reloadedSavedCard.getByText(content, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    const reloadedSavedCard = activeCommunityPosts(page, content);
+    await expect(reloadedSavedCard).toHaveCount(1);
+    await expect(reloadedSavedCard.getByText(content, { exact: true })).toBeVisible({ timeout: 15_000 });
 
     const profileRoute = routeCoverage.routes.find((route) => route.route === "/communities/profile/[userId]");
     expect(profileRoute?.coverage).toBe("isolated-detail");
@@ -171,11 +177,7 @@ test("seeded community post, comment, and save persist across detail reloads", a
     // Profile feeds intentionally exclude group-scoped posts; verify this post
     // remains in the community/detail surfaces instead of leaking into profile.
     await expect(page.getByText(content, { exact: true })).toHaveCount(0);
-  } finally {
-    // Preserve the original failure if Playwright already closed the page after
-    // a timeout; otherwise require cleanup to succeed.
-    if (!page.isClosed()) await removeSyntheticPost(page, content);
-  }
+  }, () => removeOwnedSyntheticPosts(request, [content], STUDENT_EMAIL));
 });
 
 test("community post draft survives a failed request and retry persists once (PROD-95)", async ({ page, request }) => {
@@ -197,7 +199,7 @@ test("community post draft survives a failed request and retry persists once (PR
     return response.json();
   }
 
-  const main = page.getByRole("main").last();
+  const main = page.getByRole("main");
   await main.locator("div.cursor-text").filter({ hasText: "Share your experience, results, or advice" }).click();
   const editor = main.locator(".ProseMirror").first();
   await expect(editor).toBeVisible();
@@ -230,7 +232,7 @@ test("community post draft survives a failed request and retry persists once (PR
     expect(beforeReload).toHaveLength(1);
     await page.reload();
     await expect.poll(savedRows).toEqual(beforeReload);
-    const cards = page.getByRole("main").locator('[data-slot="card"]:visible').filter({ has: page.locator(".community-prose").filter({ hasText: content }) });
+    const cards = activeCommunityPosts(page, content);
     await expect(cards).toHaveCount(1);
     // Model a hidden streaming replica deterministically. This does not assert
     // the historical CI incident's exact cause, which has not been reproduced.
@@ -270,4 +272,49 @@ test("community post draft survives a failed request and retry persists once (PR
       expect(await savedRows()).toEqual([]);
     }
   });
+});
+
+
+test("community post locators reject hidden copies and expose visible duplicates (PROD-174)", async ({ page }) => {
+  await page.setContent(`<aside><div class="bg-card" data-slot="card"><div class="community-prose">Unique synthetic post</div></div></aside>
+    <main hidden><div class="bg-card" data-slot="card"><div class="community-prose">Unique synthetic post</div></div></main>
+    <main><div hidden><div class="bg-card" data-slot="card"><div class="community-prose">Unique synthetic post</div></div></div>
+    <div class="bg-card" data-slot="card" data-active><div class="community-prose">Unique synthetic post</div></div></main>`);
+  const cards = activeCommunityPosts(page, 'Unique synthetic post');
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toHaveAttribute('data-active', '');
+  await page.locator('[data-active]').evaluate(card => {
+    const otherMain = document.createElement('main'); otherMain.append(card.cloneNode(true)); document.body.append(otherMain);
+  });
+  await expect(cards).toHaveCount(2);
+  await page.locator('main').last().evaluate(root => { (root as HTMLElement).hidden = true; });
+  await expect(cards).toHaveCount(1);
+});
+
+
+test("community fixture cleanup refuses remote targets and retains owner scope (PROD-174)", async () => {
+  const originalApi = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const calls: string[] = [];
+  const fakeRequest = {
+    post: async () => ({ ok: () => true, json: async () => ({ user: { id: 'synthetic-owner' }, access_token: 'synthetic-token' }) }),
+    delete: async (url: string) => { calls.push(url); return { ok: () => calls.length !== 1 }; },
+    get: async () => ({ ok: () => true, json: async () => [] }),
+  } as unknown as import('@playwright/test').APIRequestContext;
+  try {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://remote.example';
+    await expect(removeOwnedSyntheticPosts(fakeRequest, ['Synthetic nonce1'])).rejects.toThrow('loopback');
+    expect(calls).toHaveLength(0);
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:55431';
+    await expect(removeOwnedSyntheticPosts(fakeRequest, [''])).rejects.toThrow('literal and nonempty');
+    await expect(removeOwnedSyntheticPosts(fakeRequest, ['unsafe*'])).rejects.toThrow('literal and nonempty');
+    await expect(removeOwnedSyntheticPosts(fakeRequest, ['Synthetic nonce1', 'Synthetic nonce2'])).rejects.toThrow('Community fixture cleanup failed');
+    expect(calls).toHaveLength(2);
+    for (const url of calls) expect(new URL(url).searchParams.get('user_id')).toBe('eq.synthetic-owner');
+    expect(new URL(calls[1]).searchParams.get('content')).toBe('like.*Synthetic nonce2*');
+    const retainedRow = { ...fakeRequest, delete: async () => ({ ok: () => true }), get: async () => ({ ok: () => true, json: async () => [{ id: 'still-present' }] }) } as unknown as import('@playwright/test').APIRequestContext;
+    await expect(removeOwnedSyntheticPosts(retainedRow, ['Synthetic nonce3'])).rejects.toThrow('Community fixture cleanup failed');
+  } finally {
+    if (originalApi === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = originalApi;
+  }
 });
