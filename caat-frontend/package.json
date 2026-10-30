@@ -9,7 +9,7 @@
     "dev": "NODE_PATH=$PWD/node_modules next dev",
     "build": "NODE_PATH=$PWD/node_modules next build",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run tests/unit",
     "test:unit": "vitest run tests/unit",
