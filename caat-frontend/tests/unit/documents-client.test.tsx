@@ -2,7 +2,7 @@
 import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocumentRow } from "@/app/(main)/documents/api";
-import { button, click, deferred, flush, hasText, mountComponent, queryButton, unmountAll } from "./dom-helpers";
+import { button, change, click, deferred, flush, hasText, mountComponent, queryButton, unmountAll } from "./dom-helpers";
 
 const io = vi.hoisted(() => ({
   fetchDocuments: vi.fn(),
@@ -51,7 +51,7 @@ function doc(id: string, name: string, patch: Partial<DocumentRow> = {}): Docume
     status: "pending_review",
     mime_type: "application/pdf",
     file_size: 2048,
-    uploaded_at: "2026-10-01T00:00:00.000Z",
+    uploaded_at: id === "doc-new" ? "2026-10-02T00:00:00.000Z" : "2026-10-01T00:00:00.000Z",
     review_notes: null,
     created_at: "2026-10-01T00:00:00.000Z",
     updated_at: "2026-10-01T00:00:00.000Z",
@@ -446,5 +446,43 @@ describe("document usage refresh reliability (PROD-166)", () => {
     expect(signals[1]?.aborted).toBe(false);
     unmountAll();
     expect(signals[1]?.aborted).toBe(true);
+  });
+});
+
+
+describe("document workspace", () => {
+  const search = () => document.querySelector('input[aria-label="Search documents"]') as HTMLInputElement;
+  const status = () => document.querySelector('select[aria-label="Filter by review status"]') as HTMLSelectElement;
+  const sort = () => document.querySelector('select[aria-label="Sort documents"]') as HTMLSelectElement;
+  it("combines filename, category and status and distinguishes no matches", async () => {
+    await mount([transcript(), passport(), doc('fix', 'updated transcript.pdf', { status: 'resubmit' })]);
+    await change(search(), ' transcript ');
+    expect(fileNames()).toHaveLength(2);
+    await change(status(), 'resubmit'); expect(fileNames()).toEqual(['updated transcript.pdf']);
+    await click(button('Passport & ID')); expect(fileNames()).toEqual([]);
+    expect(hasText('No documents match your search and filters.')).toBe(true);
+    expect(queryButton(/Upload your first document/)).toBeNull();
+    await click(button('Reset filters')); expect(fileNames()).toHaveLength(3);
+  });
+  it("sorts and returns to page one when the search changes", async () => {
+    const rows = Array.from({ length: 10 }, (_, i) => doc(`doc-${i}`, `File ${i}.pdf`, { uploaded_at: `2026-10-${String(i + 1).padStart(2,'0')}T00:00:00Z` }));
+    await mount(rows); expect(fileNames()[0]).toBe('File 9.pdf');
+    await click(button('Next page')); expect(fileNames()).toHaveLength(2);
+    await change(search(), 'File 9'); expect(fileNames()).toEqual(['File 9.pdf']);
+    await click(button('Reset filters')); await change(sort(), 'oldest'); expect(fileNames()[0]).toBe('File 0.pdf');
+    await change(sort(), 'name'); expect(fileNames()[0]).toBe('File 0.pdf');
+  });
+  it("does not publish zero review counts or allow creation before the initial read settles", async () => {
+    const read = deferred<DocumentRow[]>(); io.fetchDocuments.mockReturnValueOnce(read.promise);
+    await mount(null); expect(button(/Upload New/).disabled).toBe(true);
+    expect(hasText('Verified')).toBe(false);
+    await act(async () => read.resolve([transcript()])); await flush();
+    expect(button(/Upload New/).disabled).toBe(false); expect(fileNames()).toEqual(['transcript.pdf']);
+  });
+  it("keeps an auto-opened school upload draft but blocks submission during loading", async () => {
+    io.params = new URLSearchParams('school=7');
+    const read = deferred<DocumentRow[]>(); io.fetchDocuments.mockReturnValueOnce(read.promise);
+    await mount(null); await chooseFile(pdf()); expect(button('Upload').disabled).toBe(true);
+    await act(async () => read.resolve([transcript()])); await flush(); expect(button('Upload').disabled).toBe(false);
   });
 });
