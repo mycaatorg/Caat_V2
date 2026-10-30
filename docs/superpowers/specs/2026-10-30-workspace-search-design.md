@@ -1,0 +1,11 @@
+# Workspace search (PROD-224)
+
+Students need one place to find their own applications, uploaded documents, essay drafts and resumes. Existing screens remain the editing destinations. This is a title/filename finder, not AI advice or full-text content indexing.
+
+Use existing Next.js, React, Supabase and CAAT UI. No schema, dependencies or external search service. A dedicated /workspace/search page is reachable from sidebar and shared PageHeader. Client fetches only owned metadata on entry/refresh, with complete stable pagination across all four sources; any source failure replaces the result area with an honest retry state. No essay body, document storage path, signed URL or resume content enters the index. Clear state on unmount; no browser persistence. Auth/RLS plus explicit owner predicates every page.
+
+Search names, filenames and draft labels, case-insensitive trimmed text. No query in URL or external telemetry. Show initial scope guidance until two characters, grouped type counts and type filters, deterministic results and20-per-page pagination. Visible query label, result announcements, native links/buttons, keyboard and phone access; no global keyboard shortcut that could interfere with editors. Preserve existing burgundy/white type system, one prominent search field, quiet grouped list and type badges, no decorative dashboard metrics.
+
+Results link to exact application id, document id, essay prompt+draft ids, and resume id. Targeted reads remain owner-bound. Missing/foreign/deleted writing must show recovery rather than another draft or creating a new resume. Document landing shows only selected document with a clear reset. Draft/resume loading preserves existing save queue and editor switching behavior. Targeted empty resume does not auto-seed or write content.
+
+Validation covers metadata exclusion, owner filters, short-page completeness, later read failure, literal punctuation matching, sorting/pagination, loading/retry/stale response, exact second draft/resume and missing target recovery, navigation, phones and authenticated owner isolation. Human/AT pilot separate. Actual Claude and independent review, then hosted gates and production verification before Done.
