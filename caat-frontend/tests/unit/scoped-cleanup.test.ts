@@ -21,3 +21,27 @@ it("finishes successfully when all scoped cleanup actions succeed", async () => 
   await expect(runScopedCleanup([async () => { deleted.push(1); }, async () => { deleted.push(2); }])).resolves.toBeUndefined();
   expect(deleted).toEqual([1, 2]);
 });
+
+import { withScopedCleanup } from '../e2e/scoped-cleanup';
+
+it('preserves the journey failure and cleanup failure together', async () => {
+  const original = new Error('original persistence regression');
+  const cleanup = new Error('cleanup gateway unavailable');
+  const result = await withScopedCleanup(async () => { throw original; }, async () => { throw cleanup; }).catch(error => error);
+  expect(result).toBeInstanceOf(AggregateError);
+  expect(result.errors).toEqual([original, cleanup]);
+  expect(result.cause).toBe(original);
+});
+
+it('still reports a journey failure after successful cleanup', async () => {
+  const original = new Error('original regression');
+  let cleaned = false;
+  await expect(withScopedCleanup(async () => { throw original; }, async () => { cleaned = true; })).rejects.toBe(original);
+  expect(cleaned).toBe(true);
+});
+
+it('fails an otherwise successful journey when cleanup fails', async () => {
+  const cleanup = new Error('cleanup failed');
+  await expect(withScopedCleanup(async () => 42, async () => { throw cleanup; })).rejects.toBe(cleanup);
+  await expect(withScopedCleanup(async () => 42, async () => {})).resolves.toBe(42);
+});
