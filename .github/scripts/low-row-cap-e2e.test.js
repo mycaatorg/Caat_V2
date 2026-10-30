@@ -1,8 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { mkdtemp, readFile, rm } = require('node:fs/promises');
+const { mkdtemp, readFile, writeFile, rm } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
-const { join } = require('node:path');
+const { join, resolve } = require('node:path');
 
 const env = {
   CAAT_ISOLATED_E2E: '1', PLAYWRIGHT_BASE_URL: 'http://127.0.0.1:3100',
@@ -145,6 +145,22 @@ test('abort waits for browser shutdown before restoring and cannot report succes
   assert.equal(db.current(), '');
 });
 
+for (const stage of ['restore', 'verify']) {
+  test(`abort during ${stage} completes restoration but rejects the run`, async () => {
+    const { runLowCap } = await moduleUnderTest(); const db = database('725');
+    const controller = new AbortController(); let finished = false;
+    await assert.rejects(runLowCap({ env, status, signal: controller.signal,
+      sql: async query => {
+        const result = await db.sql(query);
+        if (finished && (stage === 'restore' ? query.startsWith('ALTER') : query.startsWith('SELECT'))) controller.abort();
+        return result;
+      }, runBrowser: async () => { finished = true; },
+    }), /abort|interrupt/i);
+    assert.equal(db.current(), '725');
+    assert.ok(db.statements.at(-1).startsWith('SELECT'));
+  });
+}
+
 test('psql receives credentials only via private environment, not arguments or errors', async () => {
   const { createSql } = await moduleUnderTest(); let seen;
   const sql = createSql(status, (command, args, options) => { seen = { command, args, options }; return '725\n'; });
@@ -167,7 +183,7 @@ test('real browser child exit codes and launch errors remain failures', async ()
 test('real child cancellation also stops a stubborn grandchild before resolving', { timeout: 10_000 }, async () => {
   const { runChild } = await moduleUnderTest(); const dir = await mkdtemp(join(tmpdir(), 'caat-cap-process-'));
   const heartbeat = join(dir, 'heartbeat'); const controller = new AbortController();
-  const child = `process.on('SIGTERM',()=>{});const fs=require('node:fs');setInterval(()=>fs.appendFileSync(${JSON.stringify(heartbeat)},'x'),20);`;
+  const child = `process.on('SIGTERM',()=>{});process.on('SIGINT',()=>{});const fs=require('node:fs');setInterval(()=>fs.appendFileSync(${JSON.stringify(heartbeat)},'x'),20);`;
   const parent = `const {spawn}=require('node:child_process');spawn(process.execPath,['-e',${JSON.stringify(child)}],{stdio:'ignore'});setInterval(()=>{},1000);`;
   try {
     const result = runChild(process.execPath, ['-e', parent], { env: process.env, signal: controller.signal, killGraceMs: 100 });
@@ -180,4 +196,60 @@ test('real child cancellation also stops a stubborn grandchild before resolving'
     await new Promise(r => setTimeout(r, 150));
     assert.equal((await readFile(heartbeat)).length, size, 'grandchild must not remain running');
   } finally { controller.abort(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test('actual Playwright interruption tears down its detached webServer', { timeout: 15_000 }, async t => {
+  const cli = resolve(__dirname, '../../caat-frontend/node_modules/@playwright/test/cli.js');
+  // The discovery job has no frontend dependencies yet; the browser job reruns these tests after npm ci.
+  if (!require('node:fs').existsSync(cli)) return t.skip('Playwright integration runs after frontend dependency installation');
+  const { runChild } = await moduleUnderTest(); const dir = await mkdtemp(join(tmpdir(), 'caat-cap-playwright-'));
+  const heartbeat = join(dir, 'heartbeat'); const pidFile = join(dir, 'server-pid');
+  const controller = new AbortController();
+  await writeFile(join(dir, 'server.cjs'), `const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(pidFile)},String(process.pid));console.log('READY');setInterval(()=>fs.appendFileSync(${JSON.stringify(heartbeat)},'x'),20);`);
+  await writeFile(join(dir, 'wait.spec.cjs'), `const {test}=require(${JSON.stringify(resolve(__dirname, '../../caat-frontend/node_modules/@playwright/test'))});test('wait',async()=>{await new Promise(r=>setTimeout(r,60000));});`);
+  await writeFile(join(dir, 'playwright.config.cjs'), `module.exports={testDir:${JSON.stringify(dir)},testMatch:'wait.spec.cjs',reporter:'line',webServer:{command:${JSON.stringify(`${process.execPath} ${join(dir, 'server.cjs')}`)},wait:{stdout:/READY/},timeout:10000}};`);
+  try {
+    const result = runChild(process.execPath, [cli, 'test', '--config', join(dir, 'playwright.config.cjs')], { cwd: dir, env: process.env, signal: controller.signal, killGraceMs: 2000 });
+    const rejected = assert.rejects(result, /interrupt|abort/i);
+    for (let i = 0; i < 200; i++) { if (await readFile(heartbeat).catch(() => null)) break; await new Promise(r => setTimeout(r, 25)); }
+    assert.ok((await readFile(heartbeat)).length);
+    controller.abort(); await rejected;
+    const size = (await readFile(heartbeat)).length; await new Promise(r => setTimeout(r, 150));
+    assert.equal((await readFile(heartbeat)).length, size, 'detached webServer must stop before restoration');
+  } finally {
+    controller.abort();
+    const pid = Number(await readFile(pidFile, 'utf8').catch(() => ''));
+    if (pid > 1) { try { process.kill(pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('owned server is stopped even when test and server ignore graceful interruption', { timeout: 10_000 }, async () => {
+  const { runBrowserPhase } = await moduleUnderTest(); const dir = await mkdtemp(join(tmpdir(), 'caat-cap-owned-'));
+  const heartbeat = join(dir, 'heartbeat'); const started = join(dir, 'tests-started'); const controller = new AbortController();
+  const probe = require('node:net').createServer();
+  await new Promise(r => probe.listen(0, '127.0.0.1', r)); const port = probe.address().port; await new Promise(r => probe.close(r));
+  const serverCode = `process.on('SIGINT',()=>{});process.on('SIGTERM',()=>{});require('node:http').createServer((q,r)=>r.end('ready')).listen(${port},'127.0.0.1');setInterval(()=>require('node:fs').appendFileSync(${JSON.stringify(heartbeat)},'x'),20);`;
+  try {
+    const result = runBrowserPhase({ env: process.env, signal: controller.signal, url: `http://127.0.0.1:${port}`,
+      serverArgs: ['-e', serverCode], testArgs: ['-e', `process.on('SIGINT',()=>{});process.on('SIGTERM',()=>{});require('node:fs').writeFileSync(${JSON.stringify(started)},'ready');setInterval(()=>{},1000);`], killGraceMs: 100 });
+    const rejected = assert.rejects(result, /abort|interrupt/i);
+    for (let i = 0; i < 100; i++) { if (await readFile(started).catch(() => null)) break; await new Promise(r => setTimeout(r, 20)); }
+    assert.equal(await readFile(started, 'utf8'), 'ready');
+    assert.ok((await readFile(heartbeat)).length); controller.abort(); await rejected;
+    const size = (await readFile(heartbeat)).length; await new Promise(r => setTimeout(r, 150));
+    assert.equal((await readFile(heartbeat)).length, size);
+    await assert.rejects(fetch(`http://127.0.0.1:${port}`));
+  } finally { controller.abort(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test('browser phase refuses an occupied app port without disturbing its server', async () => {
+  const { runBrowserPhase } = await moduleUnderTest();
+  const occupied = require('node:http').createServer((q, r) => r.end('existing server'));
+  await new Promise(r => occupied.listen(0, '127.0.0.1', r));
+  const url = `http://127.0.0.1:${occupied.address().port}`;
+  try {
+    await assert.rejects(runBrowserPhase({ env: process.env, url, serverArgs: ['-e', 'process.exit(9)'], testArgs: ['-e', 'process.exit(9)'] }), /occupied/);
+    assert.equal(await (await fetch(url)).text(), 'existing server');
+  } finally { await new Promise(r => occupied.close(r)); }
 });

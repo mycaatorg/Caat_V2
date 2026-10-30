@@ -14,10 +14,6 @@ export default defineConfig({
     testMatch: /staging-journeys\.spec\.ts/,
     grep: /\(PROD-(162|207|209)\)/,
   }],
-  webServer: {
-    command: 'npm run start -- --hostname 127.0.0.1 --port 3100',
-    url: 'http://127.0.0.1:3100',
-    reuseExistingServer: false,
-    timeout: 60_000,
-  },
+  // The cap runner owns this server so forced test termination cannot orphan it.
+  webServer: undefined,
 });

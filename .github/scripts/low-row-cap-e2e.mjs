@@ -2,6 +2,8 @@ import { execFileSync, spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { createServer } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { parseStatusEnv } from './bootstrap-local-supabase.mjs';
 import safety from './assert-isolated-e2e.js';
 
@@ -84,6 +86,7 @@ export async function runLowCap({ env, status, sql, runBrowser, signal }) {
       if (await sql(readOverride) !== previous) throw Error('Row-cap restoration verification failed.');
     } catch (error) { failures.push(Error(`Row-cap restoration failed: ${error.message}`)); }
   }
+  if (signal?.aborted) failures.push(Error('Low-row-cap run interrupted after restoration.'));
   if (failures.length) throw new AggregateError(failures, failures.map(e => e.message).join('; '));
 }
 
@@ -98,7 +101,8 @@ export function runChild(command, args, { env, cwd, signal, killGraceMs = 5000 }
     };
     const abort = () => {
       if (stopping) return;
-      killGroup('SIGTERM');
+      // Playwright handles SIGINT for fixture/trace teardown, but not SIGTERM.
+      killGroup('SIGINT');
       // Keep the grace timer even if the parent exits: descendants may survive it.
       stopping = new Promise((done, fail) => setTimeout(() => {
         try { killGroup('SIGKILL'); done(); } catch (error) { fail(error); }
@@ -113,12 +117,74 @@ export function runChild(command, args, { env, cwd, signal, killGraceMs = 5000 }
         if (stopping) await stopping;
         // A crashed parent must not leave a server behind while we restore SQL.
         else killGroup('SIGKILL');
-        if (signal?.aborted) reject(Error('Browser run interrupted; process group stopped.'));
+        if (signal?.aborted) reject(new DOMException('Browser run interrupted; process group stopped.', 'AbortError'));
         else if (code !== 0) reject(Error(`Browser run failed (${childSignal || code}).`));
         else resolveRun();
       } catch { reject(Error('Browser process-group cleanup failed.')); }
     });
   });
+}
+
+async function ensurePortFree(url) {
+  const target = parsedUrl(url, 'App URL');
+  if (target.protocol !== 'http:' || !['localhost', '127.0.0.1'].includes(target.hostname) || !target.port) {
+    throw Error('App server must use an explicit HTTP loopback port.');
+  }
+  const probe = createServer();
+  await new Promise((done, fail) => {
+    probe.once('error', () => fail(Error('App test port is already occupied or unavailable.')));
+    probe.listen(Number(target.port), '127.0.0.1', () => probe.close(done));
+  });
+}
+
+async function waitForServer(url, signal) {
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    signal.throwIfAborted();
+    try {
+      const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.any([signal, AbortSignal.timeout(1000)]) });
+      await response.body?.cancel();
+      if (response.status >= 200 && response.status < 400) return;
+    } catch { signal.throwIfAborted(); }
+    await delay(100, undefined, { signal });
+  }
+  throw Error('Owned app server did not become ready within 60 seconds.');
+}
+
+// Own the server separately: Playwright's webServer uses another detached group,
+// which could survive forced termination of the test runner.
+export async function runBrowserPhase({ env, signal, url = env.PLAYWRIGHT_BASE_URL, cwd = frontend, killGraceMs = 5000,
+  serverArgs = [resolve(frontend, 'node_modules/next/dist/bin/next'), 'start', '--hostname', '127.0.0.1', '--port', '3100'],
+  testArgs = [resolve(frontend, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.low-cap.config.ts'],
+}) {
+  signal?.throwIfAborted();
+  await ensurePortFree(url);
+  signal?.throwIfAborted();
+  const lifetime = new AbortController();
+  const abort = () => lifetime.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  const options = { env, cwd, signal: lifetime.signal, killGraceMs };
+  const server = runChild(process.execPath, serverArgs, options);
+  const unexpectedExit = server.then(() => { throw Error('Owned app server exited before testing finished.'); });
+  let tests;
+  const failures = [];
+  try {
+    await Promise.race([waitForServer(url, lifetime.signal), unexpectedExit]);
+    signal?.throwIfAborted();
+    tests = runChild(process.execPath, testArgs, options);
+    await Promise.race([tests, unexpectedExit]);
+  } catch (error) { failures.push(error); }
+  finally {
+    abort();
+    // Await both groups, including forced shutdown, before allowing SQL restore.
+    const results = await Promise.allSettled([server, tests]);
+    for (const result of results) {
+      if (result.status === 'rejected' && result.reason.name !== 'AbortError' && !failures.includes(result.reason)) failures.push(result.reason);
+    }
+    signal?.removeEventListener('abort', abort);
+  }
+  if (signal?.aborted) failures.push(Error('Browser phase interrupted; owned processes stopped.'));
+  if (failures.length) throw new AggregateError(failures, failures.map(e => e.message).join('; '));
 }
 
 async function main() {
@@ -127,15 +193,14 @@ async function main() {
   validateLowCap(process.env, status);
   // A missing build must fail instead of silently rebuilding with different settings.
   await readFile(resolve(frontend, '.next/BUILD_ID'), 'utf8');
+  await ensurePortFree(process.env.PLAYWRIGHT_BASE_URL);
   const controller = new AbortController();
   const interrupt = () => controller.abort();
   process.on('SIGINT', interrupt); process.on('SIGTERM', interrupt);
   try {
     console.log('Running three isolated browser journeys under a real 50-row cap.');
     await runLowCap({ env: process.env, status, signal: controller.signal, sql: createSql(status),
-      runBrowser: (env, signal) => runChild(process.execPath,
-        [resolve(frontend, 'node_modules/@playwright/test/cli.js'), 'test', '--config=playwright.low-cap.config.ts'],
-        { cwd: frontend, env, signal }),
+      runBrowser: (env, signal) => runBrowserPhase({ env, signal }),
     });
     console.log('Low-row-cap journeys passed; prior database-role override restored and verified.');
   } finally { process.off('SIGINT', interrupt); process.off('SIGTERM', interrupt); }
