@@ -74,7 +74,7 @@ export function createMockSupabase(opts: {
 
   const rpc = vi.fn((name: string, args: Record<string, unknown>) => {
     const result = Promise.resolve(opts.rpc ? opts.rpc(name, args) : { data: [], error: null });
-    return Object.assign(result, { abortSignal: (_signal: AbortSignal) => result });
+    return Object.assign(result, { abortSignal: () => result });
   });
 
   const sessionUser = opts.sessionUser === undefined ? opts.user ?? null : opts.sessionUser;

@@ -3250,3 +3250,87 @@ test('writing desk organises complete owned drafts by university and resumes exa
     ]);
   });
 });
+
+test('experience library finds complete owned work and preserves edit/delete protections (PROD-227)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  page.setDefaultTimeout(15_000);
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, 'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  async function session(email: string) {
+    const r = await request.post(`${api}/auth/v1/token?grant_type=password`, { headers: { apikey: key }, data: { email, password: process.env.E2E_TEST_PASSWORD } });
+    expect(r.ok()).toBe(true); const data = await r.json();
+    return { id: data.user.id as string, headers: { apikey: key, Authorization: `Bearer ${data.access_token}`, Prefer: 'return=representation' } };
+  }
+  const student = await session(STUDENT_EMAIL), peer = await session('e2e.peer@caat.local.test');
+  const title = marker(`Library-workspace-${testInfo.project.name}`), own = `user_id=eq.${student.id}`;
+  const ids: string[] = []; let linkId: string | undefined, addedApplication: string | undefined;
+  const targetTitle = `${title}-000`, createdTitle = `${title}-Created`, renamedTitle = `${title}-Edited`;
+  async function create(table: string, data: unknown, owner = student): Promise<{ id: string }> {
+    const r = await request.post(`${api}/rest/v1/${table}`, { headers: owner.headers, data }); expect(r.ok(), `create ${table}`).toBe(true); return (await r.json())[0];
+  }
+  async function remove(table: string, query: string, owner = student) {
+    expect((await request.delete(`${api}/rest/v1/${table}?${query}`, { headers: owner.headers })).ok()).toBe(true);
+  }
+  const titleScope = encodeURIComponent(`${title}*`), itemRoutes = '**/rest/v1/evidence_items?*';
+  await withScopedCleanup(async () => {
+    // Sequential authenticated inserts preserve column grants (no id/created_at override).
+    for (let i = 0; i < 51; i++) ids.push((await create('evidence_items', { user_id: student.id, kind: i % 2 ? 'award' : 'activity', title: `${title}-${String(i).padStart(3,'0')}`, organisation: 'Local club', role: i === 0 ? `${title} captain` : 'Member', description: i === 0 ? 'Library target mentoring' : 'Helped others' })).id);
+    await create('evidence_items', { user_id: peer.id, kind: 'experience', title: `${title}-Peer-private`, description: 'Peer only' }, peer);
+    const apps = await request.get(`${api}/rest/v1/user_school_applications?${own}&school_id=eq.${SCHOOL_ID}&select=id`, { headers: student.headers }); expect(apps.ok()).toBe(true);
+    const existing: { id: string }[] = await apps.json();
+    const app = existing[0] ?? await create('user_school_applications', { user_id: student.id, school_id: SCHOOL_ID, status: 'researching' });
+    if (!existing.length) addedApplication = app.id;
+    linkId = (await create('application_evidence_links', { user_id: student.id, application_id: app.id, evidence_item_id: ids[0], kind: 'item' })).id;
+    if (process.env.CAAT_EXPORT_TEST_ROW_CAP) {
+      const raw = await request.get(`${api}/rest/v1/evidence_items?${own}&title=like.${titleScope}&select=id&order=created_at.desc,id.asc&limit=200`, { headers: student.headers }); expect(raw.ok()).toBe(true);
+      const rows: { id: string }[] = await raw.json(); expect(rows).toHaveLength(50); expect(rows.map(row=>row.id)).not.toContain(ids[0]);
+      console.log('Verified real experience-library PostgREST row cap: 50');
+    }
+    await signInToIsolatedStudent(page); await page.goto('/workspace/library');
+    const main = page.getByRole('main'), library = main.getByRole('region', { name: 'Activities, awards and experience library', exact: true });
+    await expect(main.getByRole('heading', { name: 'Experience library', exact: true })).toBeVisible();
+    const search = library.getByLabel('Search library', { exact: true }); await search.fill(title);
+    const results = library.getByRole('status', { name: 'Library results', exact: true });
+    await expect(results).toContainText('51 matching items'); await expect(library.locator('[data-library-item]')).toHaveCount(12);
+    await library.getByRole('button', { name: 'Next library items', exact: true }).click();
+    await library.getByLabel('Library type', { exact: true }).selectOption('award'); await expect(results).toContainText('25 matching items');
+    await library.getByLabel('Application use', { exact: true }).selectOption('linked'); await expect(library.getByText('No library items match your search and filters.', { exact: true })).toBeVisible();
+    await library.getByRole('button', { name: 'Clear library filters', exact: true }).click(); await search.fill(title);
+    await library.getByLabel('Sort library', { exact: true }).selectOption('oldest'); await expect(library.locator('[data-library-item]').first()).toContainText(targetTitle);
+    await search.fill(`${title} captain`); await expect(library.locator('[data-library-item]')).toHaveCount(1);
+    await expect(library.getByRole('button', { name: `Delete ${targetTitle}`, exact: true })).toBeDisabled();
+    await expect(library.locator(`a[href="/applications/${app.id}"]`)).toBeVisible();
+    await expect(library.getByText(`${title}-Peer-private`, { exact: true })).toHaveCount(0);
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await testInfo.attach('experience-library', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    // Existing dialogs retain pointer/Escape focus, including Safari's non-focusing pointer clicks.
+    const add = library.getByRole('button', { name: 'Add library item', exact: true });
+    await page.evaluate(()=>(document.activeElement as HTMLElement|null)?.blur()); await add.click();
+    const dialog = page.getByRole('dialog', { name: 'Add library item', exact: true }); await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0); await expect(add).toBeFocused();
+    await library.getByRole('button', { name: 'Clear library filters', exact: true }).click(); await add.click();
+    await dialog.getByLabel('Title', { exact: true }).fill(createdTitle); await dialog.getByRole('combobox').selectOption('experience');
+    await dialog.getByLabel('Description', { exact: true }).fill('Created in the library workspace'); await dialog.getByRole('button', { name: 'Save item', exact: true }).click(); await expect(dialog).toHaveCount(0);
+    await search.fill(createdTitle); await expect(library.locator('[data-library-item]')).toHaveCount(1);
+    await library.getByRole('button', { name: `Edit ${createdTitle}`, exact: true }).click();
+    const edit = page.getByRole('dialog', { name: 'Edit library item', exact: true }); await edit.getByLabel('Title', { exact: true }).fill(renamedTitle);
+    await page.route(itemRoutes, route=>route.request().method()==='PATCH' ? route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'temporary save outage'})}) : route.continue());
+    await edit.getByRole('button', { name: 'Save item', exact: true }).click(); await expect(edit.getByRole('alert')).toBeVisible(); await expect(edit.getByLabel('Title', { exact: true })).toHaveValue(renamedTitle);
+    await page.unroute(itemRoutes); await edit.getByRole('button', { name: 'Save item', exact: true }).click(); await expect(edit).toHaveCount(0);
+    await expect(library).toBeFocused(); // The original opener disappeared from the active search.
+    await search.fill(renamedTitle); await page.reload(); await search.fill(renamedTitle); await expect(library.locator('[data-library-item]')).toHaveCount(1);
+    await library.getByRole('button', { name: `Delete ${renamedTitle}`, exact: true }).click(); await library.getByRole('button', { name: 'Confirm delete item', exact: true }).click();
+    await expect(results).toContainText('0 matching items'); await page.reload(); await search.fill(renamedTitle); await expect(results).toContainText('0 matching items');
+    await page.route('**/rest/v1/application_evidence_links?*', route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'temporary usage outage'})}));
+    await library.getByRole('button', { name: 'Refresh library', exact: true }).click(); await expect(library.getByRole('alert')).toContainText('Could not load your library'); await expect(add).toBeDisabled();
+    await page.unroute('**/rest/v1/application_evidence_links?*'); await library.getByRole('button', { name: 'Retry library', exact: true }).click(); await search.fill(targetTitle); await expect(library.locator('[data-library-item]')).toHaveCount(1);
+  }, async () => {
+    if (!page.isClosed()) { await page.unroute(itemRoutes); await page.unroute('**/rest/v1/application_evidence_links?*'); }
+    await runScopedCleanup([
+      async()=>{if(linkId)await remove('application_evidence_links',`${own}&id=eq.${linkId}`);},
+      ()=>remove('evidence_items',`${own}&title=like.${titleScope}`),
+      ()=>remove('evidence_items',`user_id=eq.${peer.id}&title=like.${titleScope}`,peer),
+      async()=>{if(addedApplication)await remove('user_school_applications',`${own}&id=eq.${addedApplication}`);},
+    ]);
+  });
+});

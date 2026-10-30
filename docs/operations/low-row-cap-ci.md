@@ -1,6 +1,6 @@
 # Low-row-cap completeness gate
 
-CI runs the ordinary production browser suite first, then runs six export/Today/calendar/Document Vault/workspace search and Writing desk completeness journeys against the same disposable Supabase stack and production build. The second phase starts its own local app server and temporarily limits PostgREST responses to50 rows. Each journey confirms the actual API cap before checking complete results and cleans up its own fixtures.
+CI runs the ordinary production browser suite first, then runs seven export/Today/calendar/Document Vault/workspace search/Writing desk/Experience library completeness journeys against the same disposable Supabase stack and production build. The second phase starts its own local app server and temporarily limits PostgREST responses to 50 rows. Each journey confirms the actual API cap before checking complete results and cleans up its own fixtures.
 
 Runner: `.github/scripts/low-row-cap-e2e.mjs <private-supabase-status-file>`. It requires the normal isolated E2E environment, matching loopback API/database test ports and an existing `.next/BUILD_ID`. It refuses remote databases and passes only public connection settings to Playwright. PostgreSQL credentials stay in the private child environment, never connection arguments or printed errors.
 
