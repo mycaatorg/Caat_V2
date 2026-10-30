@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
     // output, or blocking lint would choke on thousands of minified-vendor
     // findings that are not our source.
     "playwright-report/**",
+    "playwright-report-low-cap/**",
     "test-results/**",
     "coverage/**",
   ]),
