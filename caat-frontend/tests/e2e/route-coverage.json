@@ -311,6 +311,13 @@
       "kind": "static",
       "coverage": "authenticated-content",
       "expected": "Writing desk"
+    },
+    {
+      "route": "/workspace/library",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Experience library"
     }
   ],
   "writeJourneys": [
