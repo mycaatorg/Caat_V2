@@ -516,3 +516,11 @@ describe("linked library documents (PROD-78)", () => {
 });
 
 vi.mock("@/components/dashboard/api", () => ({ addTodo: vi.fn() }));
+
+it('retries a failed core preparation read without leaving the old error visible',async()=>{
+ io.fetchApplicationHub.mockRejectedValueOnce(new Error('Could not load application preparation. Try again.')).mockResolvedValueOnce(hub());
+ await mountComponent(<ApplicationHubClient applicationId="app-1"/>);await flush();
+ expect(hasText('Could not load application preparation. Try again.')).toBe(true);
+ await click(button('Retry application'));await flush();
+ expect(io.fetchApplicationHub).toHaveBeenCalledTimes(2);expect(hasText('Could not load application preparation. Try again.')).toBe(false);expect(document.querySelector('#hub-deadline')).not.toBeNull();
+});

@@ -62,7 +62,7 @@ function use(resolver: (ctx: QueryContext) => QueryResult, user: { id: string } 
 }
 
 function hubResolver(overrides: Partial<Record<string, QueryResult>> = {}) {
-  return (ctx: QueryContext): QueryResult => {
+  const resolve = (ctx: QueryContext): QueryResult => {
     if (overrides[ctx.table]) return overrides[ctx.table]!;
     switch (ctx.table) {
       case "user_school_applications":
@@ -101,6 +101,12 @@ function hubResolver(overrides: Partial<Record<string, QueryResult>> = {}) {
         return { data: [], error: null };
     }
   };
+  return (ctx: QueryContext): QueryResult => {
+    const result = resolve(ctx);
+    const range = ctx.calls.find(call => call.method === 'range')?.args as [number, number] | undefined;
+    if (range && ['essay_prompts','essay_drafts','documents'].includes(ctx.table) && Array.isArray(result.data)) return {...result, data:result.data.slice(range[0],range[1]+1)};
+    return result;
+  };
 }
 
 beforeEach(() => {
@@ -135,7 +141,7 @@ describe("fetchApplicationHub", () => {
 
   it("refuses to build a checklist when the prompt catalogue fails to load", async () => {
     use(hubResolver({ essay_prompts: { data: null, error: { message: "prompts down" } } }));
-    await expect(fetchApplicationHub("app-1")).rejects.toThrow("prompts down");
+    await expect(fetchApplicationHub("app-1")).rejects.toThrow("Could not load application preparation. Try again.");
   });
 
   it("surfaces a sanitized read failure", async () => {
@@ -563,4 +569,30 @@ describe("fetchApplicationHub: linked library documents (PROD-78)", () => {
     expect(withLink.readiness).toEqual(withoutLink.readiness);
     expect(withLink.readiness.keyDocsUploaded).toBe(false);
   });
+});
+
+describe('complete application preparation sources (PROD-230)',()=>{
+ it('reads every short page and preserves owner scope and stable catalogue ordering',async()=>{
+  const rows:Record<string,unknown[]>={
+   essay_prompts:Array.from({length:5},(_,i)=>({id:`p${i}`,slug:`prompt${i}`,title:`Prompt ${i}`,scope:'per_school',sort_order:1})),
+   essay_drafts:Array.from({length:5},(_,i)=>({id:`draft${i}`,prompt_id:`p${i}`,school_id:i===4?7:99,updated_at:null})),
+   documents:Array.from({length:5},(_,i)=>({id:`doc${i}`,file_name:`File ${i}`,category:'other',status:'pending',school_id:i===4?7:99})),
+  };
+  const fallback=hubResolver();
+  use(ctx=>{if(!rows[ctx.table])return fallback(ctx);const from=(ctx.calls.find(c=>c.method==='range')?.args[0] as number|undefined)??0;return{data:rows[ctx.table].slice(from,from+2),error:null};});
+  const hub=await fetchApplicationHub('app-1');
+  expect(hub.essaysForSchool).toHaveLength(5);expect(hub.essaysForSchool[4]).toMatchObject({promptId:'p4',status:'drafted'});
+  expect(hub.schoolDocuments).toEqual([{id:'doc4',fileName:'File 4',status:'pending'}]);expect(hub.readiness).toMatchObject({essayDrafted:true,keyDocsUploaded:true});
+  for(const table of Object.keys(rows)){
+   const queries=io.client.queries.filter(q=>q.table===table);expect(queries).toHaveLength(4);
+   for(const query of queries){expect(query.calls).toContainEqual({method:'order',args:['id']});if(table==='essay_prompts')expect(query.calls).toContainEqual({method:'order',args:['sort_order']});else expect(query.calls).toContainEqual({method:'eq',args:['user_id','student-1']});}
+  }
+ });
+ it.each(['essay_prompts','essay_drafts','documents'])('rejects a later %s page instead of building partial readiness',async(table)=>{
+  const fallback=hubResolver();use(ctx=>{if(ctx.table!==table)return fallback(ctx);const from=(ctx.calls.find(c=>c.method==='range')?.args[0] as number|undefined)??0;return from===0?{data:[{id:'first',prompt_id:'p-why',school_id:99}],error:null}:{data:null,error:{message:'secret backend error'}};});
+  await expect(fetchApplicationHub('app-1')).rejects.toThrow('Could not load application preparation. Try again.');
+ });
+ it.each(['profiles','essay_drafts','documents'])('rejects failed %s reads instead of substituting empty work',async(table)=>{
+  use(hubResolver({[table]:{data:null,error:{message:'secret backend error'}}}));await expect(fetchApplicationHub('app-1')).rejects.toThrow('Could not load application preparation. Try again.');
+ });
 });

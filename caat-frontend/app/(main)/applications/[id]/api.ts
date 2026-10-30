@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { sanitizeError } from "@/lib/safe-error";
+import { evidencePages } from "@/lib/evidence-pagination";
 import type { ApplicationRow, ApplicationStatus } from "@/types/applications";
 import type { ScholarshipRow } from "@/types/scholarships";
 import type { ProfileRow } from "@/types/profile";
@@ -236,15 +237,16 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
 
   // Parallel: profile, prompts (+scope), all essay drafts (+school_id), all
   // documents (+school_id), active scholarships recorded for this school.
-  const [profileRes, promptsRes, draftsRes, docsRes, schRes, coursesRes, savedSchRes, ticksRes, linksRes] = await Promise.all([
+  const preparationReadError = "Could not load application preparation. Try again.";
+  const [profileRes, promptsData, draftsData, docsData, schRes, coursesRes, savedSchRes, ticksRes, linksRes] = await Promise.all([
     supabase
       .from("profiles")
       .select("target_majors")
       .eq("id", user.id)
       .maybeSingle(),
-    supabase.from("essay_prompts").select("id, slug, title, scope, sort_order").order("sort_order"),
-    supabase.from("essay_drafts").select("prompt_id, school_id, updated_at").eq("user_id", user.id),
-    supabase.from("documents").select("id, file_name, category, status, school_id").eq("user_id", user.id),
+    evidencePages((from, to) => supabase.from("essay_prompts").select("id, slug, title, scope, sort_order").order("sort_order").order("id").range(from, to), preparationReadError),
+    evidencePages((from, to) => supabase.from("essay_drafts").select("prompt_id, school_id, updated_at").eq("user_id", user.id).order("id").range(from, to), preparationReadError),
+    evidencePages((from, to) => supabase.from("documents").select("id, file_name, category, status, school_id").eq("user_id", user.id).order("id").range(from, to), preparationReadError),
     fetchSchoolScholarships(schoolId, school?.name ?? null),
     readSavedCourses(user.id, schoolId).then(
       (courses) => ({ courses, unavailable: false }),
@@ -266,26 +268,25 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     ),
   ]);
 
-  // The prompt catalogue decides which drafts count for this school (a draft
-  // whose prompt is not in it is treated as a custom prompt), so a failed
-  // read must not silently become a wrong checklist.
-  if (promptsRes.error) throw new Error(sanitizeError(promptsRes.error));
+  // Core reads must never turn an unavailable source into missing preparation.
+  // Collection reads above reject partial pages; the profile is a single row.
+  if (profileRes.error) throw new Error(preparationReadError);
 
   const profile = (profileRes.data as Partial<ProfileRow> | null) ?? null;
   const targetMajor = profile?.target_majors?.[0] ?? null;
 
-  const prompts = (promptsRes.data ?? []) as {
+  const prompts = promptsData as {
     id: string;
     slug: string;
     title: string;
     scope: string | null;
   }[];
-  const drafts = (draftsRes.data ?? []) as {
+  const drafts = draftsData as {
     prompt_id: string;
     school_id: number | null;
     updated_at: string | null;
   }[];
-  const docRows = (docsRes.data ?? []) as {
+  const docRows = docsData as {
     id: string;
     file_name: string;
     category: string;
