@@ -311,6 +311,13 @@
       "kind": "static",
       "coverage": "authenticated-content",
       "expected": "Writing desk"
+    },
+    {
+      "route": "/workspace/library",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Experience library"
     }
   ],
   "writeJourneys": [
@@ -410,6 +417,14 @@
       "specs": [
         "tests/e2e/staging-journeys.spec.ts"
       ]
+    },
+    {
+      "id": "experience-library-workspace",
+      "coverage": "isolated-ci",
+      "specs": [
+        "tests/e2e/staging-journeys.spec.ts"
+      ],
+      "reason": "PROD-227 creates, edits with a failed-save retry, and deletes an owned library item through the workspace; verifies complete 51-item reads, type/use/sort/page controls, account privacy, linked-item deletion protection and recovery from usage-source failure. Actual low-row-cap gate exercises this flow separately; human usability testing remains separate."
     }
   ]
 }
