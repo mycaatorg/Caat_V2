@@ -3,6 +3,7 @@ import { sanitizeError } from "@/lib/safe-error";
 import { getClientUserId } from "@/lib/current-user";
 import type { ApplicationRow, ApplicationStatus } from "@/types/applications";
 import type { PreparationInputs } from "@/lib/preparation-checklist";
+import { evidencePages } from "@/lib/evidence-pagination";
 
 // C5: resolve the user id via local JWT claims (getClientUserId) instead of a
 // /auth/v1/user network call on every fetcher. Callers only use `.id`.
@@ -35,13 +36,17 @@ async function profileMajors(userId: string): Promise<string[]> {
 
 export async function fetchApplications(): Promise<ApplicationRow[]> {
   const user = await getUser();
-  const { data, error } = await supabase
+  return evidencePages<ApplicationRow>(async (from, to) => {
+    const { data, error } = await supabase
     .from("user_school_applications")
     .select("*, schools(id, name, country)")
     .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-  if (error) throw new Error(sanitizeError(error));
-  return (data ?? []) as unknown as ApplicationRow[];
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: true })
+    .range(from, to);
+    if (error) throw new Error(sanitizeError(error));
+    return { data: data as unknown as ApplicationRow[] | null, error: null };
+  }, "Could not load all applications.");
 }
 
 export async function fetchApplicationForSchool(
