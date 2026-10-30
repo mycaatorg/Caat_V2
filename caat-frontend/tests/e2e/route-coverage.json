@@ -304,6 +304,13 @@
       "kind": "static",
       "coverage": "authenticated-content",
       "expected": "Find your work"
+    },
+    {
+      "route": "/workspace/writing",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Writing desk"
     }
   ],
   "writeJourneys": [

@@ -63,6 +63,7 @@ const navGroups: { label: string | null; items: NavItem[] }[] = [
   {
     label: "Workspace",
     items: [
+      { title: "Writing desk", icon: BookOpen, url: "/workspace/writing" },
       { title: "Essays", icon: FileText, url: "/essays" },
       { title: "Documents", icon: FolderOpen, url: "/documents" },
       { title: "Resume builder", icon: FileUser, url: "/resume-builder" },
