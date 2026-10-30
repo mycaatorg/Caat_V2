@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toggleTodo } from "@/components/dashboard/api";
 import { dismissOnboarding } from "@/lib/onboarding";
-import { daysBetween, type NextStep, type TaskKind, type TodayTask } from "@/lib/today";
+import { TODAY_PAGE_SIZE, daysBetween, type NextStep, type TaskKind, type TodayTask } from "@/lib/today";
 import { TIME_ZONE_COOKIE, type RecentWork, type SavedPreview, type TodayTodo } from "@/lib/today-data";
 import { CUSTOM_SOURCE_PILL, type UnifiedDeadline } from "@/lib/unified-deadlines";
 
@@ -91,7 +91,7 @@ const RECENT_ICON: Record<RecentWork["kind"], typeof FileText> = {
 
 type FocusView = "attention" | "upcoming" | "recent" | "todos";
 type FocusState = { view: FocusView | null; page: number };
-const PAGE_SIZE = 10;
+const PAGE_SIZE = TODAY_PAGE_SIZE;
 const PREVIEW_LIMIT: Record<FocusView | "saved", number> = {
   attention: 3,
   upcoming: 4,
@@ -594,7 +594,7 @@ export function TodayView(props: TodayViewProps) {
                 No deadlines in the next 60 days. Add one from an application or a saved scholarship.
               </p>
             )}
-            <DeadlineCalendarDownload />
+            <div className="mt-3 flex flex-wrap items-center gap-4"><Link href="/workspace/planner" className="text-sm underline underline-offset-4">Open planning timeline</Link><DeadlineCalendarDownload /></div>
           </section>
         </div>
 

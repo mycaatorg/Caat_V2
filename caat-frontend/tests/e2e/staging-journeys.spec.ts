@@ -3457,3 +3457,53 @@ test('application hub includes every saved course and retries a late page failur
     ]);
   });
 });
+
+test('planning timeline searches complete owned dates and opens the exact task page (PROD-233)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  async function session(email:string){const r=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email,password:process.env.E2E_TEST_PASSWORD}});expect(r.ok()).toBe(true);const d=await r.json();return{id:d.user.id as string,headers:{apikey:key,Authorization:`Bearer ${d.access_token}`}};}
+  const owner=await session(STUDENT_EMAIL),peer=await session('e2e.peer@caat.local.test');
+  const title=marker(`Timeline-${testInfo.project.name}`);
+  const taskIds=Array.from({length:51},()=>crypto.randomUUID()).sort();
+  const past=crypto.randomUUID(),undated=crypto.randomUUID(),done=crypto.randomUUID(),award=crypto.randomUUID(),event=crypto.randomUUID(),privateTask=crypto.randomUUID();
+  async function insert(table:string,data:unknown,person=owner){const r=await request.post(`${api}/rest/v1/${table}`,{headers:person.headers,data});expect(r.ok(),`Create ${table}: ${r.ok()?'ok':await r.text()}`).toBe(true);}
+  await withScopedCleanup(async()=>{
+    await insert('user_todos',[
+      ...taskIds.map((id,i)=>({id,user_id:owner.id,text:`${title}-task-${String(i).padStart(3,'0')}`,due_date:'2099-12-01',done:false})),
+      {id:past,user_id:owner.id,text:`${title}-past`,due_date:'2000-01-01',done:false},
+      {id:undated,user_id:owner.id,text:`${title}-undated`,due_date:null,done:false},
+      {id:done,user_id:owner.id,text:`${title}-completed`,due_date:'2099-12-01',done:true},
+    ]);
+    await insert('user_todos',{id:privateTask,user_id:peer.id,text:`${title}-peer-private`,due_date:'2099-12-01'},peer);
+    await insert('user_scholarships',{id:award,user_id:owner.id,title:`${title}-award`,provider_name:'Isolated timeline provider',deadline_at:new Date(Date.now()+2*86400000).toISOString()});
+    await insert('calendar_events',{id:event,user_id:owner.id,title:`${title}-event`,event_date:'2099-12-02',time_start:'10:00',time_end:'11:00'});
+    if(process.env.CAAT_EXPORT_TEST_ROW_CAP){const r=await request.get(`${api}/rest/v1/user_todos?user_id=eq.${owner.id}&order=id&limit=200`,{headers:owner.headers});expect(r.ok()).toBe(true);expect((await r.json()).length).toBe(50);console.log('Verified real planning-timeline PostgREST row cap: 50');}
+    await signInToIsolatedStudent(page);
+    const main=page.getByRole('main');
+    await main.getByRole('link',{name:'Open planning timeline',exact:true}).click();
+    await expect(main.getByRole('heading',{name:'Planning timeline',exact:true,level:1})).toBeVisible();
+    const search=main.getByLabel('Search timeline',{exact:true}),source=main.getByLabel('Source',{exact:true}),range=main.getByLabel('Date range',{exact:true}),results=main.getByRole('status',{name:'Timeline results'});
+    await search.fill(title);await expect(results).toContainText('53 items');await expect(main.locator('[data-timeline-item]')).toHaveCount(20);
+    await main.getByRole('button',{name:'Next timeline page',exact:true}).click();await expect(results).toContainText('Page 2 of 3');
+    await main.getByRole('button',{name:'Next timeline page',exact:true}).click();await expect(main.locator('[data-timeline-item]')).toHaveCount(13);
+    await search.fill(`${title}-task-050`);await expect(results).toContainText('1 item');await main.getByRole('link',{name:new RegExp(`${title}-task-050`)}).click();
+    await expect(page.getByRole('checkbox',{name:`Mark "${title}-task-050" done`,exact:true})).toBeVisible();
+    await page.goto('/workspace/planner');await search.fill(title);await source.selectOption('custom');await range.selectOption('7');await expect(results).toContainText('1 item');await expect(main.getByRole('link',{name:new RegExp(`${title}-award`)})).toHaveAttribute('href','/scholarships?view=mine');
+    await source.selectOption('task');await range.selectOption('past');await expect(results).toContainText('1 item');await expect(main.getByRole('link',{name:new RegExp(`${title}-past`)})).toBeVisible();
+    await range.selectOption('all');await search.fill(`${title}-peer-private`);await expect(main.getByText('No dates match these filters',{exact:true})).toBeVisible();
+    await search.fill(`${title}-completed`);await expect(main.locator('[data-timeline-item]')).toHaveCount(0);
+    await source.selectOption('all');await search.fill(title);await expect(results).toContainText('53 items');
+    await page.route('**/rest/v1/calendar_events?*',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'timeline source outage'})}));
+    await main.getByRole('button',{name:'Refresh timeline',exact:true}).click();await expect(main.getByRole('alert')).toContainText('Could not load your planning timeline. Try again.');await expect(results).toHaveCount(0);await expect(main.locator('[data-timeline-item]')).toHaveCount(0);
+    await page.unroute('**/rest/v1/calendar_events?*');await main.getByRole('button',{name:'Retry timeline',exact:true}).click();await expect(results).toContainText('53 items');
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await testInfo.attach('planning-timeline',{body:await page.screenshot(),contentType:'image/png'});
+    await page.reload();await search.fill(`${title}-task-050`);await expect(results).toContainText('1 item');
+  },async()=>{await runScopedCleanup([
+    async()=>{if(!page.isClosed())await page.close();},
+    async()=>expect((await request.delete(`${api}/rest/v1/user_todos?user_id=eq.${owner.id}&id=in.(${[...taskIds,past,undated,done].join(',')})`,{headers:owner.headers})).ok()).toBe(true),
+    async()=>expect((await request.delete(`${api}/rest/v1/user_scholarships?user_id=eq.${owner.id}&id=eq.${award}`,{headers:owner.headers})).ok()).toBe(true),
+    async()=>expect((await request.delete(`${api}/rest/v1/calendar_events?user_id=eq.${owner.id}&id=eq.${event}`,{headers:owner.headers})).ok()).toBe(true),
+    async()=>expect((await request.delete(`${api}/rest/v1/user_todos?user_id=eq.${peer.id}&id=eq.${privateTask}`,{headers:peer.headers})).ok()).toBe(true),
+  ]);});
+});
