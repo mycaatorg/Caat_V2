@@ -4,6 +4,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import routeCoverage from "./route-coverage.json";
+import { withScopedCleanup } from "./scoped-cleanup";
 
 declare global {
   interface Window { __caatClipboardWrites?: string[] }
@@ -215,7 +216,7 @@ test("community post draft survives a failed request and retry persists once (PR
     }
     await route.continue();
   });
-  try {
+  await withScopedCleanup(async () => {
     await page.getByRole("button", { name: "Post", exact: true }).click();
     await expect.poll(() => failedRequests).toBe(1);
     await expect(page.locator("[data-sonner-toast]").filter({ hasText: /could not|failed|try again/i }).first()).toBeVisible();
@@ -254,14 +255,19 @@ test("community post draft survives a failed request and retry persists once (PR
     await page.locator('[data-retry-replica]').evaluateAll(nodes => nodes.forEach(node => node.remove()));
     await expect(cards).toHaveCount(1);
     await expect.poll(savedRows).toEqual(beforeReload);
-  } finally {
-    await page.unroute("**/communities/**");
-    if (!page.isClosed()) {
-      await page.locator('[data-retry-replica]').evaluateAll(nodes => nodes.forEach(node => node.remove())).catch(() => {});
-      await removeSyntheticPost(page, content).catch(() => {});
+    // Simulate an unavailable browser after persistence; API cleanup must still run.
+    await page.close();
+  }, async () => {
+    try {
+      if (!page.isClosed()) {
+        await page.unroute("**/communities/**").catch(() => {});
+        await page.locator('[data-retry-replica]').evaluateAll(nodes => nodes.forEach(node => node.remove())).catch(() => {});
+        await removeSyntheticPost(page, content).catch(() => {});
+      }
+    } finally {
+      // Browser cleanup must never prevent owner-scoped database cleanup.
+      expect((await request.delete(ownedUrl, { headers })).ok()).toBe(true);
+      expect(await savedRows()).toEqual([]);
     }
-    // Owner-scoped backstop also runs after a browser failure/closed page.
-    expect((await request.delete(ownedUrl, { headers })).ok()).toBe(true);
-    expect(await savedRows()).toEqual([]);
-  }
+  });
 });
