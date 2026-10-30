@@ -35,6 +35,7 @@ import { format } from "date-fns";
 import {
   fetchEssayPrompts,
   fetchDraftsForPrompt,
+  fetchDraftForPrompt,
   updateDraft,
   createDraft,
   deleteDraft,
@@ -73,6 +74,8 @@ export default function EssaysShell({
   const [confirmDeleteCustomId, setConfirmDeleteCustomId] = useState<string | null>(null);
 
   const searchParams = useSearchParams();
+  const requestedDraft = useRef(searchParams.get("draft"));
+  const [requestedDraftMissing, setRequestedDraftMissing] = useState(false);
   // ?prompt=<id> deep-links to a prompt (e.g. Today's "pick up where you left
   // off"); custom prompts resolve once the custom list loads.
   const urlPromptRaw = searchParams.get("prompt");
@@ -291,12 +294,19 @@ export default function EssaysShell({
 
     let cancelled = false;
     setDraftsLoading(true);
+    setRequestedDraftMissing(false);
+    const target = requestedDraft.current;
 
-    fetchDraftsForPrompt(selectedPromptId)
-      .then((list) => {
+    Promise.all([
+      fetchDraftsForPrompt(selectedPromptId),
+      target !== null && /^[0-9a-f-]{36}$/i.test(target) ? fetchDraftForPrompt(selectedPromptId, target) : Promise.resolve(null),
+    ])
+      .then(([list, exactDraft]) => {
         if (cancelled) return;
-        setDrafts(list);
-        const current = list.find((d) => d.is_current) ?? list[0];
+        requestedDraft.current = null;
+        setDrafts(exactDraft && !list.some(d => d.id === exactDraft.id) ? [exactDraft, ...list] : list);
+        const current = target !== null ? exactDraft : list.find((d) => d.is_current) ?? list[0];
+        setRequestedDraftMissing(target !== null && !exactDraft);
         setActiveDraft(current ?? null);
         setEssayContent(current?.content ?? "");
       })
@@ -748,7 +758,7 @@ export default function EssaysShell({
             <div>
               <p className="text-sm font-medium text-muted-foreground">No draft selected</p>
               <p className="mt-0.5 text-xs text-muted-foreground/70">
-                Create a draft first to start writing.
+                {requestedDraftMissing ? "The requested draft is unavailable. Choose an existing draft from the Drafts menu or create a new one." : "Create a draft first to start writing."}
               </p>
             </div>
             <Button

@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   deleteResume: vi.fn(),
   deleteSection: vi.fn(),
   toastError: vi.fn(),
+  params: new URLSearchParams(),
 }));
 
 vi.mock("@/components/resume-builder/api", () => ({
@@ -57,6 +58,7 @@ vi.mock("@dnd-kit/sortable", () => ({
   SortableContext: ({ children }: React.PropsWithChildren) => <>{children}</>,
   verticalListSortingStrategy: {}, sortableKeyboardCoordinates: vi.fn(), arrayMove: vi.fn(),
 }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => mocks.params }));
 vi.mock("sonner", () => ({ toast: { error: mocks.toastError } }));
 
 import ResumeBuilderShell from "@/components/resume-builder/ResumeBuilderShell";
@@ -119,6 +121,7 @@ function switchResume(id: string) {
 
 describe("ResumeBuilderShell autosave durability", () => {
   beforeEach(() => {
+    mocks.params = new URLSearchParams();
     vi.useFakeTimers();
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     mocks.loadOrCreateResumeState.mockReset().mockResolvedValue(resumeA);
@@ -138,6 +141,36 @@ describe("ResumeBuilderShell autosave durability", () => {
     act(() => { for (const root of roots.splice(0)) root.unmount(); });
     document.body.innerHTML = "";
     vi.useRealTimers();
+  });
+
+  it("opens the exact requested resume without creating or seeding another one", async () => {
+    const id = '22222222-2222-4222-8222-222222222222';
+    mocks.params.set('resume', id);
+    await mountShell();
+    expect(mocks.loadResumeById).toHaveBeenCalledWith(id);
+    expect(mocks.loadOrCreateResumeState).not.toHaveBeenCalled();
+    expect(editor().value).toBe('starting B');
+    await advanceAutosave();
+    expect(mocks.saveResumeState).not.toHaveBeenCalled();
+  });
+
+  it("does not replace a missing requested resume with the default editor", async () => {
+    mocks.params.set('resume', '22222222-2222-4222-8222-222222222222');
+    mocks.loadResumeById.mockResolvedValue(null);
+    await mountShell();
+    expect(mocks.loadOrCreateResumeState).not.toHaveBeenCalled();
+    expect(document.querySelector('textarea[aria-label="Resume content"]')).toBeNull();
+    expect(document.body.textContent).toContain('Retry');
+    expect(mocks.saveResumeState).not.toHaveBeenCalled();
+  });
+
+  it("keeps a targeted empty resume empty without a seed write", async () => {
+    mocks.params.set('resume', '22222222-2222-4222-8222-222222222222');
+    mocks.loadResumeById.mockResolvedValue({ ...resumeB, sections: [] });
+    await mountShell(); await advanceAutosave();
+    expect(mocks.loadResumeById).toHaveBeenCalled();
+    expect(mocks.saveResumeState).not.toHaveBeenCalled();
+    expect(mocks.createResume).not.toHaveBeenCalled();
   });
 
   it("autosaves the latest section payload after the debounce", async () => {
