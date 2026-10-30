@@ -223,13 +223,13 @@
 ------------------------------------------------------- */
 
 /* On screen the print container is invisible */
-[data-print-resume] {
+[data-print-resume], [data-print-application] {
   display: none;
 }
 
 @media print {
   /* Hide every direct child of body except the print portal */
-  body > *:not([data-print-resume]) {
+  body > *:not([data-print-resume]):not([data-print-application]) {
     display: none !important;
   }
 
@@ -325,4 +325,34 @@ html { scroll-behavior: smooth; }
   .community-prose ol { list-style: decimal; margin: 0 0 0.5rem 1.5rem; padding: 0; }
   .community-prose li { margin: 0.1em 0; }
   .community-prose a { color: #2563eb; text-decoration: underline; word-break: break-word; }
+}
+
+/* Application brief: the same document is used for preview and user-triggered print. */
+.application-brief-document { background:white; color:#171717; padding:2rem; font-size:0.875rem; line-height:1.5; overflow-wrap:anywhere; }
+.application-brief-document .brief-eyebrow { color:#9a1a27; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.12em; font-weight:600; }
+.application-brief-document h1 { font-family:var(--font-display),Georgia,serif; font-size:2rem; line-height:1.15; font-weight:700; margin:0.5rem 0; }
+.application-brief-document .brief-timestamp { color:#525252; font-size:0.75rem; margin-top:0.75rem; }
+.application-brief-document .brief-facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr)); gap:1rem; padding:1.25rem 0; border-block:1px solid #d4d4d4; margin-top:1.5rem; }
+.application-brief-document dt { color:#525252; font-size:0.75rem; }
+.application-brief-document dd { font-weight:600; margin-top:0.25rem; }
+.application-brief-document section { margin-top:1.75rem; }
+.application-brief-document h2 { font-size:1.1rem; font-weight:700; margin-bottom:0.5rem; break-after:avoid; }
+.application-brief-document .brief-checks { list-style:none; padding:0; margin-top:0.75rem; }
+.application-brief-document .brief-checks li { display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; padding:0.4rem 0; border-bottom:1px solid #e5e5e5; }
+.application-brief-document table { width:100%; border-collapse:collapse; table-layout:fixed; }
+.application-brief-document th, .application-brief-document td { text-align:left; vertical-align:top; padding:0.55rem 0.35rem; border-bottom:1px solid #d4d4d4; }
+.application-brief-document th { font-size:0.75rem; color:#525252; font-weight:600; }
+.application-brief-document th:first-child { width:48%; }
+.application-brief-document .brief-notes { white-space:pre-wrap; }
+.application-brief-document footer { margin-top:1.75rem; border-top:1px solid #d4d4d4; padding-top:1rem; color:#525252; font-size:0.75rem; }
+@media(max-width:480px) { .application-brief-document { padding:1rem; font-size:0.8rem; } .application-brief-document h1 { font-size:1.6rem; } }
+@media print {
+ @page caat-application-brief { size:A4 portrait; margin:16mm; }
+ [data-print-application] { display:block !important; page:caat-application-brief; }
+ [data-print-application] .application-brief-document { padding:0; font-size:10pt; line-height:1.45; }
+ [data-print-application] .application-brief-document h1 { font-size:24pt; }
+ [data-print-application] th, [data-print-application] td { padding:0.4rem 0.35rem; }
+ [data-print-application] .application-brief-document footer { margin-top:0.75rem; padding-top:0.5rem; }
+ [data-print-application] thead { display:table-header-group; }
+ [data-print-application] tr, [data-print-application] .brief-checks li { break-inside:avoid; }
 }

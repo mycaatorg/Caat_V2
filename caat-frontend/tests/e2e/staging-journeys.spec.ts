@@ -3152,6 +3152,46 @@ test('workspace search opens exact owned files and writing and recovers missing 
     await expect(hubDocuments).toHaveCount(0);
     await page.unroute('**/rest/v1/documents?*'); await main.getByRole('button',{name:'Retry application',exact:true}).click();
     await expect(hubDocuments).toHaveCount(51); await expect(main.getByRole('alert')).toHaveCount(0);
+    // PROD-231: exact application brief, complete print snapshot, private bodies excluded.
+    await main.getByRole('link', { name: 'Preview application brief', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/applications/${app.id}/brief$`));
+    await assertIsolatedDetailRoute(page, '/applications/[id]/brief', `/applications/${app.id}/brief`);
+    const preview = main.locator('[data-application-brief-preview]');
+    await expect(preview.locator('tbody tr').filter({ hasText: `${title}-Doc-` })).toHaveCount(51);
+    await expect(preview).toContainText(`${title}-Doc-050.pdf`);
+    await expect(main.getByRole('checkbox', { name: 'Include my application notes' })).not.toBeChecked();
+    for (const privateText of ['Target body not searchable', 'Other draft body', 'isolated-metadata/', app.notes].filter(Boolean)) {
+      await expect(preview).not.toContainText(privateText);
+    }
+    await page.evaluate(() => {
+      const w = window as Window & { __briefPrint?: string };
+      w.print = () => { w.__briefPrint = document.querySelector('[data-print-application]')?.textContent ?? ''; };
+    });
+    await main.getByRole('button', { name: 'Print / Save PDF', exact: true }).click();
+    expect(await page.evaluate(() => (window as Window & { __briefPrint?: string }).__briefPrint)).toBe(await preview.textContent());
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await testInfo.attach('application-planning-brief', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    if (testInfo.project.name === 'staging') {
+      await page.emulateMedia({ media: 'print' });
+      await expect(page.locator('[data-print-application]')).toBeVisible();
+      await expect(main).toBeHidden();
+      const pdf = await page.pdf({ format: 'A4', preferCSSPageSize: true, printBackground: true });
+      expect(pdfPageCount(pdf)).toBeGreaterThan(1);
+      expect(pdfPageCount(pdf)).toBe(4); // 51 rows fit without a footer-only fifth page.
+      await testInfo.attach('application-planning-brief-pdf', { body: pdf, contentType: 'application/pdf' });
+      await page.emulateMedia({ media: 'screen' });
+    }
+    await page.route('**/rest/v1/documents?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'brief source outage' }) }));
+    await main.getByRole('button', { name: 'Refresh brief', exact: true }).click();
+    await expect(main.getByRole('alert')).toContainText('Could not load this application brief. Try again.');
+    await expect(page.locator('[data-print-application]')).toHaveCount(0);
+    await expect(main.getByRole('button', { name: 'Print / Save PDF', exact: true })).toHaveCount(0);
+    await page.unroute('**/rest/v1/documents?*');
+    await main.getByRole('button', { name: 'Retry brief', exact: true }).click();
+    await expect(preview.locator('tbody tr').filter({ hasText: `${title}-Doc-` })).toHaveCount(51);
+    await page.goto(`/applications/${crypto.randomUUID()}/brief`);
+    await expect(main.getByRole('alert')).toContainText('Could not load this application brief. Try again.');
+    await expect(page.locator('[data-print-application]')).toHaveCount(0);
     await page.goto('/workspace/search');
     await page.route('**/rest/v1/documents?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'temporary index outage' }) }));
     await main.getByRole('button', { name: 'Refresh results', exact: true }).click();
