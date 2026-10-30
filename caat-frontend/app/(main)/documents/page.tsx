@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/PageHeader";
 import DocumentVaultClient from "./client";
 import { createServerClient } from "@/lib/supabase/server";
+import { readOwnedDocuments } from "@/lib/document-reader";
 import type { DocumentRow } from "./api";
 
 // C8: resolve the documents list on the server for an instant first paint.
@@ -10,13 +11,8 @@ async function fetchDocumentsServer(): Promise<DocumentRow[] | null> {
     data: { user },
   } = await sb.auth.getUser();
   if (!user) return null;
-  const { data, error } = await sb
-    .from("documents")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("uploaded_at", { ascending: false });
-  if (error) return null;
-  return (data ?? []) as DocumentRow[];
+  try { return await readOwnedDocuments(sb, user.id); }
+  catch { return null; }
 }
 
 export default async function DocumentsPage() {

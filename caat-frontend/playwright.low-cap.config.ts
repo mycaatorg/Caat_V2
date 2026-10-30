@@ -12,7 +12,7 @@ export default defineConfig({
     name: 'low-row-cap',
     use: { ...devices['Desktop Chrome'] },
     testMatch: /staging-journeys\.spec\.ts/,
-    grep: /\(PROD-(162|207|209)\)/,
+    grep: /\(PROD-(162|207|209|222)\)/,
   }],
   // The cap runner owns this server so forced test termination cannot orphan it.
   webServer: undefined,

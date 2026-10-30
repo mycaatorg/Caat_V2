@@ -198,7 +198,7 @@ async function main() {
   const interrupt = () => controller.abort();
   process.on('SIGINT', interrupt); process.on('SIGTERM', interrupt);
   try {
-    console.log('Running three isolated browser journeys under a real 50-row cap.');
+    console.log('Running isolated completeness journeys under a real 50-row cap.');
     await runLowCap({ env: process.env, status, signal: controller.signal, sql: createSql(status),
       runBrowser: (env, signal) => runBrowserPhase({ env, signal }),
     });

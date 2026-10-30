@@ -198,24 +198,50 @@ test('real child cancellation also stops a stubborn grandchild before resolving'
   } finally { controller.abort(); await rm(dir, { recursive: true, force: true }); }
 });
 
-test('actual Playwright interruption tears down its detached webServer', { timeout: 15_000 }, async t => {
+test('actual Playwright phase stops its owned server before restoring the row cap', { timeout: 15_000 }, async t => {
   const cli = resolve(__dirname, '../../caat-frontend/node_modules/@playwright/test/cli.js');
-  // The discovery job has no frontend dependencies yet; the browser job reruns these tests after npm ci.
+  // The discovery job has no frontend dependencies yet; the browser job reruns after npm ci.
   if (!require('node:fs').existsSync(cli)) return t.skip('Playwright integration runs after frontend dependency installation');
-  const { runChild } = await moduleUnderTest(); const dir = await mkdtemp(join(tmpdir(), 'caat-cap-playwright-'));
-  const heartbeat = join(dir, 'heartbeat'); const pidFile = join(dir, 'server-pid');
-  const controller = new AbortController();
-  await writeFile(join(dir, 'server.cjs'), `const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(pidFile)},String(process.pid));console.log('READY');setInterval(()=>fs.appendFileSync(${JSON.stringify(heartbeat)},'x'),20);`);
-  await writeFile(join(dir, 'wait.spec.cjs'), `const {test}=require(${JSON.stringify(resolve(__dirname, '../../caat-frontend/node_modules/@playwright/test'))});test('wait',async()=>{await new Promise(r=>setTimeout(r,60000));});`);
-  await writeFile(join(dir, 'playwright.config.cjs'), `module.exports={testDir:${JSON.stringify(dir)},testMatch:'wait.spec.cjs',reporter:'line',webServer:{command:${JSON.stringify(`${process.execPath} ${join(dir, 'server.cjs')}`)},wait:{stdout:/READY/},timeout:10000}};`);
+  const { runLowCap, runBrowserPhase } = await moduleUnderTest();
+  const dir = await mkdtemp(join(tmpdir(), 'caat-cap-playwright-'));
+  const heartbeat = join(dir, 'heartbeat'), pidFile = join(dir, 'server-pid'), started = join(dir, 'test-started');
+  const controller = new AbortController(), db = database('725');
+  const probe = require('node:net').createServer();
+  await new Promise(r => probe.listen(0, '127.0.0.1', r));
+  const port = probe.address().port; await new Promise(r => probe.close(r));
+  const url = `http://127.0.0.1:${port}`;
+  await writeFile(join(dir, 'server.cjs'), `const fs=require('node:fs');process.on('SIGINT',()=>{});process.on('SIGTERM',()=>{});fs.writeFileSync(${JSON.stringify(pidFile)},String(process.pid));require('node:http').createServer((q,r)=>r.end('ready')).listen(${port},'127.0.0.1');setInterval(()=>fs.appendFileSync(${JSON.stringify(heartbeat)},'x'),20);`);
+  await writeFile(join(dir, 'wait.spec.cjs'), `const {test}=require(${JSON.stringify(resolve(__dirname, '../../caat-frontend/node_modules/@playwright/test'))});test('wait',async()=>{process.on('SIGINT',()=>{});process.on('SIGTERM',()=>{});require('node:fs').writeFileSync(${JSON.stringify(started)},'ready');await new Promise(r=>setTimeout(r,60000));});`);
+  // The production cap configuration also disables Playwright's detached webServer.
+  await writeFile(join(dir, 'playwright.config.cjs'), `module.exports={testDir:${JSON.stringify(dir)},testMatch:'wait.spec.cjs',reporter:'line',webServer:undefined};`);
+  const config = await readFile(resolve(__dirname, '../../caat-frontend/playwright.low-cap.config.ts'), 'utf8');
+  assert.match(config, /webServer:\s*undefined/);
+  let restoredAfterShutdown = false;
   try {
-    const result = runChild(process.execPath, [cli, 'test', '--config', join(dir, 'playwright.config.cjs')], { cwd: dir, env: process.env, signal: controller.signal, killGraceMs: 2000 });
+    const result = runLowCap({ env, status, signal: controller.signal,
+      sql: async query => {
+        if (query.includes("= '725'")) {
+          const size = (await readFile(heartbeat)).length;
+          await new Promise(r => setTimeout(r, 150));
+          assert.equal((await readFile(heartbeat)).length, size, 'owned server must stop before restoration');
+          await assert.rejects(fetch(url));
+          restoredAfterShutdown = true;
+        }
+        return db.sql(query);
+      },
+      runBrowser: () => runBrowserPhase({ env: process.env, cwd: dir, signal: controller.signal, url,
+        serverArgs: [join(dir, 'server.cjs')], testArgs: [cli, 'test', '--config', join(dir, 'playwright.config.cjs')],
+        // Force the fallback: cleanup must not rely on Playwright finishing graceful teardown.
+        killGraceMs: 0 }),
+    });
     const rejected = assert.rejects(result, /interrupt|abort/i);
-    for (let i = 0; i < 200; i++) { if (await readFile(heartbeat).catch(() => null)) break; await new Promise(r => setTimeout(r, 25)); }
+    for (let i = 0; i < 300; i++) { if (await readFile(started).catch(() => null)) break; await new Promise(r => setTimeout(r, 25)); }
+    assert.equal(await readFile(started, 'utf8'), 'ready');
     assert.ok((await readFile(heartbeat)).length);
+    assert.equal(await (await fetch(url)).text(), 'ready');
     controller.abort(); await rejected;
-    const size = (await readFile(heartbeat)).length; await new Promise(r => setTimeout(r, 150));
-    assert.equal((await readFile(heartbeat)).length, size, 'detached webServer must stop before restoration');
+    assert.equal(restoredAfterShutdown, true);
+    assert.equal(db.current(), '725');
   } finally {
     controller.abort();
     const pid = Number(await readFile(pidFile, 'utf8').catch(() => ''));

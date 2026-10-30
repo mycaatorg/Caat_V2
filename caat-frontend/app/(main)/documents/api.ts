@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { sanitizeError } from "@/lib/safe-error";
+import { readOwnedDocuments } from "@/lib/document-reader";
 import { sanitizeFileName } from "@/lib/document-utils";
 
 const ALLOWED_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png"]);
@@ -51,14 +52,7 @@ export async function fetchDocuments(): Promise<DocumentRow[]> {
   } = await supabase.auth.getUser();
   if (authError || !user) throw new Error("Not authenticated");
 
-  const { data, error } = await supabase
-    .from("documents")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("uploaded_at", { ascending: false });
-
-  if (error) throw new Error(sanitizeError(error));
-  return (data ?? []) as DocumentRow[];
+  return readOwnedDocuments(supabase, user.id);
 }
 
 export async function uploadDocument(
