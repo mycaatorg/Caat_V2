@@ -58,3 +58,9 @@ it('discards an old account response and clears its query and results on account
     expect(container.textContent).toContain('Sign in');
   } finally { act(() => root.unmount()); }
 });
+
+it('filters library matches and opens the exact item URL',async()=>{
+ io.read.mockResolvedValue([item(1),{...item(2,'library'),href:'/workspace/library?item=2'}]);
+ const c=await mountComponent(<WorkspaceSearchClient/>);await flush();await change(input(),'Sydney');await click(button('Experience library (1)'));
+ expect(c.querySelectorAll('[data-search-result]')).toHaveLength(1);expect(c.querySelector('a[href="/workspace/library?item=2"]')).not.toBeNull();
+});

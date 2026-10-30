@@ -11,7 +11,7 @@ import { readWorkspaceIndex, selectWorkspaceItems, type WorkspaceItem, type Work
 
 const kinds: { value: WorkspaceKind; label: string }[] = [
   { value: 'application', label: 'Applications' }, { value: 'document', label: 'Documents' },
-  { value: 'essay', label: 'Essay drafts' }, { value: 'resume', label: 'Resumes' },
+  { value: 'essay', label: 'Essay drafts' }, { value: 'resume', label: 'Resumes' }, { value: 'library', label: 'Experience library' },
 ];
 const PAGE_SIZE = 20;
 
@@ -47,15 +47,15 @@ function SearchWorkspace({ userId }: { userId: string }) {
   return <div className="mx-auto w-full max-w-5xl space-y-6 p-4 sm:p-6 lg:p-8">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h1 className="text-3xl font-bold tracking-tight">Find your work</h1>
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Search your applications, document filenames, essay draft labels and resume titles.</p></div>
+        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Search your applications, document filenames, essay draft labels, resume titles and library activities, awards and experience.</p></div>
       <Button variant="outline" disabled={loading} onClick={reload}><RefreshCw className="mr-2 size-4" />Refresh results</Button>
     </div>
     <div className="space-y-2">
       <label htmlFor="workspace-query" className="text-sm font-medium">Search your work</label>
       <div className="relative"><Search className="pointer-events-none absolute left-3 top-3 size-5 text-muted-foreground" />
-        <Input id="workspace-query" aria-label="Search your work" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} maxLength={200} placeholder="A university, filename or draft label" className="h-12 pl-11 text-base" />
+        <Input id="workspace-query" aria-label="Search your work" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} maxLength={200} placeholder="A university, filename, draft label or activity" className="h-12 pl-11 text-base" />
       </div>
-      <p className="text-xs text-muted-foreground">Searches titles and filenames, not the text inside your files or writing.</p>
+      <p className="text-xs text-muted-foreground">Searches titles, filenames and library organisations and roles. File contents, writing and library descriptions stay out of search.</p>
     </div>
     {error ? <div role="alert" className="space-y-3 border p-5"><p>Could not load your workspace. Try again.</p><Button onClick={reload}>Retry</Button></div>
       : loading ? <p role="status">Loading your workspace…</p>
