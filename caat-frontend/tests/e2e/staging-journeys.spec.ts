@@ -3153,3 +3153,79 @@ test('workspace search opens exact owned files and writing and recovers missing 
     ]);
   });
 });
+
+test('writing desk organises complete owned drafts by university and resumes exact writing (PROD-225)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, 'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  async function session(email: string) {
+    const r = await request.post(`${api}/auth/v1/token?grant_type=password`, { headers: { apikey: key }, data: { email, password: process.env.E2E_TEST_PASSWORD } });
+    expect(r.ok()).toBe(true); const data = await r.json();
+    return { id: data.user.id as string, headers: { apikey: key, Authorization: `Bearer ${data.access_token}`, Prefer: 'return=representation' } };
+  }
+  const student = await session(STUDENT_EMAIL), peer = await session('e2e.peer@caat.local.test');
+  const title = marker(`Writing-${testInfo.project.name}`), promptId = crypto.randomUUID();
+  const draftIds = Array.from({ length: 51 }, () => crypto.randomUUID()).sort(), resumeIds = [crypto.randomUUID(), crypto.randomUUID()], peerResume = crypto.randomUUID();
+  const targetTitle = `${title}-Essay-050`;
+  async function insert(table: string, data: unknown, owner = student) {
+    const r = await request.post(`${api}/rest/v1/${table}`, { headers: owner.headers, data });
+    expect(r.ok(), `create ${table}`).toBe(true);
+  }
+  async function remove(table: string, query: string, owner = student) {
+    expect((await request.delete(`${api}/rest/v1/${table}?${query}`, { headers: owner.headers })).ok()).toBe(true);
+  }
+  const own = `user_id=eq.${student.id}`;
+  await withScopedCleanup(async () => {
+    await insert('custom_essay_prompts', { id: promptId, user_id: student.id, title: `${title} personal statement` });
+    await insert('essay_drafts', draftIds.map((id, i) => ({ id, user_id: student.id, prompt_id: promptId, prompt_slug: `custom-${promptId}`, label: `${title}-Essay-${String(i).padStart(3,'0')}`, content: i === 50 ? 'Writing desk exact draft content' : 'Other response', is_current: i === 50, school_id: i % 2 === 0 ? SCHOOL_ID : null, updated_at: i === 50 ? '2030-01-01T00:00:00Z' : i === 0 ? '2020-01-01T00:00:00Z' : '2026-01-01T00:00:00Z' })));
+    await insert('resumes', resumeIds.map((id, i) => ({ id, user_id: student.id, title: `${title}-Resume-${i}` })));
+    await insert('resumes', { id: peerResume, user_id: peer.id, title: `${title}-Peer-private` }, peer);
+    if (process.env.CAAT_EXPORT_TEST_ROW_CAP) {
+      const r = await request.get(`${api}/rest/v1/essay_drafts?${own}&prompt_id=eq.${promptId}&order=id&limit=200`, { headers: student.headers });
+      expect(r.ok()).toBe(true); const rows = await r.json(); expect(rows).toHaveLength(50);
+      expect(rows.map((row: { id: string }) => row.id)).not.toContain(draftIds[50]);
+      console.log('Verified real writing-desk PostgREST row cap: 50');
+    }
+    await signInToIsolatedStudent(page); await page.goto('/workspace/writing');
+    const main = page.getByRole('main'), list = main.getByRole('region', { name: 'Your writing', exact: true });
+    await expect(main.getByRole('heading', { name: 'Writing desk', exact: true })).toBeVisible();
+    const search = main.getByLabel('Search writing', { exact: true }); await search.fill(title);
+    await expect(main.getByRole('status', { name: 'Writing results' })).toContainText('53 pieces of writing');
+    await expect(list.locator('[data-writing-item]')).toHaveCount(20);
+    await expect(list.locator('[data-writing-item]').first()).toContainText(targetTitle);
+    await expect(list.getByText(`${title}-Peer-private`, { exact: true })).toHaveCount(0);
+    await main.getByRole('button', { name: 'Next writing', exact: true }).click();
+    await main.getByLabel('University', { exact: true }).selectOption(String(SCHOOL_ID));
+    await expect(main.getByRole('status', { name: 'Writing results' })).toContainText('26 pieces of writing');
+    await main.getByLabel('Draft status', { exact: true }).selectOption('current');
+    await expect(list.locator('[data-writing-item]')).toHaveCount(1); await expect(list).toContainText(targetTitle);
+    await main.getByRole('button', { name: 'Clear filters', exact: true }).click(); await search.fill(title);
+    await main.getByLabel('Sort writing', { exact: true }).selectOption('oldest');
+    await expect(list.locator('[data-writing-item]').first()).toContainText(`${title}-Essay-000`);
+    await main.getByLabel('Writing type', { exact: true }).selectOption('resume');
+    await expect(list.locator('[data-writing-item]')).toHaveCount(2);
+    await list.getByRole('link', { name: new RegExp(`${title}-Resume-1`) }).click();
+    await expect(main.getByRole('combobox', { name: 'Switch resume', exact: true })).toContainText(`${title}-Resume-1`);
+    await main.getByRole('link', { name: 'Writing desk', exact: true }).click(); await search.fill(targetTitle);
+    await list.getByRole('link', { name: new RegExp(targetTitle) }).click();
+    await expect(main.getByPlaceholder('Start writing your essay here.')).toHaveValue('Writing desk exact draft content');
+    await page.reload(); await expect(main.getByPlaceholder('Start writing your essay here.')).toHaveValue('Writing desk exact draft content');
+    await main.getByRole('link', { name: 'Back to Writing desk', exact: true }).click();
+    await page.route('**/rest/v1/custom_essay_prompts?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'temporary writing read failure' }) }));
+    await main.getByRole('button', { name: 'Refresh writing', exact: true }).click();
+    await expect(main.getByRole('alert')).toContainText('Could not load your writing');
+    await expect(main.getByRole('status', { name: 'Writing results' })).toHaveCount(0);
+    await page.unroute('**/rest/v1/custom_essay_prompts?*'); await main.getByRole('button', { name: 'Retry', exact: true }).click();
+    await search.fill(title); await expect(main.getByRole('status', { name: 'Writing results' })).toContainText('53 pieces of writing');
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await testInfo.attach('writing-desk', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  }, async () => {
+    await runScopedCleanup([
+      async () => { if (!page.isClosed()) await page.close(); },
+      () => remove('essay_drafts', `${own}&prompt_id=eq.${promptId}`),
+      () => remove('custom_essay_prompts', `${own}&id=eq.${promptId}`),
+      () => remove('resumes', `${own}&id=in.(${resumeIds.join(',')})`),
+      () => remove('resumes', `user_id=eq.${peer.id}&id=eq.${peerResume}`, peer),
+    ]);
+  });
+});
