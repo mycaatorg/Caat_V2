@@ -21,7 +21,7 @@ it('searches and filters complete items with bounded pages and application links
  await change(select('Application use'),'linked');expect(c.querySelectorAll('[data-library-item]')).toHaveLength(1);
  expect(c.querySelector('a[href="/applications/app"]')).not.toBeNull();expect(button('Delete Item 24').disabled).toBe(true);
  await change(select('Library type'),'award');expect(c.textContent).toContain('No library items match');
- await click(button('Clear library filters'));await change(search(),'item 24');expect(c.querySelectorAll('[data-library-item]')).toHaveLength(1);
+ await click(button('Clear library filters'));await change(search(),'item 24');expect(c.querySelectorAll('[data-library-item]')).toHaveLength(1);expect(button('Previous library items').disabled).toBe(true);expect(button('Next library items').disabled).toBe(true);
 });
 it('clamps pagination after deleting the final result on the last page',async()=>{
  io.usage.mockResolvedValue({});io.remove.mockResolvedValue(undefined);
