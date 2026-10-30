@@ -2,6 +2,7 @@
 
 import { DeadlineCalendarDownload } from "@/components/today/deadline-calendar-download";
 import { TaskEditor } from "@/components/today/task-editor";
+import { WeekAgenda } from "@/components/today/week-agenda";
 import type { TaskDetails } from "@/lib/personal-tasks";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
@@ -131,7 +132,7 @@ function TaskRows({ items, compact = false }: { items: TodayTask[]; compact?: bo
             <Link href={task.href} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 outline-none focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#9a1a27]">
               <Icon className={`h-4 w-4 shrink-0 ${urgent ? MAROON : "text-muted-foreground"}`} strokeWidth={1.5} />
               <span className="flex-1 min-w-0">
-                <span className={`block text-sm font-medium ${urgent ? MAROON : ""}`}>{task.title}</span>
+                <span className={`block break-words text-sm font-medium ${urgent ? MAROON : ""}`}>{task.title}</span>
                 {!compact ? <span className="block text-xs text-muted-foreground">{task.detail}</span> : null}
               </span>
               <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -338,6 +339,7 @@ export function TodayView(props: TodayViewProps) {
     return { view, page: Number.isInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, pageCount(items.length)) : 1 };
   });
   const focusedHeadingRef = useRef<HTMLHeadingElement>(null);
+  const agendaTaskFocusRef = useRef<string | null>(null);
   const todoSectionRef = useRef<HTMLElement>(null);
   const [removedTaskCount, setRemovedTaskCount] = useState(0);
   const taskNotice = removedTaskCount > 0
@@ -379,7 +381,14 @@ export function TodayView(props: TodayViewProps) {
       focusMountedRef.current = true;
       return;
     }
-    if (focus.view) focusedHeadingRef.current?.focus();
+    const agendaTaskId = agendaTaskFocusRef.current;
+    agendaTaskFocusRef.current = null;
+    if (focus.view === "todos" && agendaTaskId) {
+      const control = document.getElementById(`todo-${agendaTaskId}`);
+      control?.focus();
+      if (document.activeElement !== control) focusedHeadingRef.current?.focus();
+    }
+    else if (focus.view) focusedHeadingRef.current?.focus();
     else todayHeadingRef.current?.focus();
   }, [focus.view, visiblePage]);
 
@@ -387,6 +396,14 @@ export function TodayView(props: TodayViewProps) {
     const next = { view, page: 1 };
     setFocus(next);
     window.history.replaceState(null, "", focusUrl(next.view, next.page));
+  }
+
+  function showAgendaTodo(taskId?: string) {
+    agendaTaskFocusRef.current = taskId ?? null;
+    const index = taskId ? todos.findIndex(todo => todo.id === taskId) : 0;
+    const page = Math.floor(Math.max(0, index) / PAGE_SIZE) + 1;
+    setFocus({ view: "todos", page });
+    window.history.replaceState(null, "", focusUrl("todos", page));
   }
 
   function showPage(page: number) {
@@ -497,31 +514,49 @@ export function TodayView(props: TodayViewProps) {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-8 p-6 pt-0 max-w-6xl">
+    <div className="flex min-w-0 flex-1 flex-col gap-8 px-4 pb-6 sm:px-6 max-w-6xl">
       <header>
-        <p className="font-code text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{longDate(todayISO)}</p>
-        <h1 ref={todayHeadingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight mt-1">
+        <p className="text-sm text-muted-foreground">{longDate(todayISO)}</p>
+        <h1 ref={todayHeadingRef} tabIndex={-1} className="text-3xl sm:text-4xl font-bold tracking-tight mt-2 break-words">
           {greeting(hour)}
           {name ? (
             <>
-              , <span className={MAROON}>{name}</span>
+              , {name}
             </>
           ) : null}
         </h1>
       </header>
 
       {/* The one thing to do next, chosen from real state. */}
-      <section aria-labelledby="next-step" className="border border-l-4 border-l-[#9a1a27] dark:border-l-[#e06b78] bg-card p-4 sm:p-6">
-        <p className="font-code text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Your next step</p>
-        <h2 id="next-step" className="text-xl sm:text-2xl font-bold tracking-tight mt-1">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+      <section aria-labelledby="next-step" className="min-w-0 rounded-xl bg-[#9a1a27] text-white p-5 sm:p-7 flex flex-col items-start">
+        <p className="text-sm text-white/85">Your next step</p>
+        <h2 id="next-step" className="max-w-full text-2xl sm:text-3xl font-bold tracking-tight mt-2 break-words">
           {nextStep.title}
         </h2>
-        <Button asChild className="mt-4 rounded-none bg-[#9a1a27] hover:bg-[#7d141f] text-white gap-2">
+        <p className="mt-3 mb-5 max-w-prose text-sm leading-relaxed text-white/90">{nextStep.body}</p>
+        <Button asChild className="mt-auto h-auto min-h-10 max-w-full whitespace-normal bg-white hover:bg-white/90 text-[#7d141f] gap-2 focus-visible:ring-white">
           <Link href={nextStep.href} onClick={() => track("today_next_step_clicked", { kind: nextStep.kind })}>
             {nextStep.cta} <ArrowRight className="h-4 w-4" />
           </Link>
         </Button>
       </section>
+      <nav aria-label="Your workspace" className="min-w-0 rounded-xl border bg-card px-5 py-2">
+        {[
+          { href: "/scholarships", title: "Explore scholarships", detail: "Find opportunities worth saving.", Icon: GraduationCap },
+          { href: "/shortlist", title: "My shortlist", detail: "Bring your saved options together.", Icon: BookOpen },
+          { href: "/applications", title: "Applications", detail: "Work through your requirements.", Icon: ClipboardList },
+        ].map(({ href, title, detail, Icon }) => (
+          <Link key={href} href={href} className="flex items-center gap-3 border-b last:border-0 py-4 hover:text-[#9a1a27] dark:hover:text-[#e06b78] rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current">
+            <Icon aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
+            <span className="min-w-0 flex-1"><span className="block font-semibold">{title}</span><span className="block text-sm text-muted-foreground">{detail}</span></span>
+            <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0" />
+          </Link>
+        ))}
+      </nav>
+      </div>
+
+      <WeekAgenda todayISO={todayISO} deadlines={comingUp} todos={todos} onViewTodos={showAgendaTodo} />
 
       {nudge ? (
         <div className="flex flex-wrap items-center gap-3 border border-dashed px-4 py-3 text-sm">

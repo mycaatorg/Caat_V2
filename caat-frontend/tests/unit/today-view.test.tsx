@@ -27,8 +27,8 @@ const props = (patch: Partial<TodayViewProps> = {}): TodayViewProps => ({
   name: "Mia",
   hour: 15,
   todayISO: "2026-10-07",
-  nextStep: { kind: "task", title: "Add the deadline for Harbourside University", body: "Deadlines drive reminders.", cta: "Do this now", href: "/applications/a1" },
-  tasks: [{ id: "deadline-a1", kind: "set-deadline", title: "Add the deadline for Harbourside University", detail: "Deadlines drive reminders.", href: "/applications/a1" }],
+  nextStep: { kind: "task", title: "Add the deadline for Harbourside University", body: "Add a date to see this application in your upcoming deadlines.", cta: "Do this now", href: "/applications/a1" },
+  tasks: [{ id: "deadline-a1", kind: "set-deadline", title: "Add the deadline for Harbourside University", detail: "Add a date to see this application in your upcoming deadlines.", href: "/applications/a1" }],
   comingUp: [{ id: "app-a2", source: "app", title: "Banksia College", dateISO: "2026-10-10", href: "/applications/a2" }],
   recent: [{ kind: "essay", title: "Why engineering", detail: "Draft 1", href: "/essays?prompt=p1", updatedAt: "2026-10-06T10:00:00Z" }],
   todos: [
@@ -50,6 +50,113 @@ afterEach(() => unmountAll());
 beforeEach(() => window.history.replaceState(null, "", "/today"));
 
 describe("Today", () => {
+  it.each([
+    ["2026-12-29", "Monday 4 January 2027"],
+    ["2028-02-27", "Saturday 4 March 2028"],
+  ])("plans seven date-only days from %s across calendar boundaries", async (todayISO, lastLabel) => {
+    await mountComponent(<TodayView {...props({ todayISO })} />);
+    const agenda = document.querySelector('[aria-label="Your next seven days"]')!;
+    expect(agenda).not.toBeNull();
+    expect(agenda.querySelectorAll('button[aria-pressed]')).toHaveLength(7);
+    expect(agenda.querySelector(`button[aria-label^="${lastLabel}"]`)).not.toBeNull();
+    expect(agenda.querySelector('button[aria-pressed="true"]')?.getAttribute('aria-label')).toContain('Today');
+  });
+
+  it("selects a day and includes every matching deadline and open task with their own destinations", async () => {
+    await mountComponent(<TodayView {...props({
+      comingUp: Array.from({ length: 12 }, (_, i) => ({ id: `cus-${i}`, source: "custom" as const, title: `Award ${i}`, dateISO: "2026-10-08", href: "/scholarships?view=mine" })),
+      todos: [{ id: "dated", text: "Prepare reference", dueDate: "2026-10-08", priority: 1 }, { id: "undated", text: "Someday task", dueDate: null, priority: 1 }, { id: "past", text: "Past task", dueDate: "2026-10-06", priority: 1 }],
+    })} />);
+    const agenda = document.querySelector('[aria-label="Your next seven days"]')!;
+    expect(agenda).not.toBeNull();
+    await click(agenda.querySelector('button[aria-label^="Thursday 8 October 2026"]') as HTMLButtonElement);
+    expect(agenda.textContent).toContain("13 items");
+    expect(agenda.querySelectorAll('a[href="/scholarships?view=mine"]')).toHaveLength(12);
+    expect(agenda.textContent).toContain("Your own scholarship");
+    expect(agenda.textContent).toContain("Prepare reference");
+    expect(agenda.textContent).not.toContain("Someday task");
+    expect(agenda.textContent).not.toContain("Past task");
+    await click(Array.from(agenda.querySelectorAll('button')).find(b => b.textContent?.includes("Prepare reference"))!);
+    expect(window.location.search).toBe("?view=todos&page=1");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe('Mark "Prepare reference" done');
+  });
+
+  it("updates the agenda after completion, failure and Undo using the same task state", async () => {
+    await mountComponent(<TodayView {...props({ todos: [{ id: "t1", text: "Call referee", dueDate: "2026-10-07", priority: 1 }] })} />);
+    const agenda = document.querySelector('[aria-label="Your next seven days"]')!;
+    expect(agenda).not.toBeNull();
+    expect(agenda.textContent).toContain("Call referee");
+    const box = document.querySelector<HTMLInputElement>('input[aria-label=\'Mark "Call referee" done\']')!;
+    const save = deferred();
+    io.toggleTodo.mockReturnValueOnce(save.promise);
+    await click(box);
+    expect(agenda.textContent).not.toContain("Call referee");
+    await act(async () => save.reject(new Error("offline")));
+    await flush();
+    expect(agenda.textContent).toContain("Call referee");
+    await click(box);
+    await flush();
+    expect(agenda.textContent).not.toContain("Call referee");
+    await act(async () => io.toast.success.mock.calls[0][1].action.onClick());
+    await flush();
+    expect(agenda.textContent).toContain("Call referee");
+  });
+
+  it("opens the correct full-list page for a late agenda task", async () => {
+    await mountComponent(<TodayView {...props({ todos: Array.from({ length: 12 }, (_, i) => ({ id: `t${i}`, text: `Plan item ${i}`, dueDate: "2026-10-07", priority: 1 })) })} />);
+    const agenda = document.querySelector('[aria-label="Your next seven days"]')!;
+    await click(Array.from(agenda.querySelectorAll('button')).find(b => b.textContent?.includes("Plan item 11"))!);
+    expect(window.location.search).toBe("?view=todos&page=2");
+    expect(document.querySelector('input[aria-label=\'Mark "Plan item 11" done\']')).not.toBeNull();
+    expect(document.activeElement?.getAttribute("aria-label")).toBe('Mark "Plan item 11" done');
+  });
+
+  it("moves edited tasks between agenda dates and removes confirmed missing tasks", async () => {
+    await mountComponent(<TodayView {...props({ todos: [{ id: "t1", text: "Call referee", dueDate: "2026-10-07", priority: 1 }] })} />);
+    const agenda = document.querySelector('[aria-label="Your next seven days"]')!;
+    await click(button("Edit task: Call referee"));
+    await change(document.querySelector('textarea')!, "Email referee");
+    io.editTask.mockResolvedValueOnce({ id: "t1", text: "Email referee", due_date: "2026-10-08", done: false, priority: 1 });
+    await click(button("Save changes"));
+    expect(agenda.textContent).not.toContain("Call referee");
+    expect(agenda.textContent).not.toContain("Email referee");
+    await click(agenda.querySelector('button[aria-label^="Thursday 8 October 2026"]') as HTMLButtonElement);
+    expect(agenda.textContent).toContain("Email referee");
+    await click(button("Edit task: Email referee"));
+    io.loadTask.mockResolvedValueOnce(null);
+    await click(button("Reload saved task"));
+    await click(button("Cancel"));
+    expect(agenda.textContent).not.toContain("Email referee");
+    expect(agenda.querySelector('button[aria-pressed="true"]')?.getAttribute('aria-label')).toContain("0 items");
+  });
+
+  it("keeps deadline source labels and routes distinct and excludes dates outside the seven days", async () => {
+    const sources = ["app", "scholarship", "custom", "event"] as const;
+    await mountComponent(<TodayView {...props({ comingUp: [
+      ...sources.map(source => ({ id: source, source, title: `${source} item`, dateISO: "2026-10-07", href: `/test-${source}` })),
+      { id: "later", source: "app", title: "Later deadline", dateISO: "2026-10-14", href: "/applications/later" },
+    ] })} />);
+    const agenda = document.querySelector('[aria-label="Your next seven days"]')!;
+    expect(Array.from(agenda.querySelectorAll('a')).map(a => a.getAttribute('href'))).toEqual(["/test-app", "/test-scholarship", "/test-custom", "/test-event"]);
+    expect(agenda.textContent).toContain("Application");
+    expect(agenda.textContent).toContain("Your own scholarship");
+    expect(agenda.textContent).toContain("Calendar event");
+    expect(agenda.textContent).not.toContain("Later deadline");
+  });
+
+  it("explains an empty agenda day and connects the workspace to existing student flows", async () => {
+    await mountComponent(<TodayView {...props()} />);
+    const agenda = document.querySelector('[aria-label="Your next seven days"]')!;
+    expect(agenda).not.toBeNull();
+    expect(agenda.textContent).toContain("No deadlines or dated to-dos on this day.");
+    await click(Array.from(agenda.querySelectorAll('button')).find(b => b.textContent?.includes("All to-dos"))!);
+    expect(document.body.textContent).toContain("Book open day");
+    await click(button(/Back to Today/));
+    expect(document.querySelector('[aria-labelledby="next-step"]')?.textContent).toContain("Add a date to see this application in your upcoming deadlines.");
+    const nav = document.querySelector('nav[aria-label="Your workspace"]')!;
+    expect(Array.from(nav.querySelectorAll('a')).map(a => a.getAttribute('href'))).toEqual(["/scholarships", "/shortlist", "/applications"]);
+  });
+
   it("renders a URL-selected full list on the server without the overview", () => {
     const html = renderToStaticMarkup(<TodayView {...props()} initialQuery="view=todos&page=1" />);
     expect(html).toContain("Your to-dos");
