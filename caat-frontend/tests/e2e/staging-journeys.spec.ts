@@ -3177,7 +3177,7 @@ test('workspace search opens exact owned files and writing and recovers missing 
       await expect(main).toBeHidden();
       const pdf = await page.pdf({ format: 'A4', preferCSSPageSize: true, printBackground: true });
       expect(pdfPageCount(pdf)).toBeGreaterThan(1);
-      expect(pdfPageCount(pdf)).toBeLessThan(15);
+      expect(pdfPageCount(pdf)).toBe(4); // 51 rows fit without a footer-only fifth page.
       await testInfo.attach('application-planning-brief-pdf', { body: pdf, contentType: 'application/pdf' });
       await page.emulateMedia({ media: 'screen' });
     }

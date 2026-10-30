@@ -351,6 +351,8 @@ html { scroll-behavior: smooth; }
  [data-print-application] { display:block !important; page:caat-application-brief; }
  [data-print-application] .application-brief-document { padding:0; font-size:10pt; line-height:1.45; }
  [data-print-application] .application-brief-document h1 { font-size:24pt; }
+ [data-print-application] th, [data-print-application] td { padding:0.4rem 0.35rem; }
+ [data-print-application] .application-brief-document footer { margin-top:0.75rem; padding-top:0.5rem; }
  [data-print-application] thead { display:table-header-group; }
  [data-print-application] tr, [data-print-application] .brief-checks li { break-inside:avoid; }
 }
