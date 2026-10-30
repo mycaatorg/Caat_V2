@@ -16,6 +16,7 @@ export function EvidenceLibraryCard({ workspace = false }: { workspace?: boolean
   const [editor,setEditor]=useState<EvidenceItem | 'new' | null>(null), [importing,setImporting]=useState(false);
   const [query,setQuery]=useState(''), [useFilter,setUseFilter]=useState<LibraryFilters['usage']>('all'), [sort,setSort]=useState<LibraryFilters['sort']>('recent'), [page,setPage]=useState(1);
   const [filter,setFilter]=useState('all'), [deleting,setDeleting]=useState<string | null>(null), [busy,setBusy]=useState(false), [error,setError]=useState<string | null>(null);
+  // Usage is a snapshot; the server FK also prevents deletion if another tab links an item later.
   useEffect(()=>{let active=true;Promise.all([listEvidenceItems(),fetchItemUsage()]).then(([next,used])=>{if(active){setItems(next);setUsage(used);setFailed(false);}}).catch(()=>{if(active)setFailed(true);}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[retry]);
   const reload=()=>{setLoading(true);setError(null);setDeleting(null);setRetry(n=>n+1);};
   const saved=(item:EvidenceItem)=>setItems(cur=>cur.some(i=>i.id===item.id)?cur.map(i=>i.id===item.id?item:i):[item,...cur]);
@@ -26,6 +27,7 @@ export function EvidenceLibraryCard({ workspace = false }: { workspace?: boolean
   const disabled=loading || failed || busy;
   const selected = workspace ? selectLibrary(items, usage, { query, kind: filter as LibraryFilters['kind'], usage: useFilter, sort }) : items.filter(i=>filter==='all'||i.kind===filter);
   const pageCount = Math.max(1, Math.ceil(selected.length / 12)), safePage = Math.min(page, pageCount);
+  if (workspace && page !== safePage) setPage(safePage);
   const visible = workspace ? selected.slice((safePage-1)*12, safePage*12) : selected;
   function clearFilters() { setQuery(''); setFilter('all'); setUseFilter('all'); setSort('recent'); setPage(1); }
   const selectClass = 'mt-1 h-10 w-full min-w-0 rounded-md border bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-primary';

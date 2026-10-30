@@ -30,17 +30,19 @@ Exact account switching while reads or editors are open; page clamping after mut
 ### Task 1: Pure library selection
 
 Produces lib/library-workspace.ts: LibraryFilters {query,kind,usage,sort}; selectLibrary(items,usage,filters):EvidenceItem[]. Searches trimmed case-insensitive text across four fields; filters all/activity/award/experience and all/linked/unlinked; sorts recent/oldest/name with invalid dates last and id tie-breaker. Does not mutate inputs.
-- [ ] Write library-workspace.test.ts with combined filters, description/role/org match, linked map, invalid dates/ties and immutability. Run RED missing module.
-- [ ] Implement helper, run focused GREEN, commit.
+- [x] Write library-workspace.test.ts with combined filters, description/role/org match, linked map, invalid dates/ties and immutability. Run RED missing module.
+- [x] Implement helper, run focused GREEN, commit.
 
 ### Task 2: Workspace presentation and route
 
 Consumes Task1; EvidenceLibraryCard({workspace?:boolean}) keeps old Profile behavior by default. New app/(main)/workspace/library/{page,client}.tsx with account-keyed card. Workspace supports 12/page, visible count, clear filters, distinct empty search and empty library, existing actions and application links. Profile workspace link, sidebar Library icon, route registry guard/content entry.
-- [ ] Write UI tests for search/filter/pagination/clear, failed usage/retry, clamp after delete, existing edit-save with filtered-out result/focus, account change discards late response/open dialog. RED first.
-- [ ] Implement, targeted GREEN including existing evidence-library-ui tests, commit.
+- [x] Write UI tests for search/filter/pagination/clear, failed usage/retry, clamp after delete, existing edit-save with filtered-out result/focus, account change discards late response/open dialog. RED first.
+- [x] Implement, targeted GREEN including existing evidence-library-ui tests, commit.
 
 ### Task 3: Integrated browser and release
 
-- [ ] Add guarded isolated PROD227 @phone journey: 51 owner items + peer item, late-row search, type/usage/sort/page controls, create/edit failure recovery and delete persistence, application usage link/protected-delete; cleanup exact seeded IDs. Extend actual low-cap grep and route coverage. Reuse existing account fixture auth/REST pattern.
-- [ ] Build, run desktop/Android/iPhone + route auth gates, inspect screenshots, run real low-cap gate. Then full units/type/lint/safety. All pass without flakes or increased retries.
-- [ ] Actual Claude plus independent whole-branch review, one TDD fix pass for blockers; PR/develop/release/main/provider/live evidence in Linear before Done.
+- [x] Add guarded isolated PROD227 @phone journey: 51 owner items + peer item, late-row search, type/usage/sort/page controls, create/edit failure recovery and delete persistence, application usage link/protected-delete; cleanup exact seeded IDs. Extend actual low-cap grep and route coverage. Reuse existing account fixture auth/REST pattern.
+- [x] Build, run desktop/Android/iPhone + route auth gates, inspect screenshots, run real low-cap gate. Then full units/type/lint/safety. All pass without flakes or increased retries.
+- [x] Actual Claude plus independent whole-branch review, one TDD fix pass for blockers; PR/develop/release/main/provider/live evidence in Linear before Done.
+
+Implementation and local review complete. Hosted final-head CI and production release evidence remain tracked in Linear PROD-227; checking Task3 means local execution, not production completion.

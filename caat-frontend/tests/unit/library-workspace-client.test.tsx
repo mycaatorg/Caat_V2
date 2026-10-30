@@ -4,10 +4,10 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { button, change, click, deferred, flush, mountComponent, unmountAll, get } from './dom-helpers';
 import type { EvidenceItem } from '@/lib/evidence-items';
-const io=vi.hoisted(()=>({list:vi.fn(),usage:vi.fn(),update:vi.fn(),remove:vi.fn(),auth:{user:{id:'owner'} as {id:string}|null,loading:false}}));
+const io=vi.hoisted(()=>({list:vi.fn(),usage:vi.fn(),update:vi.fn(),create:vi.fn(),remove:vi.fn(),auth:{user:{id:'owner'} as {id:string}|null,loading:false}}));
 vi.mock('@/lib/supabase/client',()=>({supabase:{}}));
 vi.mock('@/components/providers/AuthContext',()=>({useAuth:()=>io.auth}));
-vi.mock('@/lib/evidence-items',async original=>({...await original<typeof import('@/lib/evidence-items')>(),listEvidenceItems:io.list,fetchItemUsage:io.usage,updateEvidenceItem:io.update,deleteEvidenceItem:io.remove}));
+vi.mock('@/lib/evidence-items',async original=>({...await original<typeof import('@/lib/evidence-items')>(),listEvidenceItems:io.list,fetchItemUsage:io.usage,updateEvidenceItem:io.update,createEvidenceItem:io.create,deleteEvidenceItem:io.remove}));
 import LibraryClient from '@/app/(main)/workspace/library/client';
 const item=(i:number):EvidenceItem=>({id:String(i),user_id:'owner',kind:i%2?'award':'activity',title:`Item ${String(i).padStart(2,'0')}`,organisation:'School',role:'Captain',start_date:null,end_date:null,is_current:false,description:'Team leadership',origin_key:null,revision:'v1',created_at:'2026-01-01'});
 const search=()=>document.querySelector('input[aria-label="Search library"]') as HTMLInputElement;
@@ -23,11 +23,13 @@ it('searches and filters complete items with bounded pages and application links
  await change(select('Library type'),'award');expect(c.textContent).toContain('No library items match');
  await click(button('Clear library filters'));await change(search(),'item 24');expect(c.querySelectorAll('[data-library-item]')).toHaveLength(1);expect(button('Previous library items').disabled).toBe(true);expect(button('Next library items').disabled).toBe(true);
 });
-it('clamps pagination after deleting the final result on the last page',async()=>{
+it('keeps the clamped page after deleting the final result then adding another item',async()=>{
  io.usage.mockResolvedValue({});io.remove.mockResolvedValue(undefined);
  const c=await mountComponent(<LibraryClient/>);await flush();await change(select('Sort library'),'name');
  await click(button('Next library items'));await click(button('Next library items'));await click(button('Delete Item 24'));await click(button('Confirm delete item'));
  expect(c.querySelectorAll('[data-library-item]')).toHaveLength(12);expect(c.textContent).toContain('Page 2 of 2');
+ io.create.mockResolvedValue(item(25));await click(button('Add library item'));await change(get('label','Title').querySelector('input')!,'Item 25');await click(button('Save item'));
+ expect(c.textContent).toContain('Page 2 of 3');expect(c.querySelectorAll('[data-library-item]')).toHaveLength(12);
 });
 it('usage failure hides results and disables mutation until retry succeeds',async()=>{
  io.usage.mockRejectedValueOnce(new Error('secret backend'));const c=await mountComponent(<LibraryClient/>);await flush();
