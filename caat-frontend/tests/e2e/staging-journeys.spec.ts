@@ -3274,8 +3274,8 @@ test('experience library finds complete owned work and preserves edit/delete pro
   const titleScope = encodeURIComponent(`${title}*`), itemRoutes = '**/rest/v1/evidence_items?*';
   await withScopedCleanup(async () => {
     // Sequential authenticated inserts preserve column grants (no id/created_at override).
-    for (let i = 0; i < 51; i++) ids.push((await create('evidence_items', { user_id: student.id, kind: i % 2 ? 'award' : 'activity', title: `${title}-${String(i).padStart(3,'0')}`, organisation: 'Local club', role: i === 0 ? `${title} captain` : 'Member', description: i === 0 ? 'Library target mentoring' : 'Helped others' })).id);
-    await create('evidence_items', { user_id: peer.id, kind: 'experience', title: `${title}-Peer-private`, description: 'Peer only' }, peer);
+    for (let i = 0; i < 51; i++) ids.push((await create('evidence_items', { user_id: student.id, kind: i % 2 ? 'award' : 'activity', title: `${title}-${String(i).padStart(3,'0')}`, organisation: 'Local club', role: i === 0 ? `${title} captain` : 'Member', description: i === 0 ? `${title} private description` : 'Helped others' })).id);
+    const peerItem = await create('evidence_items', { user_id: peer.id, kind: 'experience', title: `${title}-Peer-private`, description: 'Peer only' }, peer);
     const apps = await request.get(`${api}/rest/v1/user_school_applications?${own}&school_id=eq.${SCHOOL_ID}&select=id`, { headers: student.headers }); expect(apps.ok()).toBe(true);
     const existing: { id: string }[] = await apps.json();
     const app = existing[0] ?? await create('user_school_applications', { user_id: student.id, school_id: SCHOOL_ID, status: 'researching' });
@@ -3286,8 +3286,21 @@ test('experience library finds complete owned work and preserves edit/delete pro
       const rows: { id: string }[] = await raw.json(); expect(rows).toHaveLength(50); expect(rows.map(row=>row.id)).not.toContain(ids[0]);
       console.log('Verified real experience-library PostgREST row cap: 50');
     }
-    await signInToIsolatedStudent(page); await page.goto('/workspace/library');
+    await signInToIsolatedStudent(page); await page.goto('/workspace/search');
     const main = page.getByRole('main'), library = main.getByRole('region', { name: 'Activities, awards and experience library', exact: true });
+    const workspaceSearch = main.getByLabel('Search your work', { exact: true });
+    await workspaceSearch.fill(title); await main.getByRole('button', { name: 'Experience library (51)', exact: true }).click();
+    await expect(main.getByRole('status', { name: 'Search results', exact: true })).toContainText('51 results');
+    await workspaceSearch.fill(`${title} private description`); await expect(main.getByRole('status', { name: 'Search results', exact: true })).toContainText('0 results');
+    await workspaceSearch.fill(targetTitle); await main.locator(`a[href="/workspace/library?item=${ids[0]}"]`).click();
+    await expect(library.locator('[data-library-item]')).toHaveCount(1); await expect(library.locator('[data-library-item]')).toHaveAttribute('data-library-item', ids[0]);
+    await expect(library.getByRole('button', { name: `Delete ${targetTitle}`, exact: true })).toBeDisabled();
+    await expect(library.getByLabel('Search library', { exact: true })).toHaveCount(0);
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await testInfo.attach('exact-library-search-result', { body: await page.screenshot({fullPage:true}), contentType:'image/png' });
+    await page.goto(`/workspace/library?item=${peerItem.id}`); await expect(library.getByText('This library item is unavailable.', { exact:false })).toBeVisible();
+    await expect(library.locator('[data-library-item]')).toHaveCount(0); await expect(library.getByText(`${title}-Peer-private`, { exact:true })).toHaveCount(0);
+    await library.getByRole('link', { name:'All library items', exact:true }).click();
     await expect(main.getByRole('heading', { name: 'Experience library', exact: true })).toBeVisible();
     const search = library.getByLabel('Search library', { exact: true }); await search.fill(title);
     const results = library.getByRole('status', { name: 'Library results', exact: true });
@@ -3319,8 +3332,12 @@ test('experience library finds complete owned work and preserves edit/delete pro
     await page.unroute(itemRoutes); await edit.getByRole('button', { name: 'Save item', exact: true }).click(); await expect(edit).toHaveCount(0);
     await expect(library).toBeFocused(); // The original opener disappeared from the active search.
     await search.fill(renamedTitle); await page.reload(); await search.fill(renamedTitle); await expect(library.locator('[data-library-item]')).toHaveCount(1);
+    const editedId = await library.locator('[data-library-item]').getAttribute('data-library-item'); expect(editedId).toBeTruthy();
+    await page.goto(`/workspace/library?item=${editedId}`);
     await library.getByRole('button', { name: `Delete ${renamedTitle}`, exact: true }).click(); await library.getByRole('button', { name: 'Confirm delete item', exact: true }).click();
-    await expect(results).toContainText('0 matching items'); await page.reload(); await search.fill(renamedTitle); await expect(results).toContainText('0 matching items');
+    await expect(library.getByText('This library item is unavailable.', { exact:false })).toBeVisible(); await expect(library.locator('[data-library-item]')).toHaveCount(0);
+    await page.reload(); await expect(library.getByText('This library item is unavailable.', { exact:false })).toBeVisible();
+    await library.getByRole('link', { name:'All library items', exact:true }).click(); await search.fill(renamedTitle); await expect(results).toContainText('0 matching items');
     await page.route('**/rest/v1/application_evidence_links?*', route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'temporary usage outage'})}));
     await library.getByRole('button', { name: 'Refresh library', exact: true }).click(); await expect(library.getByRole('alert')).toContainText('Could not load your library'); await expect(add).toBeDisabled();
     await page.unroute('**/rest/v1/application_evidence_links?*'); await library.getByRole('button', { name: 'Retry library', exact: true }).click(); await search.fill(targetTitle); await expect(library.locator('[data-library-item]')).toHaveCount(1);

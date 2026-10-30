@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { evidencePages } from '@/lib/evidence-pagination';
 
-export type WorkspaceKind = 'application' | 'document' | 'essay' | 'resume';
+export type WorkspaceKind = 'application' | 'document' | 'essay' | 'resume' | 'library';
 export type WorkspaceItem = { id: string; kind: WorkspaceKind; title: string; detail: string; href: string };
 const READ_ERROR = 'Could not load your workspace. Try again.';
 
@@ -13,17 +13,19 @@ export async function readWorkspaceIndex(client: Pick<SupabaseClient, 'from'>, u
       .order('id', { ascending: true }).range(from, to);
     return { data: data as unknown as T[] | null, error };
   }, READ_ERROR);
-  const [applications, documents, essays, resumes] = await Promise.all([
+  const [applications, documents, essays, resumes, library] = await Promise.all([
     read<{ id: string; schools: { name: string; country: string | null } | null }>('user_school_applications', 'id, schools(name, country)'),
     read<{ id: string; file_name: string; category: string }>('documents', 'id, file_name, category'),
     read<{ id: string; prompt_id: string; label: string | null }>('essay_drafts', 'id, prompt_id, label'),
     read<{ id: string; title: string | null }>('resumes', 'id, title'),
+    read<{ id: string; kind: string; title: string; organisation: string | null; role: string | null }>('evidence_items', 'id, kind, title, organisation, role'),
   ]);
   const id = encodeURIComponent;
   return [
     ...applications.map(row => ({ id: row.id, kind: 'application' as const, title: row.schools?.name || 'Application', detail: row.schools?.country || 'University application', href: `/applications/${id(row.id)}` })),
     ...documents.map(row => ({ id: row.id, kind: 'document' as const, title: row.file_name, detail: row.category.replaceAll('_', ' '), href: `/documents?document=${id(row.id)}` })),
     ...essays.map(row => ({ id: row.id, kind: 'essay' as const, title: row.label || 'Untitled essay draft', detail: 'Essay draft', href: `/essays?prompt=${id(row.prompt_id)}&draft=${id(row.id)}` })),
+    ...library.map(row => ({ id: row.id, kind: 'library' as const, title: row.title, detail: [row.kind, row.organisation, row.role].filter(Boolean).join(' · '), href: `/workspace/library?item=${id(row.id)}` })),
     ...resumes.map(row => ({ id: row.id, kind: 'resume' as const, title: row.title || 'Untitled resume', detail: 'Resume', href: `/resume-builder?resume=${id(row.id)}` })),
   ];
 }

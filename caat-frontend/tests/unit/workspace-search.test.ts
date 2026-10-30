@@ -4,21 +4,23 @@ import { readWorkspaceIndex, selectWorkspaceItems, type WorkspaceItem } from '@/
 import { createMockSupabase } from './mock-supabase';
 
 it('reads complete owned metadata from every source even with short pages', async () => {
-  const tables = ['user_school_applications', 'documents', 'essay_drafts', 'resumes'];
+  const tables = ['user_school_applications', 'documents', 'essay_drafts', 'resumes', 'evidence_items'];
   const mock = createMockSupabase({ resolver: context => {
     const from = context.calls.find(call => call.method === 'range')?.args[0] as number;
-    const rows = Array.from({ length: 5 }, (_, i) => ({ id: `id-${i}`, schools: { name: 'Sydney', country: 'Australia' }, file_name: `File ${i}`, category: 'identity', prompt_id: 'prompt', label: `Essay ${i}`, title: `Resume ${i}` }));
+    const rows = Array.from({ length: 5 }, (_, i) => ({ id: `id-${i}`, schools: { name: 'Sydney', country: 'Australia' }, file_name: `File ${i}`, category: 'identity', prompt_id: 'prompt', label: `Essay ${i}`, title: `Resume ${i}`, kind: 'activity', organisation: 'Club', role: 'Captain' }));
     return { data: rows.slice(from, from + 2), error: null };
   } });
   const items = await readWorkspaceIndex(mock as unknown as SupabaseClient, 'owner');
-  expect(items).toHaveLength(20);
+  expect(items).toHaveLength(25);
   expect(items.find(item => item.kind === 'essay')?.href).toBe('/essays?prompt=prompt&draft=id-0');
   expect(items.find(item => item.kind === 'document')?.href).toBe('/documents?document=id-0');
   expect(items.find(item => item.kind === 'resume')?.href).toBe('/resume-builder?resume=id-0');
   expect(items.find(item => item.kind === 'application')?.href).toBe('/applications/id-0');
+  expect(items.find(item => item.kind === 'library')?.href).toBe('/workspace/library?item=id-0');
+  expect(selectWorkspaceItems(items, 'captain', 'library')).toHaveLength(5);
   const allowed: Record<string, string> = {
     user_school_applications: 'id, schools(name, country)', documents: 'id, file_name, category',
-    essay_drafts: 'id, prompt_id, label', resumes: 'id, title',
+    essay_drafts: 'id, prompt_id, label', resumes: 'id, title', evidence_items: 'id, kind, title, organisation, role',
   };
   for (const table of tables) expect(mock.queries.filter(q => q.table === table)).toHaveLength(4);
   for (const query of mock.queries) {
@@ -28,11 +30,11 @@ it('reads complete owned metadata from every source even with short pages', asyn
   }
 });
 
-it('rejects all results on a late source error without leaking backend details', async () => {
+it.each(['documents', 'evidence_items'])('rejects all results on a late %s source error without leaking backend details', async (table) => {
   const mock = createMockSupabase({ resolver: context => {
     const from = context.calls.find(call => call.method === 'range')?.args[0];
-    if (context.table === 'documents' && from !== 0) return { data: null, error: { message: 'private detail' } };
-    return { data: from === 0 ? [{ id: 'one' }] : [], error: null };
+    if (context.table === table && from !== 0) return { data: null, error: { message: 'private detail' } };
+    return { data: from === 0 ? [{ id: 'one', category: 'identity', file_name: 'File', title: 'Work', kind: 'activity' }] : [], error: null };
   } });
   await expect(readWorkspaceIndex(mock as unknown as SupabaseClient, 'owner')).rejects.toThrow('Could not load your workspace. Try again.');
 });

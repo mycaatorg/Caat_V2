@@ -53,3 +53,27 @@ it('account change clears an open editor and ignores a previous account response
   await act(async()=>pending.resolve([item(80)]));expect(c.textContent).toContain('Item 90');expect(c.textContent).not.toContain('Item 80');
  }finally{act(()=>root.unmount());c.remove();}
 });
+
+it('opens only the exact linked item beyond the first page and does not reveal other items after deletion',async()=>{
+ io.usage.mockResolvedValue({});io.remove.mockResolvedValue(undefined);
+ const c=await mountComponent(<LibraryClient itemId="24"/>);await flush();
+ expect(c.querySelectorAll('[data-library-item]')).toHaveLength(1);expect(c.textContent).toContain('Item 24');
+ expect(search()).toBeNull();expect(c.querySelector('a[href="/workspace/library"]')?.textContent).toBe('All library items');
+ await click(button('Edit Item 24'));io.update.mockResolvedValue({...item(24),title:'Renamed exact item'});await change(get('label','Title').querySelector('input')!,'Renamed exact item');await click(button('Save item'));
+ expect(c.querySelectorAll('[data-library-item]')).toHaveLength(1);expect(c.textContent).toContain('Renamed exact item');
+ await click(button('Delete Renamed exact item'));await click(button('Confirm delete item'));
+ expect(c.querySelectorAll('[data-library-item]')).toHaveLength(0);expect(c.textContent).toContain('This library item is unavailable');expect(c.textContent).not.toContain('Item 00');
+});
+it.each(['missing','foreign','malformed?item=0'])('does not substitute another item for unavailable target %s',async(itemId)=>{
+ const c=await mountComponent(<LibraryClient itemId={itemId}/>);await flush();expect(c.querySelectorAll('[data-library-item]')).toHaveLength(0);expect(c.textContent).toContain('This library item is unavailable');expect(c.querySelector('a[href="/workspace/library"]')).not.toBeNull();
+});
+it('changing target closes an editor and ignores a prior target response',async()=>{
+ const c=document.createElement('div');document.body.append(c);const root=createRoot(c);
+ try{
+  await act(async()=>root.render(<LibraryClient itemId="24"/>));await flush();await click(button('Edit Item 24'));
+  const pending=deferred<EvidenceItem[]>();io.list.mockReturnValueOnce(pending.promise);
+  await act(async()=>root.render(<LibraryClient itemId="23"/>));expect(document.querySelector('[role="dialog"]')).toBeNull();
+  io.list.mockResolvedValueOnce([item(22)]);await act(async()=>root.render(<LibraryClient itemId="22"/>));await flush();
+  await act(async()=>pending.resolve([item(23)]));expect(c.textContent).toContain('Item 22');expect(c.textContent).not.toContain('Item 23');
+ }finally{act(()=>root.unmount());c.remove();}
+});
