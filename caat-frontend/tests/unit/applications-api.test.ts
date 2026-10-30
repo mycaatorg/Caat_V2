@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Controllable singleton mock, hoisted so the SUT sees it at module load.
 const state = vi.hoisted(() => ({
   userId: "user-1" as string | null,
-  resolver: (() => ({ data: null, error: null })) as (ctx: { table: string; op: string }) => {
+  resolver: (() => ({ data: null, error: null })) as (ctx: { table: string; op: string; from?: number }) => {
     data?: unknown;
     error?: { message: string } | null;
   },
@@ -22,7 +22,7 @@ vi.mock("@/lib/safe-error", () => ({
 
 vi.mock("@/lib/supabase/client", () => {
   const build = (table: string) => {
-    const ctx = { table, op: "select" as const };
+    const ctx: {table: string; op: string; from?: number} = { table, op: "select" };
     const b: Record<string, unknown> = {};
     const rec = (method: string, args: unknown[]) => state.calls.push({ table, method, args });
     const pass =
@@ -38,6 +38,7 @@ vi.mock("@/lib/supabase/client", () => {
         return b;
       };
     }
+    b.range = (from: number, to: number) => { ctx.from = from; rec("range", [from, to]); return b; };
     b.insert = pass("insert");
     b.update = pass("update");
     b.delete = pass("delete");
@@ -79,9 +80,23 @@ describe("auth guard", () => {
 
 describe("fetchApplications", () => {
   it("returns the rows on success", async () => {
-    state.resolver = () => ({ data: [{ id: "a1" }, { id: "a2" }], error: null });
+    state.resolver = ({from}) => ({ data: from ? [] : [{ id: "a1" }, { id: "a2" }], error: null });
     const rows = await fetchApplications();
     expect(rows).toHaveLength(2);
+  });
+
+  it("reads past short server-capped pages with stable owner ordering", async () => {
+    const all = Array.from({length:5},(_,i)=>({id:`a${i}`}));
+    state.resolver = ({from=0}) => ({data:all.slice(from,from+2),error:null});
+    expect(await fetchApplications()).toEqual(all);
+    expect(state.calls.filter(c=>c.method==='range').map(c=>c.args)).toEqual([[0,199],[2,201],[4,203],[5,204]]);
+    expect(state.calls.filter(c=>c.method==='eq').map(c=>c.args)).toEqual(Array(4).fill(['user_id','user-1']));
+    expect(state.calls.filter(c=>c.method==='order').map(c=>c.args)).toEqual(Array.from({length:4},()=>[['created_at',{ascending:false}],['id',{ascending:true}]]).flat());
+  });
+
+  it("rejects a later-page failure instead of returning partial applications", async () => {
+    state.resolver = ({from=0}) => from ? {data:null,error:{message:'later page failed'}} : {data:[{id:'first'}],error:null};
+    await expect(fetchApplications()).rejects.toThrow('later page failed');
   });
 
   it("throws the sanitized error when the query fails", async () => {

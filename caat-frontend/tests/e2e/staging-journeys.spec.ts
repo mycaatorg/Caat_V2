@@ -2752,3 +2752,91 @@ test('Today downloads an owner-only deadline calendar snapshot (PROD-203)', {tag
   for(const [user,list] of [[owner,ids.slice(0,2)],[peer,[ids[2]]]] as const){const r=await request.delete(`${api}/rest/v1/user_scholarships?id=in.(${list.join(',')})&user_id=eq.${user.id}`,{headers:user.headers});expect(r.ok()).toBe(true);}
  }
 });
+
+// PROD-218: one real student workspace, including failed writes and remounted cards.
+test('Applications board preserves drafts across views and recovers status moves (PROD-218)',{tag:'@phone'},async({page,request},testInfo)=>{
+ test.setTimeout(120_000);
+ const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin;
+ const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ const auth=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:STUDENT_EMAIL,password:process.env.E2E_TEST_PASSWORD}});
+ expect(auth.ok()).toBe(true);const session=await auth.json();
+ const headers={apikey:key,Authorization:`Bearer ${session.access_token}`,Prefer:'return=representation'};
+ await signInToIsolatedStudent(page);await removeSeededApplication(page);
+ const created=await request.post(`${api}/rest/v1/user_school_applications`,{headers,data:{user_id:session.user.id,school_id:SCHOOL_ID,status:'researching',deadline_at:'2026-12-01'}});
+ expect(created.ok()).toBe(true);const app=(await created.json())[0];
+ const url=`${api}/rest/v1/user_school_applications?user_id=eq.${session.user.id}&id=eq.${app.id}`;
+ const note=marker(`Workspace notes ${testInfo.project.name}`);
+ const card=page.locator(`[data-application-id="${app.id}"]`);
+ try {
+  // A terminal/later page failure must not display partial counts as complete.
+  await page.route(APPLICATION_WRITES,route=>{
+    const request=route.request(),url=new URL(request.url());
+    return request.method()==='GET' && Number(url.searchParams.get('offset'))>0
+      ?route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'later page outage'})}):route.continue();
+  });
+  await page.goto('/applications');
+  await expect(page.getByText("Couldn't load your applications.",{exact:true})).toBeVisible();
+  await expect(page.getByRole('region',{name:'Application stages',exact:true})).toHaveCount(0);
+  await page.unroute(APPLICATION_WRITES);await page.getByRole('button',{name:'Try again',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Board view',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(page.getByRole('region',{name:'Researching applications',exact:true}).getByRole('link',{name:'E2E Test University',exact:true})).toBeVisible();
+  await page.getByLabel('Search tracked universities',{exact:true}).fill('unmatched university');
+  await expect(page.getByText('No applications match this filter',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Reset filters',exact:true}).click();
+  await page.getByLabel('Sort applications',{exact:true}).selectOption('deadline');
+  await card.getByRole('button',{name:'Notes',exact:true}).click();
+  // Freeze just the debounce window, so the view switch certainly precedes save.
+  await page.clock.install();await page.clock.pauseAt(new Date());
+  await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(note);
+  await page.getByRole('button',{name:'List view',exact:true}).click();
+  await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(note);
+  await page.getByRole('button',{name:'Board view',exact:true}).click();
+  await page.clock.resume();
+  const status=()=>card.getByRole('combobox',{name:'Application status for E2E Test University',exact:true});
+  await status().focus();await page.keyboard.press('Enter');
+  await page.getByRole('option',{name:'Applying',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Preparing applications',exact:true}).locator(`[data-application-id="${app.id}"]`)).toBeVisible();
+  await expect(status()).toBeFocused();
+  await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(note);
+  await expect(card.getByText('Saved',{exact:true})).toBeVisible();
+  const failure=await failNextApplicationWrite(page,'"status":"submitted"');
+  await status().click();await page.getByRole('option',{name:'Submitted',exact:true}).click();
+  await expect(page.getByText('Failed to update status.',{exact:true})).toBeVisible();
+  expect(failure.failed).toBe(1);
+  await expect(status()).toContainText('Applying');await expect(status()).toBeFocused();
+  await page.unroute(APPLICATION_WRITES);
+  await failNextApplicationWrite(page,'"notes"');
+  const failedNote=`${note} after outage`;
+  await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(failedNote);
+  await expect(card.getByText('Not saved',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Outcome',exact:true}).click();
+  await page.getByRole('button',{name:'All',exact:true}).click();
+  await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(failedNote);
+  await expect(card.getByText('Not saved',{exact:true})).toBeVisible();
+  await page.unroute(APPLICATION_WRITES);await card.getByRole('button',{name:'Save',exact:true}).click();
+  await expect(card.getByText('Saved',{exact:true})).toBeVisible();
+  await expect(page.getByText('Failed to update notes.',{exact:true})).toHaveCount(0,{timeout:10_000});
+  await testInfo.attach('applications-board',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.getByRole('button',{name:'List view',exact:true}).click();
+  await testInfo.attach('applications-list',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  await page.reload();await card.getByRole('button',{name:'Notes',exact:true}).click();
+  await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(failedNote);
+  await expect(status()).toContainText('Applying');
+  // Leave before the 800ms debounce: ordinary workspace navigation still saves.
+  const navigationNote=`${note} before navigation`;
+  await page.clock.pauseAt(new Date());
+  await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(navigationNote);
+  await page.getByRole('link',{name:'Plan today',exact:true}).click();
+  await page.waitForURL(/\/today(?:$|\?)/);await page.clock.resume();
+  await expect.poll(async()=>{
+    const stored=await request.get(url,{headers});expect(stored.ok()).toBe(true);
+    return (await stored.json())[0];
+  }).toMatchObject({status:'applying',notes:navigationNote,deadline_at:'2026-12-01'});
+  await page.goto('/applications');await card.getByRole('button',{name:'Notes',exact:true}).click();
+  await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(navigationNote);
+ } finally {
+  await page.unroute(APPLICATION_WRITES);
+  expect((await request.delete(url,{headers})).ok()).toBe(true);
+ }
+});
