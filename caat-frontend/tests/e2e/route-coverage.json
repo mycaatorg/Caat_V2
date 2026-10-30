@@ -424,7 +424,7 @@
       "specs": [
         "tests/e2e/staging-journeys.spec.ts"
       ],
-      "reason": "PROD-227 creates, edits with a failed-save retry, and deletes an owned library item through the workspace; verifies complete 51-item reads, type/use/sort/page controls, account privacy, linked-item deletion protection and recovery from usage-source failure. Actual low-row-cap gate exercises this flow separately; human usability testing remains separate."
+      "reason": "PROD-227/229 verifies metadata-only global search, exact owned library links and unavailable foreign/deleted targets; creates, edits with a failed-save retry, and deletes an owned library item through the workspace; verifies complete 51-item reads, type/use/sort/page controls, account privacy, linked-item deletion protection and recovery from usage-source failure. Actual low-row-cap gate exercises this flow separately; human usability testing remains separate."
     }
   ]
 }
