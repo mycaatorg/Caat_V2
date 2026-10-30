@@ -33,6 +33,8 @@ import {
   importBookmarkedSchools,
   fetchPreparationInputs,
 } from "./api";
+import { APPLICATION_STAGES, applicationStage, selectApplications, type ApplicationFilter, type ApplicationSort } from "@/lib/application-workspace";
+import { useApplicationNotes, type ApplicationNoteDraft } from "./use-application-notes";
 import type { ApplicationRow, ApplicationStatus } from "@/types/applications";
 import { STATUS_CONFIG, APPLICATION_STATUSES } from "@/types/applications";
 import {
@@ -46,32 +48,10 @@ import {
 // ---------------------------------------------------------------------------
 // Filter tabs
 // ---------------------------------------------------------------------------
-type FilterKey = "all" | "active" | "outcome";
-
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "active", label: "In Progress" },
-  { key: "outcome", label: "Outcome" },
+type FilterKey = ApplicationFilter;
+const FILTERS: {key:FilterKey;label:string}[] = [
+  {key:'all',label:'All'},{key:'active',label:'In Progress'},{key:'outcome',label:'Outcome'},
 ];
-
-const ACTIVE_STATUSES = new Set<ApplicationStatus>([
-  "researching",
-  "applying",
-  "submitted",
-  "decision_pending",
-]);
-const OUTCOME_STATUSES = new Set<ApplicationStatus>([
-  "accepted",
-  "rejected",
-  "waitlisted",
-  "withdrawn",
-]);
-
-function matchesFilter(status: ApplicationStatus, filter: FilterKey) {
-  if (filter === "all") return true;
-  if (filter === "active") return ACTIVE_STATUSES.has(status);
-  return OUTCOME_STATUSES.has(status);
-}
 
 // ---------------------------------------------------------------------------
 // Countdown helper
@@ -104,6 +84,21 @@ export default function ApplicationsClient() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
+
+  const [view,setView]=useState<'board'|'list'>('board');
+  const [query,setQuery]=useState('');
+  const [sort,setSort]=useState<ApplicationSort>('newest');
+  const focusAfterMove=useRef<string|null>(null);
+  const workspaceRef=useRef<HTMLDivElement>(null);
+  const noteDrafts=useApplicationNotes(handleNotesChange);
+  useEffect(()=>{
+    const id=focusAfterMove.current;
+    if(id){
+      focusAfterMove.current=null;
+      Array.from(workspaceRef.current?.querySelectorAll<HTMLElement>('[data-application-id]')??[])
+        .find(card=>card.dataset.applicationId===id)?.querySelector<HTMLElement>('[data-status-control]')?.focus();
+    }
+  },[apps]);
 
   // Add-school search
   const [showSearch, setShowSearch] = useState(false);
@@ -277,6 +272,7 @@ export default function ApplicationsClient() {
       if (removedIds.current.has(id) || latestWrite.current.get(slot) !== seq) return false;
       toast.error(failureMessage);
       const confirmed = confirmedValues.current.get(slot) as ApplicationRow[K];
+      if(key==='status' && document.activeElement?.closest('[data-application-id]')?.getAttribute('data-application-id')===id) focusAfterMove.current=id;
       setApps((cur) => cur.map((a) => (a.id === id ? { ...a, [key]: confirmed } : a)));
       return false;
     }
@@ -295,6 +291,7 @@ export default function ApplicationsClient() {
   }
 
   function handleStatusChange(id: string, status: ApplicationStatus) {
+    focusAfterMove.current=id;
     void saveField(id, "status", status, "Failed to update status.");
   }
 
@@ -310,6 +307,7 @@ export default function ApplicationsClient() {
     setConfirmDeleteId(null);
     const index = apps.findIndex((a) => a.id === id);
     const removed = apps[index];
+    if(removed)noteDrafts.cancel(removed);
     removedIds.current.add(id);
     setApps((a) => a.filter((x) => x.id !== id));
     try {
@@ -329,9 +327,16 @@ export default function ApplicationsClient() {
   }
 
   const filtered = useMemo(
-    () => apps.filter((a) => matchesFilter(a.status, filter)),
-    [apps, filter]
+    () => selectApplications(apps,query,filter,sort),
+    [apps,query,filter,sort]
   );
+
+  function renderCard(app:ApplicationRow) {
+    return <ApplicationCard key={app.id} app={app} onStatusChange={handleStatusChange} onDeadlineChange={handleDeadlineChange}
+      noteDraft={noteDrafts.get(app)} onNotesToggle={()=>noteDrafts.toggle(app)} onNotesInput={text=>noteDrafts.input(app,text)} onNotesSave={text=>noteDrafts.persist(app,text)}
+      onDelete={handleDelete} confirmDeleteId={confirmDeleteId} setConfirmDeleteId={setConfirmDeleteId} isFresh={freshIds.has(app.id)} prepInputs={prepInputs}/>;
+  }
+  function resetFilters(){setQuery('');setFilter('all');}
 
   if (loading) {
     return (
@@ -349,15 +354,17 @@ export default function ApplicationsClient() {
   }
 
   return (
-    <div className="p-6">
-      <div className="max-w-5xl mx-auto">
+    <div ref={workspaceRef} className="min-w-0 px-4 pb-8 sm:px-6">
+      <div className="max-w-[1600px] mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">My Applications</h1>
-          <Badge variant="secondary" className="text-sm font-semibold">
-            {apps.length}
-          </Badge>
+        <div className="min-w-0">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">My Applications</h1>
+          <p className="mt-2 max-w-xl text-sm text-muted-foreground">Keep your university plans moving, from research to your next decision.</p>
+          <nav aria-label="Application workspace links" className="mt-3 flex flex-wrap gap-4 text-sm">
+            <Link href="/today" className="underline underline-offset-4">Plan today</Link>
+            <Link href="/shortlist" className="underline underline-offset-4">Open shortlist</Link>
+          </nav>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {unimportedCount !== null && unimportedCount > 0 && (
@@ -385,6 +392,14 @@ export default function ApplicationsClient() {
           </Button>
         </div>
       </div>
+
+      {!loadError && <section aria-label="Application stages" className="mb-6 grid grid-cols-2 lg:grid-cols-4 border-y divide-x divide-border py-4">
+        {APPLICATION_STAGES.map(stage=><div key={stage.key} className="min-w-0 px-3 py-2 sm:px-5">
+          <p className="text-2xl font-semibold tabular-nums">{apps.filter(app=>applicationStage(app.status)===stage.key).length}</p>
+          <p className="text-sm font-medium">{stage.label}</p>
+        </div>)}
+        <p className="col-span-full mt-4 px-3 text-xs text-muted-foreground sm:px-5">{apps.length} tracked {apps.length===1?'university':'universities'}. You update these statuses; CAAT does not submit applications.</p>
+      </section>}
 
       {/* Add school search panel */}
       {showSearch && (
@@ -442,11 +457,25 @@ export default function ApplicationsClient() {
         </div>
       )}
 
+      {!loadError && <div className="mb-4 flex flex-wrap items-end gap-3">
+        <label className="min-w-0 flex-1 basis-64 text-sm font-medium">Search tracked universities
+          <Input aria-label="Search tracked universities" value={query} onChange={event=>setQuery(event.target.value)} placeholder="University or country" className="mt-1"/>
+        </label>
+        <label className="text-sm font-medium">Sort applications
+          <select aria-label="Sort applications" value={sort} onChange={event=>setSort(event.target.value as ApplicationSort)} className="mt-1 block h-9 max-w-full rounded-md border bg-background px-3 text-sm">
+            <option value="newest">Newest added</option><option value="deadline">Deadline, soonest first</option><option value="university">University name</option>
+          </select>
+        </label>
+        <div role="group" aria-label="Application view" className="flex rounded-md border p-1">
+          {(['board','list'] as const).map(mode=><Button key={mode} size="sm" variant={view===mode?'secondary':'ghost'} aria-label={mode==='board'?'Board view':'List view'} aria-pressed={view===mode} onClick={()=>setView(mode)}>{mode==='board'?'Board':'List'}</Button>)}
+        </div>
+      </div>}
       {/* Filter tabs */}
       <div className="flex items-center gap-2 mb-6 flex-wrap">
-        {FILTERS.map((f) => (
+        {!loadError && FILTERS.map((f) => (
           <button
             key={f.key}
+            aria-pressed={filter===f.key}
             onClick={() => setFilter(f.key)}
             className={`inline-flex items-center rounded-md px-3 py-1 text-sm font-medium transition-colors border ${
               filter === f.key
@@ -459,6 +488,7 @@ export default function ApplicationsClient() {
         ))}
       </div>
 
+      {!loadError && apps.length>0 && <p role="status" aria-label="Application results" className="mb-4 text-sm text-muted-foreground">Showing {filtered.length} of {apps.length} applications{query.trim()?` matching “${query.trim()}”`:''}</p>}
       {/* Applications list */}
       {loadError ? (
         <div role="alert" className="flex flex-col items-center justify-center py-20 text-center gap-3">
@@ -475,6 +505,7 @@ export default function ApplicationsClient() {
               ? "No applications yet"
               : "No applications match this filter"}
           </p>
+          {apps.length > 0 && <Button variant="outline" onClick={resetFilters}>Reset filters</Button>}
           {apps.length === 0 && (
             <p className="text-sm text-muted-foreground">
               Click &quot;Add university&quot; to start tracking your first
@@ -483,22 +514,18 @@ export default function ApplicationsClient() {
           )}
         </div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((app) => (
-            <ApplicationCard
-              key={app.id}
-              app={app}
-              onStatusChange={handleStatusChange}
-              onDeadlineChange={handleDeadlineChange}
-              onNotesChange={handleNotesChange}
-              onDelete={handleDelete}
-              confirmDeleteId={confirmDeleteId}
-              setConfirmDeleteId={setConfirmDeleteId}
-              isFresh={freshIds.has(app.id)}
-              prepInputs={prepInputs}
-            />
-          ))}
-        </div>
+        view==='board' ? <div className="grid min-w-0 gap-5 md:grid-cols-2 2xl:grid-cols-4">
+          {APPLICATION_STAGES.map(stage=>{
+            const rows=filtered.filter(app=>applicationStage(app.status)===stage.key);
+            return <section key={stage.key} aria-label={`${stage.label} applications`} className="min-w-0 rounded-xl bg-muted/35 p-3">
+              <header className="mb-4 border-t-2 border-[#9a1a27] pt-3">
+                <h2 className="flex items-center justify-between gap-2 font-semibold">{stage.label}<Badge variant="secondary">{rows.length}</Badge></h2>
+                <p className="mt-1 text-xs text-muted-foreground">{stage.description}</p>
+              </header>
+              <div className="space-y-3">{rows.length?rows.map(renderCard):<p className="px-1 py-5 text-sm text-muted-foreground">No matching applications in this stage.</p>}</div>
+            </section>;
+          })}
+        </div> : <div aria-label="Application list" className="space-y-3">{filtered.map(renderCard)}</div>
       )}
       </div>
     </div>
@@ -512,7 +539,7 @@ function ApplicationCard({
   app,
   onStatusChange,
   onDeadlineChange,
-  onNotesChange,
+  noteDraft, onNotesToggle, onNotesInput, onNotesSave,
   onDelete,
   confirmDeleteId,
   setConfirmDeleteId,
@@ -522,36 +549,17 @@ function ApplicationCard({
   app: ApplicationRow;
   onStatusChange: (id: string, status: ApplicationStatus) => void;
   onDeadlineChange: (id: string, deadline: string) => void;
-  onNotesChange: (id: string, notes: string) => Promise<boolean>;
+  noteDraft: ApplicationNoteDraft;
+  onNotesToggle:()=>void;
+  onNotesInput:(text:string)=>void;
+  onNotesSave:(text:string)=>Promise<void>;
   onDelete: (id: string) => void;
   confirmDeleteId: string | null;
   setConfirmDeleteId: (id: string | null) => void;
   isFresh?: boolean;
   prepInputs: PreparationInputs | null;
 }) {
-  const [notesOpen, setNotesOpen] = useState(false);
-  const [localNotes, setLocalNotes] = useState(app.notes ?? "");
-  const [notesState, setNotesState] = useState<"saved" | "saving" | "failed">("saved");
-  const notesTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const notesSaveSeq = useRef(0);
-
-  // B18 — mark Saved only once the write resolves; a failed save must say so
-  // rather than spin on "Saving…". Only the newest save may set the indicator.
-  async function saveNotes(val: string) {
-    const seq = ++notesSaveSeq.current;
-    setNotesState("saving");
-    const ok = await onNotesChange(app.id, val);
-    if (seq === notesSaveSeq.current) setNotesState(ok ? "saved" : "failed");
-  }
-
-  function handleNotesInput(val: string) {
-    setLocalNotes(val);
-    // Newer unsent text makes any in-flight save's result stale.
-    notesSaveSeq.current++;
-    setNotesState("saving");
-    if (notesTimeout.current) clearTimeout(notesTimeout.current);
-    notesTimeout.current = setTimeout(() => void saveNotes(val), 800);
-  }
+  const {open:notesOpen,text:localNotes,state:notesState}=noteDraft;
 
   const schoolName = app.schools?.name ?? "Unknown School";
   const schoolCountry = app.schools?.country;
@@ -561,21 +569,21 @@ function ApplicationCard({
   const prep = prepInputs ? preparationFor(app, prepInputs) : null;
 
   return (
-    <div className={`rounded-lg border p-4 space-y-3 ${isFresh ? "bg-[#FFF8E1] dark:bg-amber-950/40 border-l-[3px] border-l-[#9a1a27] dark:border-l-[#e06b78]" : "bg-card"}`}>
+    <div data-application-id={app.id} className={`min-w-0 rounded-lg border p-4 space-y-3 ${isFresh ? "bg-[#FFF8E1] dark:bg-amber-950/40 border-l-[3px] border-l-[#9a1a27] dark:border-l-[#e06b78]" : "bg-card"}`}>
       {/* Top row: school info + status + actions */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           <div className="min-w-0">
             <Link
               href={`/schools/${app.school_id}`}
-              className="text-sm font-semibold hover:underline underline-offset-2 flex items-center gap-1.5"
+              className="text-sm font-semibold hover:underline underline-offset-2 flex items-start gap-1.5 [overflow-wrap:anywhere]"
             >
               {isFresh && (
                 <span className="text-[9px] font-bold uppercase tracking-wide bg-[#9a1a27] text-white px-1.5 py-0.5">
                   New
                 </span>
               )}
-              {schoolName}
+              <span className="min-w-0">{schoolName}</span>
               <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
             </Link>
             {schoolCountry && (
@@ -595,6 +603,8 @@ function ApplicationCard({
               onValueChange={(v) => onStatusChange(app.id, v as ApplicationStatus)}
             >
               <SelectTrigger
+                data-status-control
+                aria-label={`Application status for ${schoolName}`}
                 size="sm"
                 className={`h-auto w-auto rounded-md px-3 py-1 text-xs font-medium border-0 gap-1 ${STATUS_CONFIG[app.status].className}`}
               >
@@ -615,7 +625,7 @@ function ApplicationCard({
             type="date"
             value={app.deadline_at ?? ""}
             onChange={(e) => onDeadlineChange(app.id, e.target.value)}
-            className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+            className="h-7 min-w-0 max-w-full rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
             title="Application deadline"
             aria-label={`Application deadline for ${schoolName}`}
           />
@@ -633,7 +643,8 @@ function ApplicationCard({
             variant="ghost"
             size="sm"
             className="h-7 text-xs px-2 text-muted-foreground relative"
-            onClick={() => setNotesOpen(!notesOpen)}
+            aria-expanded={notesOpen}
+            onClick={onNotesToggle}
           >
             Notes
             {!notesOpen && localNotes.trim() && (
@@ -675,7 +686,8 @@ function ApplicationCard({
         <div className="space-y-2">
           <textarea
             value={localNotes}
-            onChange={(e) => handleNotesInput(e.target.value)}
+            aria-label={`Application notes for ${schoolName}`}
+            onChange={(e) => onNotesInput(e.target.value)}
             placeholder="Add notes about this application…"
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-y min-h-[60px]"
           />
@@ -693,13 +705,7 @@ function ApplicationCard({
                   variant="ghost"
                   size="sm"
                   className="h-7 text-xs px-2 text-destructive hover:text-destructive"
-                  onClick={async () => {
-                    // Cancel any pending debounced save so it can't fire with
-                    // the old text and re-add the notes we just cleared.
-                    if (notesTimeout.current) clearTimeout(notesTimeout.current);
-                    setLocalNotes("");
-                    await saveNotes("");
-                  }}
+                  onClick={() => void onNotesSave("")}
                 >
                   Clear Notes
                 </Button>
@@ -709,10 +715,7 @@ function ApplicationCard({
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs px-3"
-                onClick={async () => {
-                  if (notesTimeout.current) clearTimeout(notesTimeout.current);
-                  await saveNotes(localNotes);
-                }}
+                onClick={() => void onNotesSave(localNotes)}
               >
                 Save
               </Button>
@@ -722,7 +725,7 @@ function ApplicationCard({
       )}
 
       {/* Preparation checklist bar + open-hub link */}
-      <div className="flex items-center gap-3 pt-1">
+      <div className="flex flex-wrap items-center gap-3 pt-1">
         <div className="flex-1">
           {prep ? (
             <div
