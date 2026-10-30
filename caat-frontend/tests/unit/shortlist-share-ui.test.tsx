@@ -13,6 +13,18 @@ const record={...snapshot,id:'share-1',user_id:'owner',token_hash:'hash',revisio
 beforeEach(()=>{vi.resetAllMocks();api.loadShareCandidates.mockResolvedValue([{kind:item.kind,id:item.id,label:item.title,description:'Example University'}]);api.loadShares.mockResolvedValue([]);api.previewShare.mockResolvedValue([item]);api.createShare.mockResolvedValue(record);api.readSharedShortlist.mockResolvedValue(snapshot);window.location.hash='a'.repeat(64);Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});});
 afterEach(()=>{unmountAll();vi.useRealTimers();window.location.hash='';});
 async function preview(){await click(document.querySelector('input[type=checkbox]')!);await click(button('Preview selected items'));}
+it('ignores candidate and history responses from the first StrictMode effect setup',async()=>{
+ const oldCandidates=deferred<Awaited<ReturnType<typeof api.loadShareCandidates>>>();
+ const oldHistory=deferred<typeof record[]>();
+ api.loadShareCandidates.mockReturnValueOnce(oldCandidates.promise);
+ api.loadShares.mockReturnValueOnce(oldHistory.promise).mockResolvedValue([{...record,revoked_at:new Date().toISOString()}]);
+ await mountComponent(<React.StrictMode><ShareManager/></React.StrictMode>);
+ expect(api.loadShareCandidates).toHaveBeenCalledTimes(2);expect(api.loadShares).toHaveBeenCalledTimes(2);
+ expect(document.body.textContent).toContain('Engineering');expect(document.body.textContent).toContain('Revoked');
+ await act(async()=>{oldCandidates.resolve([{kind:'course',id:'stale',label:'Stale candidate',description:''}]);oldHistory.resolve([record]);});
+ expect(document.body.textContent).not.toContain('Stale candidate');expect(document.body.textContent).not.toContain('Active until');
+ expect(document.body.textContent).toContain('Engineering');expect(document.body.textContent).toContain('Revoked');
+});
 it('requires selection and exact preview before publishing, with a selectable fallback for blocked clipboard',async()=>{
  await mountComponent(<ShareManager/>);expect(button('Preview selected items').disabled).toBe(true);await preview();
  expect(document.querySelector('[data-share-preview]')?.textContent).toContain('Engineering');await click(button('Create shared link'));

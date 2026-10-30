@@ -39,7 +39,11 @@ export function ShareManager(){
   try{const rows=await loadShares();if(run===historyLoad.current)setRecords(rows);}
   catch(e){if(run===historyLoad.current)setHistoryError(message(e));}
  },[]);
- useEffect(()=>{void reloadCandidates();void reloadHistory();return()=>{generation.current++;candidateLoad.current++;historyLoad.current++;};},[reloadCandidates,reloadHistory]);
+ useEffect(()=>{
+  const actionGeneration=generation, candidateGeneration=candidateLoad, historyGeneration=historyLoad;
+  void reloadCandidates();void reloadHistory();
+  return()=>{actionGeneration.current++;candidateGeneration.current++;historyGeneration.current++;};
+ },[reloadCandidates,reloadHistory]);
  useEffect(()=>{if(error)notice.current?.focus();},[error]);
  function toggle(candidate:Candidate){
   if(inFlight.current)return;
