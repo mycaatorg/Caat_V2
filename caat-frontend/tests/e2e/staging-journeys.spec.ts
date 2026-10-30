@@ -3399,3 +3399,61 @@ test('experience library finds complete owned work and preserves edit/delete pro
     ]);
   });
 });
+
+
+test('application hub includes every saved course and retries a late page failure (PROD-232)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, 'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const login = await request.post(`${api}/auth/v1/token?grant_type=password`, { headers: { apikey: key }, data: { email: STUDENT_EMAIL, password: process.env.E2E_TEST_PASSWORD } });
+  expect(login.ok()).toBe(true);
+  const session = await login.json();
+  const headers = { apikey: key, Authorization: `Bearer ${session.access_token}`, Prefer: 'return=representation' };
+  const own = `user_id=eq.${session.user.id}`;
+  const ids = Array.from({ length: 51 }, (_,i) => `e2e-complete-course-${String(i).padStart(3,'0')}`);
+  const added: string[] = [];
+  let addedApplication: string | null = null;
+  async function read(table: string, query: string) {
+    const r = await request.get(`${api}/rest/v1/${table}?${query}`, { headers }); expect(r.ok()).toBe(true); return r.json();
+  }
+  await withScopedCleanup(async () => {
+    // Read in small known batches so fixture preservation itself works at cap50.
+    for (let offset=0; offset<ids.length; offset+=25) {
+      const batch=ids.slice(offset,offset+25);
+      const existing=await read('user_course_bookmarks', `${own}&course_id=in.(${batch.join(',')})`);
+      const missing=batch.filter(id=>!existing.some((r:{course_id:string})=>r.course_id===id));
+      if(missing.length) {
+        // Track attempted writes before dispatch in case a successful write loses its response.
+        added.push(...missing);
+        const r=await request.post(`${api}/rest/v1/user_course_bookmarks`,{headers,data:missing.map(course_id=>({user_id:session.user.id,course_id}))});expect(r.ok()).toBe(true);
+      }
+    }
+    const applications=await read('user_school_applications',`${own}&school_id=eq.900232`);
+    let app=applications[0];
+    if(!app) {
+      addedApplication=crypto.randomUUID();
+      const r=await request.post(`${api}/rest/v1/user_school_applications`,{headers,data:{id:addedApplication,user_id:session.user.id,school_id:900232,status:'researching'}});expect(r.ok()).toBe(true);app=(await r.json())[0];
+    }
+    if(process.env.CAAT_EXPORT_TEST_ROW_CAP) {
+      expect((await read('user_course_bookmarks',`${own}&course_id=in.(${ids.join(',')})&order=course_id&limit=200`)).length).toBe(50);
+      console.log('Verified real saved-course PostgREST row cap: 50');
+    }
+    await signInToIsolatedStudent(page);await page.goto(`/applications/${app.id}`);
+    const card=page.getByRole('main').getByRole('region',{name:'Courses you saved at E2E Course Completeness University',exact:true});
+    const courses=card.getByRole('link',{name:/^E2E Completeness Course \d{3}$/});
+    await expect(courses).toHaveCount(51);
+    await expect(courses.last()).toHaveText('E2E Completeness Course 050');
+    await page.reload();await expect(courses).toHaveCount(51);
+    await page.route('**/rest/v1/user_course_bookmarks?*',route=>Number(new URL(route.request().url()).searchParams.get('offset')??0)>0
+      ? route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'late saved-course page outage'})}) : route.continue());
+    await page.reload();await expect(card.getByRole('status')).toContainText("Couldn't load your saved courses.");await expect(courses).toHaveCount(0);
+    await page.unroute('**/rest/v1/user_course_bookmarks?*');await card.getByRole('button',{name:'Retry loading saved courses',exact:true}).click();await expect(courses).toHaveCount(51);
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await testInfo.attach('complete-saved-courses',{body:await page.screenshot(),contentType:'image/png'});
+  }, async()=>{
+    await runScopedCleanup([
+      async()=>{if(!page.isClosed())await page.close();},
+      async()=>{if(added.length)expect((await request.delete(`${api}/rest/v1/user_course_bookmarks?${own}&course_id=in.(${added.join(',')})`,{headers})).ok()).toBe(true);},
+      async()=>{if(addedApplication)expect((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${addedApplication}`,{headers})).ok()).toBe(true);},
+    ]);
+  });
+});

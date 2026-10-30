@@ -16,3 +16,12 @@ ON CONFLICT (id) DO UPDATE SET institution_key = EXCLUDED.institution_key, insti
 INSERT INTO public.schools(id,name,country,institution_type) VALUES(900175,'E2E Preparation University','Australia','university') ON CONFLICT(id) DO NOTHING;
 INSERT INTO public.course_offerings(id,institution_key,institution_name,program_code,name,school_id,prerequisites,assumed_knowledge,application_route,source_url,source_year,verified_at)
 VALUES('e2e-preparation-course','e2e-preparation','E2E Preparation University','E2E175','E2E Preparation Course',900175,'Mathematics preparation recorded for this synthetic course.','Programming familiarity','Apply through the synthetic provider','https://university.example.test/preparation',2026,'2026-10-01T00:00:00Z') ON CONFLICT(id) DO NOTHING;
+
+-- PROD-232: isolated completeness fixture; catalogue rows are synthetic and never deployed.
+INSERT INTO public.schools(id,name,country,institution_type)
+VALUES(900232,'E2E Course Completeness University','Australia','university') ON CONFLICT(id) DO NOTHING;
+INSERT INTO public.course_offerings(id,institution_key,institution_name,program_code,name,school_id,application_route,source_url,source_year,verified_at,active)
+SELECT 'e2e-complete-course-' || lpad(n::text,3,'0'), 'e2e-complete', 'E2E Course Completeness University',
+ 'E2E232-' || n, 'E2E Completeness Course ' || lpad(n::text,3,'0'), 900232,
+ 'Synthetic course application route', 'https://university.example.test/complete-courses', 2026, '2026-10-01T00:00:00Z'::timestamptz, true
+FROM generate_series(0,50) n ON CONFLICT(id) DO NOTHING;
