@@ -639,7 +639,7 @@ export default function DocumentVaultClient({
       {!loading && !loadError && (
         <section aria-label="Find documents" className="space-y-3 mb-4">
           <Input aria-label="Search documents" placeholder="Search filenames" value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} />
-          <div className="flex flex-wrap gap-3">
+          <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
             <select aria-label="Filter by review status" value={statusFilter} onChange={e => { setStatusFilter(e.target.value as DocumentStatusFilter); setPage(1); }} className="min-w-0 flex-1 h-9 border bg-background px-3 text-sm">
               <option value="all">All statuses</option><option value="pending_review">Pending review</option><option value="verified">Verified</option><option value="resubmit">Needs attention</option>
             </select>
