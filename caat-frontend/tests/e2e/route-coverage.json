@@ -331,7 +331,7 @@
         "tests/e2e/community-smoke.spec.ts",
         "tests/e2e/community-features.spec.ts"
       ],
-      "reason": "PR staging creates a synthetic group post, follows its permalink, adds a comment, saves it, verifies persistence, and deletes it from the disposable local database."
+      "reason": "PR staging creates a synthetic group post, follows its permalink, adds/edits/deletes comments, verifies reply preservation after parent deletion, likes/saves/reloads posts, deletes a post with its children, and restores a composer draft. Active-page selectors reject hidden copies without hiding visible duplicates. Owner-scoped synthetic fixture cleanup is verified against the disposable local database."
     },
     {
       "id": "resume-editor-autosave-formatting",

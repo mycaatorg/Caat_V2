@@ -244,7 +244,7 @@ jobs:
 
       - name: Verify isolated bootstrap safety contracts
         working-directory: .
-        run: node --test .github/scripts/*.test.js caat-frontend/tests/staging/safety.test.mjs
+        run: node --test .github/scripts/*.test.js caat-frontend/tests/staging/safety.test.mjs caat-frontend/tests/staging/ci-community-discovery.test.cjs
 
       - name: Ensure PostgreSQL client for isolated bootstrap
         run: |
