@@ -285,13 +285,16 @@ export function createSupabaseStore(client) {
     },
     async loadActiveScholarships() {
       const rows = [];
-      for (let from = 0; ; from += PAGE_SIZE) {
+      for (let from = 0; ; ) {
         const page = must(await client.from('scholarships')
           .select('id,external_url,last_verified_at,source_last_synced_at,is_active')
           .eq('is_active', true).not('external_url', 'is', null)
           .order('id').range(from, from + PAGE_SIZE - 1), 'load scholarships') ?? [];
+        if (page.length === 0) return rows;
         rows.push(...page);
-        if (page.length < PAGE_SIZE) return rows;
+        // The API may cap responses below PAGE_SIZE. Only an empty page proves
+        // completion; advance by what we received so no rows are skipped.
+        from += page.length;
       }
     },
     /** Latest check and latest baseline. A missing table reads as no history (`missing: true`). */
