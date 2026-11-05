@@ -95,6 +95,7 @@ async function main() {
   run('tests/staging/course-preparation-race.mjs', localOnlyEnv);
   run('tests/staging/shortlist-sharing-rls.mjs', localOnlyEnv);
   run('tests/staging/community-resume-sharing-rls.mjs', localOnlyEnv);
+  run('tests/staging/community-resume-snapshot-validation.mjs', localOnlyEnv);
   run('tests/staging/community-owned-content-rls.mjs', localOnlyEnv);
   run('tests/staging/community-owned-content-cursors.mjs', localOnlyEnv);
   run('tests/staging/personal-task-validation.mjs', localOnlyEnv);
