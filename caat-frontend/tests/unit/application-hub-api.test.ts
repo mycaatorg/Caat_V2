@@ -104,7 +104,7 @@ function hubResolver(overrides: Partial<Record<string, QueryResult>> = {}) {
   return (ctx: QueryContext): QueryResult => {
     const result = resolve(ctx);
     const range = ctx.calls.find(call => call.method === 'range')?.args as [number, number] | undefined;
-    if (range && ['essay_prompts','essay_drafts','documents','user_course_bookmarks'].includes(ctx.table) && Array.isArray(result.data)) return {...result, data:result.data.slice(range[0],range[1]+1)};
+    if (range && ['essay_prompts','essay_drafts','custom_essay_prompts','documents','user_course_bookmarks'].includes(ctx.table) && Array.isArray(result.data)) return {...result, data:result.data.slice(range[0],range[1]+1)};
     return result;
   };
 }
@@ -609,5 +609,47 @@ describe('complete application preparation sources (PROD-230)',()=>{
  });
  it.each(['profiles','essay_drafts','documents'])('rejects failed %s reads instead of substituting empty work',async(table)=>{
   use(hubResolver({[table]:{data:null,error:{message:'secret backend error'}}}));await expect(fetchApplicationHub('app-1')).rejects.toThrow('Could not load application preparation. Try again.');
+ });
+});
+
+describe('custom draft visibility (PROD-267)',()=>{
+ it('shows each applicable custom scope with its newest matching draft and keeps catalogue rules',async()=>{
+  use(hubResolver({
+   custom_essay_prompts:{data:[{id:'custom',title:'My statement'},{id:'empty',title:'No drafts'}],error:null},
+   essay_drafts:{data:[
+    {id:'old',prompt_id:'custom',school_id:7,label:'Old',updated_at:'2026-09-01'},
+    {id:'a',prompt_id:'custom',school_id:7,label:'Earlier tie',updated_at:'2026-10-01'},
+    {id:'z',prompt_id:'custom',school_id:7,label:'School version',updated_at:'2026-10-01',content:'SECRET BODY'},
+    {id:'shared',prompt_id:'custom',school_id:null,label:'Shared version',updated_at:null},
+    {id:'foreign',prompt_id:'custom',school_id:99,label:'Other school',updated_at:'2030-01-01'},
+    {id:'catalogue-untagged',prompt_id:'p-why',school_id:null,label:'Not custom',updated_at:null},
+   ],error:null},
+  }));
+  const data=await fetchApplicationHub('app-1');
+  expect(data.essaysForSchool).toEqual([
+   {promptId:'p-why',promptSlug:'why-us',title:'Why this school',status:'to-write',lastEdited:null},
+   {promptId:'custom',promptSlug:'custom',title:'My statement — School version',status:'drafted',lastEdited:'2026-10-01',draftId:'z'},
+  ]);
+  expect(data.essaysShared[1]).toEqual({promptId:'custom',promptSlug:'custom',title:'My statement — Shared version',status:'drafted',lastEdited:null,draftId:'shared'});
+  expect(data.readiness.essayDrafted).toBe(true);expect(JSON.stringify(data.essaysForSchool)).not.toMatch(/SECRET|Other school|Not custom|No drafts/);
+ });
+ it('retains applicable orphan drafts without inventing a navigable prompt',async()=>{
+  use(hubResolver({essay_drafts:{data:[{id:'orphan',prompt_id:'missing',school_id:7,label:'   ',updated_at:null}],error:null}}));
+  const data=await fetchApplicationHub('app-1');
+  expect(data.essaysForSchool.at(-1)).toEqual({promptId:'missing',promptSlug:'custom',title:'Custom essay',status:'drafted',lastEdited:null});
+  expect(data.readiness.essayDrafted).toBe(true);
+ });
+ it('reads complete owner-scoped custom metadata without essay contents',async()=>{
+  const fallback=hubResolver();const customs=Array.from({length:5},(_,i)=>({id:`custom${i}`,title:`Custom ${i}`}));
+  use(ctx=>{if(ctx.table==='custom_essay_prompts'){const from=ctx.calls.find(c=>c.method==='range')?.args[0] as number??0;return{data:customs.slice(from,from+2),error:null};}if(ctx.table==='essay_drafts'){const from=ctx.calls.find(c=>c.method==='range')?.args[0] as number??0;return{data:from?[]:[{id:'last',prompt_id:'custom4',school_id:7,label:null,updated_at:null}],error:null};}return fallback(ctx);});
+  const data=await fetchApplicationHub('app-1');expect(data.essaysForSchool.at(-1)).toMatchObject({title:'Custom 4',draftId:'last'});
+  const queries=io.client.queries.filter(q=>q.table==='custom_essay_prompts');expect(queries).toHaveLength(4);
+  for(const query of queries){expect(query.calls).toContainEqual({method:'eq',args:['user_id','student-1']});expect(query.calls).toContainEqual({method:'order',args:['id']});expect(query.calls).toContainEqual({method:'select',args:['id, title']});}
+  const selected=io.client.queries.filter(q=>q.table==='essay_drafts').flatMap(q=>q.calls.filter(c=>c.method==='select').map(c=>c.args[0]));
+  expect(selected.every(s=>typeof s==='string'&&!s.includes('*')&&!s.includes('content'))).toBe(true);
+ });
+ it('rejects a failed later custom-prompt page rather than omit titles',async()=>{
+  const fallback=hubResolver();use(ctx=>{if(ctx.table!=='custom_essay_prompts')return fallback(ctx);const from=ctx.calls.find(c=>c.method==='range')?.args[0] as number??0;return from?{data:null,error:{message:'private provider error'}}:{data:[{id:'first',title:'First'}],error:null};});
+  await expect(fetchApplicationHub('app-1')).rejects.toThrow('Could not load application preparation. Try again.');
  });
 });

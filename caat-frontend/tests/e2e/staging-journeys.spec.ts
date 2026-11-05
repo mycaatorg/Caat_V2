@@ -3972,3 +3972,53 @@ test('application brief includes complete optional course preparation and person
   async()=>{if(bookmarkWriteAttempted)expect((await request.delete(`${api}/rest/v1/user_course_bookmarks?${own}&course_id=in.(${courseIds.join(',')})`,{headers})).ok()).toBe(true);},
  ]);});
 });
+
+test('application hubs and briefs include scoped custom drafts and exact navigation (PROD-267)',{tag:'@phone'},async({page,request},testInfo)=>{
+ test.setTimeout(120_000);page.setDefaultTimeout(10_000);
+ const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin,key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ const auth=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:STUDENT_EMAIL,password:process.env.E2E_TEST_PASSWORD}});expect(auth.ok()).toBe(true);
+ const session=await auth.json(),own=`user_id=eq.${session.user.id}`,headers={apikey:key,Authorization:`Bearer ${session.access_token}`,Prefer:'return=representation'};
+ const app=crypto.randomUUID(),promptIds=Array.from({length:55},()=>crypto.randomUUID()).sort(),draftIds=Array.from({length:58},()=>crypto.randomUUID()).sort(),targetPrompt=promptIds[54],targetDraft=draftIds[54],title=marker(`HubCustom-${testInfo.project.name}`);
+ const schoolTitle=`${title} 054 — School version`,sharedTitle=`${title} 054 — Shared version`;
+ const insert=async(table:string,data:unknown)=>{const r=await request.post(`${api}/rest/v1/${table}`,{headers,data});expect(r.ok(),`Create ${table}: ${r.ok()?'ok':await r.text()}`).toBe(true);};
+ await withScopedCleanup(async()=>{
+  await insert('user_school_applications',{id:app,user_id:session.user.id,school_id:900266});
+  await insert('custom_essay_prompts',promptIds.map((id,i)=>({id,user_id:session.user.id,title:`${title} ${String(i).padStart(3,'0')}${i===0?' '+ 'W'.repeat(200):''}`})));
+  const drafts=draftIds.slice(0,55).map((id,i)=>({id,user_id:session.user.id,prompt_id:promptIds[i],prompt_slug:`custom-${promptIds[i]}`,label:i===54?'School version':'Saved version',school_id:900266,content:i===54?'EXACT SCHOOL DRAFT BODY 267':'PRIVATE OTHER BODY 267',is_current:false,updated_at:'2026-10-01T00:00:00Z'}));
+  await insert('essay_drafts',[
+   ...drafts,
+   {...drafts[54],id:draftIds[55],label:'Older version',updated_at:'2025-01-01T00:00:00Z'},
+   {...drafts[54],id:draftIds[56],label:'Foreign version',school_id:900264,is_current:true,updated_at:'2030-01-01T00:00:00Z',content:'PRIVATE FOREIGN BODY 267'},
+   {...drafts[54],id:draftIds[57],label:'Shared version',school_id:null,updated_at:'2026-11-01T00:00:00Z',content:'PRIVATE SHARED BODY 267'},
+  ]);
+  if(process.env.CAAT_EXPORT_TEST_ROW_CAP){
+   for(const table of ['custom_essay_prompts','essay_drafts']){const r=await request.get(`${api}/rest/v1/${table}?${own}&id=in.(${(table==='custom_essay_prompts'?promptIds:draftIds).join(',')})&order=id&limit=200`,{headers});expect(r.ok()).toBe(true);expect(await r.json()).toHaveLength(50);}
+   console.log('Verified actual custom-draft hub metadata row caps: 50');
+  }
+  await signInToIsolatedStudent(page);await page.goto(`/applications/${app}`);
+  const main=page.getByRole('main');
+  await expect(main.getByRole('link',{name:schoolTitle,exact:true})).toHaveAttribute('href',`/essays?prompt=${targetPrompt}&draft=${targetDraft}`);
+  await expect(main.getByRole('link',{name:sharedTitle,exact:true})).toBeVisible();
+  await expect(main).not.toContainText('Foreign version');await expect(main).not.toContainText('Older version');await expect(main).not.toContainText('BODY 267');
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await main.getByRole('link',{name:schoolTitle,exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('custom-draft-hub.png')});
+  await main.getByRole('link',{name:schoolTitle,exact:true}).click();
+  await expect(page).toHaveURL(new RegExp(`draft=${targetDraft}`));
+  await expect(main.getByPlaceholder('Start writing your essay here.')).toHaveValue('EXACT SCHOOL DRAFT BODY 267');
+  await page.goto(`/applications/${app}/brief`);
+  const preview=page.locator('[data-application-brief-preview]');
+  await expect(preview).toContainText(schoolTitle);await expect(preview).toContainText(sharedTitle);await expect(preview).not.toContainText('BODY 267');await expect(preview).not.toContainText('Foreign version');
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await expect(preview.getByRole('row').filter({hasText:schoolTitle})).toContainText('This school');await expect(preview.getByRole('row').filter({hasText:sharedTitle})).toContainText('Shared');
+  expect(await page.locator('[data-print-application]').textContent()).toBe(await preview.textContent());
+  await page.route('**/rest/v1/custom_essay_prompts?*',route=>Number(new URL(route.request().url()).searchParams.get('offset')??0)>0?route.fulfill({status:503,contentType:'application/json',body:'{"message":"private late metadata failure"}'}):route.continue());
+  await page.getByRole('button',{name:'Refresh brief',exact:true}).click();
+  await expect(page.locator('[data-print-application]')).toHaveCount(0);await expect(main).toContainText('Could not load');await expect(main).not.toContainText('private late metadata failure');
+  await page.unroute('**/rest/v1/custom_essay_prompts?*');await main.getByRole('button',{name:'Retry brief',exact:true}).click();await expect(preview).toContainText(schoolTitle);
+ },async()=>{await runScopedCleanup([
+  async()=>{if(!page.isClosed())await page.close();},
+  async()=>expect((await request.delete(`${api}/rest/v1/essay_drafts?${own}&id=in.(${draftIds.join(',')})`,{headers})).ok()).toBe(true),
+  async()=>expect((await request.delete(`${api}/rest/v1/custom_essay_prompts?${own}&id=in.(${promptIds.join(',')})`,{headers})).ok()).toBe(true),
+  async()=>expect((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${app}`,{headers})).ok()).toBe(true),
+ ]);});
+});
