@@ -27,7 +27,15 @@ If the key is in the macOS keychain instead, write the env file from it in a pri
 
 ## Dry run first (the default)
 
-A dry run reads scholarships and earlier checks and fetches each page, but writes nothing: no run row, no check rows, no scholarship updates. It works before the migration is applied: if `scholarship_source_checks` does not exist yet it says so and treats every URL as having no history. It prints:
+A dry run reads scholarships and earlier checks and fetches each page, but writes nothing: no run row, no check rows, no scholarship updates. It works before the migration is applied: if `scholarship_source_checks` does not exist yet it says so and treats every URL as having no history.
+
+The catalogue reader follows the actual number of rows returned until an empty
+page, even when the API caps responses below the requested page size. A failure
+on any catalogue page stops the run before source fetches or database writes.
+Rows are ordered by ID; this remains an offset scan, so avoid concurrent imports
+while checking a catalogue when you need a stable inventory.
+
+It prints:
 
 ```
 DRY RUN: 50 distinct source urls from 61 active scholarships (run <random id>, not stored).
