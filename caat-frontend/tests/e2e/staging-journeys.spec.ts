@@ -45,8 +45,8 @@ test("public duplicate scholarship links preserve the chosen listing", { tag: "@
   await expect(page.getByRole("heading", { name: "Choose a scholarship", exact: true })).toBeVisible();
   const north = page.getByRole("listitem").filter({ hasText: "E2E North Foundation" });
   const south = page.getByRole("listitem").filter({ hasText: "E2E South Foundation" });
-  await expect(north.getByRole("link", { name: "E2E Shared Award", exact: true })).toHaveAttribute("href", `${path}?award=e2000000-0000-4000-8000-000000000238`);
-  const selected = south.getByRole("link", { name: "E2E Shared Award", exact: true });
+  await expect(north.getByRole("link", { name: "E2E Shared Award — E2E North Foundation, A$5,000, recorded deadline 1 June 2027, listing 1 of 2", exact: true })).toHaveAttribute("href", `${path}?award=e2000000-0000-4000-8000-000000000238`);
+  const selected = south.getByRole("link", { name: "E2E Shared Award — E2E South Foundation, A$9,000, recorded deadline 1 July 2027, listing 2 of 2", exact: true });
   await expect(selected).toHaveAttribute("href", `${path}?award=${chosen}`);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("scholarship-choices.png"), fullPage: true });
