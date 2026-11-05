@@ -38,7 +38,10 @@ function TaskWorkspace({applicationId}:{applicationId:string}) {
   const origin=document.activeElement;
   let timer:ReturnType<typeof setTimeout>|undefined;
   try {
-   await Promise.race([action(),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Timed out')),30000);})]);
+   // A slow request can still reach the database. Keep the write gate held
+   // until it settles; a timeout must not enable a conflicting retry/relink.
+   timer=setTimeout(()=>{if(alive.current)setError('Still waiting for confirmation. Your text is kept here. Other changes will be available when this request finishes.');},30000);
+   await action();
    if(!alive.current)return;
    success();setNotice(message);refresh();
    if(document.activeElement===origin||document.activeElement===document.body)region.current?.focus();

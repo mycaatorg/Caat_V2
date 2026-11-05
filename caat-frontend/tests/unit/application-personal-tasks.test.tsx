@@ -86,3 +86,23 @@ it('bounds task rows while retaining search access to the tail',async()=>{
  expect(screen.getAllByRole('checkbox')).toHaveLength(20);fireEvent.change(screen.getByLabelText('Search application tasks'),{target:{value:'Task 54'}});
  expect(screen.getByRole('checkbox',{name:'Mark Task 54 done'})).toBeTruthy();
 });
+it('keeps timed-out unlink serialized until it settles before allowing a relink',async()=>{
+ const pending=deferred<void>();io.unlink.mockReturnValueOnce(pending.promise);mount();await loaded();
+ vi.useFakeTimers();
+ try {
+  fireEvent.click(screen.getByRole('button',{name:'Unlink Task one'}));
+  await act(async()=>{await vi.advanceTimersByTimeAsync(30_001);});
+  expect((screen.getByRole('button',{name:'Refresh tasks'}) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button',{name:'Link existing task'}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button',{name:'Unlink Task one'}));
+  expect(io.unlink).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('alert').textContent).toContain('Still waiting');
+  io.read.mockResolvedValue([]);
+  await act(async()=>pending.resolve());
+ } finally {vi.useRealTimers();}
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Link existing task'}) as HTMLButtonElement).disabled).toBe(false));
+ io.available.mockResolvedValue([task()]);fireEvent.click(screen.getByRole('button',{name:'Link existing task'}));
+ await screen.findByRole('button',{name:'Link Task one'});
+ io.read.mockResolvedValue([task()]);fireEvent.click(screen.getByRole('button',{name:'Link Task one'}));await loaded();
+ expect(io.link).toHaveBeenCalledTimes(1);expect(io.unlink).toHaveBeenCalledTimes(1);
+});
