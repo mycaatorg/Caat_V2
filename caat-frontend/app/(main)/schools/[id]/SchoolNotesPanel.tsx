@@ -29,7 +29,7 @@ export function SchoolNotesPanel(props: SchoolNotesProps) {
 
 function SchoolNotesEditor({ ownerId, schoolId, initialNotes, initialUpdatedAt }: SchoolNotesProps) {
   const [value, setValue] = useState(initialNotes);
-  const [lastSaved, setLastSaved] = useState(initialNotes);
+  const [lastSaved, setLastSaved] = useState<string | null>(initialNotes);
   const [state, setState] = useState<SaveState>(() => {
     if (initialUpdatedAt && initialNotes.length > 0) {
       return { kind: "saved", at: new Date(initialUpdatedAt) };
@@ -39,7 +39,7 @@ function SchoolNotesEditor({ ownerId, schoolId, initialNotes, initialUpdatedAt }
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // These snapshots belong to input events and save settlements, never render.
   const valueRef = useRef(initialNotes);
-  const lastSavedRef = useRef(initialNotes);
+  const lastSavedRef = useRef<string | null>(initialNotes);
   const writing = useRef(false);
   const requested = useRef(false);
   const mounted = useRef(true);
@@ -56,7 +56,13 @@ function SchoolNotesEditor({ ownerId, schoolId, initialNotes, initialUpdatedAt }
           if (next === lastSavedRef.current) continue;
           if (mounted.current) setState({ kind: "saving" });
           const failed = (message: string) => {
-            if (mounted.current) setState({ kind: "error", message });
+            // A failed response may follow a committed write. Invalidate the
+            // dedupe baseline so a queued revert or manual retry reaches storage.
+            lastSavedRef.current = null;
+            if (mounted.current) {
+              setLastSaved(null);
+              setState({ kind: "error", message });
+            }
             // A later distinct edit may still be queued, but a duplicate flush
             // must not automatically retry the same failed request forever.
             if (valueRef.current === next) requested.current = false;

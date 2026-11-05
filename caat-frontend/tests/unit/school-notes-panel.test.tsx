@@ -11,8 +11,9 @@ type Result = { updated_at: string | null; error: string | null };
 const ok: Result = { updated_at: '2026-11-06T00:00:00Z', error: null };
 function deferred() {
   let resolve!: (value: Result) => void;
-  const promise = new Promise<Result>((r) => { resolve = r; });
-  return { promise, resolve };
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<Result>((r, fail) => { resolve = r; reject = fail; });
+  return { promise, resolve, reject };
 }
 function editor(schoolId = 1, initialNotes = '') {
   return <SchoolNotesPanel ownerId="owner-a" schoolId={schoolId} initialNotes={initialNotes} initialUpdatedAt={null} />;
@@ -26,6 +27,36 @@ beforeEach(() => { vi.useFakeTimers(); save.mockReset(); save.mockResolvedValue(
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('school note saving', () => {
+  it.each(['throw', 'returned error'])('restores a queued revert after the earlier write commits but reports %s', async (failure) => {
+    const first = deferred(); let persisted = 'Original';
+    save.mockImplementationOnce((_id: number, text: string) => { persisted = text; return first.promise; });
+    save.mockImplementation(async (_id: number, text: string) => { persisted = text; return ok; });
+    render(editor(1, 'Original'));
+    change('Temporary'); await debounce();
+    change('Original'); await debounce();
+    await act(async () => {
+      if (failure === 'throw') first.reject(new Error('response lost after commit'));
+      else first.resolve({ updated_at: null, error: 'Could not save note.' });
+      await first.promise.catch(() => {});
+    });
+    expect(save.mock.calls).toEqual([[1, 'Temporary', 'owner-a'], [1, 'Original', 'owner-a']]);
+    expect(persisted).toBe('Original');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  it('allows manual recovery to the original text when a write outcome is uncertain', async () => {
+    const first = deferred(); let persisted = 'Original';
+    save.mockImplementationOnce((_id: number, text: string) => { persisted = text; return first.promise; });
+    save.mockImplementation(async (_id: number, text: string) => { persisted = text; return ok; });
+    render(editor(1, 'Original'));
+    change('Temporary'); await debounce(); change('Original');
+    await act(async () => { first.reject(new Error('response lost after commit')); await first.promise.catch(() => {}); });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })); });
+    expect(persisted).toBe('Original');
+    expect(save.mock.calls).toEqual([[1, 'Temporary', 'owner-a'], [1, 'Original', 'owner-a']]);
+  });
+
   it('coalesces edits behind one unresolved write and persists the latest text', async () => {
     const first = deferred();
     let persisted = '';
