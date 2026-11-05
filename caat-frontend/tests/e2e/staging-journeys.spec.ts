@@ -139,7 +139,7 @@ test("scholarship comparison retains choices across filters and restores keyboar
   page.on("request", request => {
     if (request.url().includes("/rest/v1/user_bookmarked_scholarships") && ["POST", "PATCH", "DELETE"].includes(request.method())) bookmarkWrites.push(request.method());
   });
-  await page.goto("/scholarships?q=E2E");
+  await page.goto("/scholarships?q=E2E+Shared+Award");
   const north = page.getByRole("button", { name: /^Compare E2E Shared Award at E2E North Foundation/ });
   const south = page.getByRole("button", { name: /^Compare E2E Shared Award at E2E South Foundation/ });
   await north.click(); await south.click();
