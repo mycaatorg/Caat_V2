@@ -40,7 +40,9 @@ export function SchoolNotesPanel({
   // flush effect can read them without depending on them (see below).
   const valueRef = useRef(value);
   const lastSavedRef = useRef(lastSaved);
+  // eslint-disable-next-line react-hooks/refs -- PROD-248: preserve outgoing draft flush semantics; move ref synchronization with concurrency regression coverage.
   valueRef.current = value;
+  // eslint-disable-next-line react-hooks/refs -- PROD-248: preserve outgoing draft flush semantics; move ref synchronization with concurrency regression coverage.
   lastSavedRef.current = lastSaved;
 
   // Re-render once a minute so the "Saved 2 mins ago" label stays fresh.

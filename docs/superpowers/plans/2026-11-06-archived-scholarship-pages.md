@@ -1,0 +1,11 @@
+# Archived public scholarship pages (PROD-245)
+
+Execute inline using existing Next.js public-page design. User has authorised continuous improvements, tests, Claude review and deployment; no design questions are needed for this corrective behaviour.
+
+Inactive catalogue records retain public detail URLs for historical access, but must not look like current promoted opportunities. Add a visible semantic notice immediately below the heading: this listing is archived in CAAT; recorded details may be outdated and provider availability must be checked. Do not claim the provider closed it. Link back to active catalogue. Preserve exact record selection, canonical URL and official source. Omit both public tracking promotions for inactive rows; saved tracker access remains unchanged.
+
+Mark inactive selected pages noindex, follow. Use historical metadata without an application invitation; fix active metadata to direct applications to the official provider. Do not publish a MonetaryGrant for archived listings; keep breadcrumbs. Label their deadline as recorded. Active listings retain both tracking CTAs and grant markup. This does not alter database data or personal records.
+
+RED: render real route/metadata for unique and selected inactive records, ensure archive notice/official link/canonical/noindex/no tracking or grant; active controls unchanged. GREEN implementation. Verify full unit coverage, types/lint, three-device isolated browser journey for active/archived identity, official-link safety and navigation; exact fresh production build. Actual Claude and fresh independent whole-branch review, one fix pass. Hosted CI and normal release gates; live repaired archived duplicate plus active listing checks.
+
+Ruling from browser evidence: the default directory intentionally includes inactive rows; its existing `open=1` RPC flag filters is_active only, not verified application availability. Use that filter in the archive notice link, rename the public checkbox to Active listings only, and label inactive directory cards Archived listing with recorded-deadline wording. Preserve the existing default search population and pagination; no database/API change. The browser check must await the directory heading before asserting absence, preventing a transient pre-navigation false pass.

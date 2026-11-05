@@ -172,10 +172,15 @@ export default function ResumeBuilderShell() {
   const queuedSaveCountRef = useRef(0);
   const lastSavedFingerprintRef = useRef<string | null>(null);
   const transitionLockRef = useRef(false);
+  // eslint-disable-next-line react-hooks/refs -- PROD-248: preserve outgoing draft flush semantics; move ref synchronization with concurrency regression coverage.
   sectionsRef.current = sections;
+  // eslint-disable-next-line react-hooks/refs -- PROD-248: preserve outgoing draft flush semantics; move ref synchronization with concurrency regression coverage.
   settingsRef.current = settings;
+  // eslint-disable-next-line react-hooks/refs -- PROD-248: preserve outgoing draft flush semantics; move ref synchronization with concurrency regression coverage.
   resumeIdRef.current = resumeId;
+  // eslint-disable-next-line react-hooks/refs -- PROD-248: preserve outgoing draft flush semantics; move ref synchronization with concurrency regression coverage.
   resumeTitleRef.current = resumeTitle;
+  // eslint-disable-next-line react-hooks/refs -- PROD-248: preserve outgoing draft flush semantics; move ref synchronization with concurrency regression coverage.
   isLoadingRef.current = isLoading;
 
   const currentSavePayload = useCallback((): Parameters<typeof saveResumeState>[0] | null => {

@@ -8,7 +8,9 @@ export default defineConfig({
     environment: "node",
     globals: true,
     setupFiles: ["./tests/setup.ts"],
-    pool: "vmThreads",
+    // Native Node loading supports the patched sanitizer's CJS → ESM dependencies.
+    // VM contexts cannot require htmlparser2 12 even though Node 24 can.
+    pool: "forks",
     // Bound CPU/memory pressure on developer machines as well as hosted CI.
     // Unbounded local workers made real editor tests time out and cascade cleanup.
     maxWorkers: 2,

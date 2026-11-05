@@ -114,6 +114,7 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
 
   useEffect(() => {
      
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
     void load();
   }, [load]);
 

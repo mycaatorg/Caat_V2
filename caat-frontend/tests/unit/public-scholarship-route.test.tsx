@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +9,9 @@ vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('NOT_FOUND
 vi.mock('@/components/public/PublicChrome', () => ({ PublicHeader: () => null, PublicFooter: () => null }));
 vi.mock('@/lib/supabase/client', () => ({ getBrowserClient: () => ({ auth: { getClaims: async () => ({ data: null }) } }) }));
 vi.mock('@/lib/public-scholarships', () => ({
+  PUBLIC_FUNDING_OPTIONS: [],
+  PUBLIC_LEVEL_OPTIONS: [],
+  getPublicScholarshipsPage: async () => ({ rows: state.rows, totalCount: state.rows.length, currentPage: 1, pageSize: 12 }),
   getPublicScholarshipsBySlug: async (slug: string) => state.rows.filter((row) => row.slug === slug),
   getPublicScholarshipBySlug: async (slug: string, award?: string) => {
     const rows = state.rows.filter((row) => row.slug === slug);
@@ -15,6 +19,7 @@ vi.mock('@/lib/public-scholarships', () => ({
   },
   getRelatedScholarships: async () => [],
 }));
+import PublicScholarshipsIndex from '@/app/scholarship/page';
 import PublicScholarshipPage, { generateMetadata } from '@/app/scholarship/[slug]/page';
 import { TrackScholarshipCta } from '@/components/public/TrackScholarshipCta';
 
@@ -64,6 +69,69 @@ describe('public scholarship choice and selected detail', () => {
     state.rows = [first];
     expect((await generateMetadata(props())).alternates?.canonical).toBe('/scholarship/shared-award');
     expect(renderToStaticMarkup(await PublicScholarshipPage(props()))).toContain('First award');
+  });
+
+  it.each([false, true])('labels archived historical detail without promoting it (shared alias: %s)', async (shared) => {
+    const archived = { ...second, is_active: false };
+    state.rows = shared ? [first, archived] : [archived];
+    const request = props(shared ? archived.id : undefined);
+    const html = renderToStaticMarkup(await PublicScholarshipPage(request));
+    const metadata = await generateMetadata(request);
+    expect(html).toContain('Archived listing');
+    expect(html).toContain('This listing is no longer active in the CAAT catalogue.');
+    expect(html).toContain('Browse active listings');
+    expect(html).toContain('href="/scholarship?open=1"');
+    expect(html).toContain('Visit official site');
+    expect(html).toContain('Recorded deadline');
+    expect(html).not.toContain('Track this scholarship');
+    expect(html).not.toContain('save this scholarship');
+    expect(html).not.toContain('MonetaryGrant');
+    expect(html).toContain('BreadcrumbList');
+    expect(metadata.robots).toEqual({ index: false, follow: true });
+    expect(metadata.description).toContain('Archived CAAT listing');
+    expect(metadata.description).not.toContain('Applications close');
+    expect(metadata.alternates?.canonical).toBe(shared ? `/scholarship/shared-award?award=${archived.id}` : '/scholarship/shared-award');
+  });
+
+  it('marks archived directory cards and names the existing activity filter honestly', async () => {
+    state.rows = [{ ...first, is_active: false }];
+    const html = renderToStaticMarkup(await PublicScholarshipsIndex({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain('Archived listing');
+    expect(html).toContain('Recorded deadline');
+    expect(html).not.toContain('Closes ');
+    expect(html).toContain('Active listings only');
+    expect(html).not.toContain('Open for applications only');
+  });
+
+  it('keeps active tracking and describes provider applications accurately', async () => {
+    state.rows = [first];
+    const html = renderToStaticMarkup(await PublicScholarshipPage(props()));
+    expect(html).not.toContain('Archived listing');
+    expect(html.match(/Track this scholarship/g)).toHaveLength(2);
+    expect(html).toContain('MonetaryGrant');
+    const metadata = await generateMetadata(props());
+    expect(metadata.robots).toBeUndefined();
+    expect(metadata.description).toContain('official provider');
+    expect(metadata.description).not.toContain('apply through CAAT');
+  });
+
+  it.each([true, false])('keeps imported text inside structured-data scripts (active: %s)', async (active) => {
+    const text = '</script><script data-caat-regression="injected">"unsafe"</script><div data-caat-regression="element">& text</div>';
+    const row = { ...first, is_active: active, title: text, provider_name: text, description: text };
+    state.rows = [row];
+    const document = new DOMParser().parseFromString(renderToStaticMarkup(await PublicScholarshipPage(props())), 'text/html');
+    expect(document.querySelectorAll('[data-caat-regression]')).toHaveLength(0);
+    expect(document.querySelectorAll('script')).toHaveLength(active ? 2 : 1);
+    const data = [...document.querySelectorAll('script[type="application/ld+json"]')].map(script => JSON.parse(script.textContent!));
+    const breadcrumbs = data.find(item => item['@type'] === 'BreadcrumbList');
+    expect(breadcrumbs.itemListElement[1].name).toBe(text);
+    if (active) {
+      const grant = data.find(item => item['@type'] === 'MonetaryGrant');
+      expect(grant.name).toBe(text);
+      expect(grant.funder.name).toBe(text);
+      expect(grant.description).toBe(text);
+    }
+    expect(document.querySelector('h1')?.textContent).toBe(text);
   });
 
   it('retains record identity through the logged-out tracking link', () => {

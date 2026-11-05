@@ -115,7 +115,9 @@ export default function EssaysShell({
   // content is replaced (draft/prompt switch, new draft, unmount).
   const essayContentRef = useRef(essayContent);
   const activeDraftRef = useRef(activeDraft);
+  // eslint-disable-next-line react-hooks/refs -- PROD-248: preserve outgoing draft flush semantics; move ref synchronization with concurrency regression coverage.
   essayContentRef.current = essayContent;
+  // eslint-disable-next-line react-hooks/refs -- PROD-248: preserve outgoing draft flush semantics; move ref synchronization with concurrency regression coverage.
   activeDraftRef.current = activeDraft;
   const savingRef = useRef(false);
   const pendingSaveRef = useRef(false);
@@ -265,6 +267,7 @@ export default function EssaysShell({
   useEffect(() => {
     if (!isAuthenticated) {
       customLoadSeq.current += 1;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
       setCustomPrompts([]);
       setCustomPromptsError(false);
       return;
@@ -278,6 +281,7 @@ export default function EssaysShell({
   // (e.g. arriving from a hub's "Start an essay for X" button).
   useEffect(() => {
      
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
     setTagSchoolId(activeDraft ? activeDraft.school_id : urlSchoolId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDraft?.id]);
@@ -286,6 +290,7 @@ export default function EssaysShell({
   useEffect(() => {
     if (!selectedPromptId || !isAuthenticated) {
        
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
       setDrafts([]);
       setActiveDraft(null);
       setEssayContent("");
@@ -337,6 +342,7 @@ export default function EssaysShell({
     return () => subscription.unsubscribe();
   }, []);
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- PROD-248: retain existing save callback dependencies until the autosave migration.
   const handleSave = useCallback(async () => {
     const draft = activeDraftRef.current;
     if (!draft) return;
@@ -408,6 +414,7 @@ export default function EssaysShell({
 
   const submitRename = useCallback(
      
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization -- PROD-248: retain existing save callback dependencies until the autosave migration.
     async (draftId: string) => {
       const value = renameValue.trim() || "Untitled";
       setRenamingId(null);
@@ -475,6 +482,7 @@ export default function EssaysShell({
 
   const handleDeleteDraft = useCallback(
      
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization -- PROD-248: retain existing save callback dependencies until the autosave migration.
     async (draftId: string) => {
       if (deletingId) return;
       setConfirmDeleteId(null);

@@ -33,6 +33,7 @@ export function useDocumentUsage() {
     }
   }, []);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
     void refresh();
     const reload = () => { void refresh(); };
     window.addEventListener("focus", reload);

@@ -433,6 +433,7 @@ export default function DocumentVaultClient({
     const parsedSchoolId = s ? Number(s) : NaN;
     if (s && Number.isFinite(parsedSchoolId)) {
        
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
       setReuploadTarget(null);
       setUploadFile(null);
       setUploadCategory("transcripts");
@@ -569,6 +570,7 @@ export default function DocumentVaultClient({
   // Clamp the page STATE (not just the displayed slice) so switching tabs or
   // deleting the last item on a page can't strand `page` past the end.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 

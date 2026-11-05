@@ -35,6 +35,7 @@ export function CoursePreparationCard({applicationId,schoolId}:{applicationId:st
   finally{if(request===generation.current)setLoading(false);}
  },[applicationId,schoolId]);
  const cancelPending=useCallback(()=>{generation.current++;returnFocus.current=null;},[]);
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
  useEffect(()=>{void load();const refresh=()=>{if(!writing.current)void load();};window.addEventListener('focus',refresh);return()=>{cancelPending();window.removeEventListener('focus',refresh);};},[load,cancelPending]);
  useLayoutEffect(()=>{
   if(busy||loading||!returnFocus.current)return;

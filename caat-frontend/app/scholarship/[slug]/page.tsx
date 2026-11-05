@@ -60,6 +60,7 @@ function titleCase(s: string): string {
 
 // Short, truthful meta description built from catalog fields.
 function buildDescription(s: ScholarshipRow): string {
+  if (!s.is_active) return `Archived CAAT listing for ${s.title}. Recorded details may be outdated. Check the official provider for current availability.`.slice(0, 300);
   const sentences: string[] = [];
   const amount = formatAmountDisplay(s);
   const hasAmount =
@@ -72,7 +73,7 @@ function buildDescription(s: ScholarshipRow): string {
   if (deadline) sentences.push(`Applications close ${deadline}`);
   const levels = s.study_level.map(titleCase).join(" and ");
   if (levels) sentences.push(`${levels} study`);
-  sentences.push("See eligibility and apply through CAAT");
+  sentences.push("Check eligibility and application details with the official provider");
   return `${s.title}. ${sentences.join(". ")}.`.slice(0, 300);
 }
 
@@ -96,6 +97,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   return {
     title: s.title,
     description,
+    ...(!s.is_active ? { robots: { index: false, follow: true } } : {}),
     alternates: { canonical },
     openGraph: {
       type: "article",
@@ -169,13 +171,13 @@ function JsonLd({ s, canonical }: { s: ScholarshipRow; canonical: string }) {
 
   return (
     <>
+      {s.is_active && <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(grant).replace(/</g, '\\u003c') }}
+      />}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(grant) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbs) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbs).replace(/</g, '\\u003c') }}
       />
     </>
   );
@@ -221,6 +223,19 @@ export default async function PublicScholarshipPage({ params, searchParams }: Pr
             {s.title}
           </h1>
 
+          {!s.is_active && (
+            <section aria-labelledby="archived-listing-heading" className="rounded-md border border-[#d6c7bb] bg-[#faf5f2] p-5 mb-6">
+              <h2 id="archived-listing-heading" className="font-semibold font-serif mb-2">Archived listing</h2>
+              <p className="text-sm text-[#404040] leading-relaxed mb-3">
+                This listing is no longer active in the CAAT catalogue. Its recorded details may be outdated.
+                Check the official provider for current availability.
+              </p>
+              <Link href="/scholarship?open=1" className="text-sm font-semibold text-[#9a1a27] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4">
+                Browse active listings
+              </Link>
+            </section>
+          )}
+
           {displayTags.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-4">
               {displayTags.map((tag) => (
@@ -241,7 +256,7 @@ export default async function PublicScholarshipPage({ params, searchParams }: Pr
           )}
 
           <div className="flex flex-wrap items-center gap-3 mb-10">
-            <TrackScholarshipCta key={`${s.id}:${slug}`} slug={slug} scholarshipId={s.id} />
+            {s.is_active && <TrackScholarshipCta key={`${s.id}:${slug}`} slug={slug} scholarshipId={s.id} />}
             {officialUrl && (
               <a
                 href={officialUrl}
@@ -305,7 +320,7 @@ export default async function PublicScholarshipPage({ params, searchParams }: Pr
               />
               <DetailRow
                 icon={Calendar}
-                label="Deadline"
+                label={s.is_active ? "Deadline" : "Recorded deadline"}
                 value={fmtDate(s.deadline_at) ?? "Not specified"}
               />
               <DetailRow icon={GraduationCap} label="Start term" value={s.start_term ?? "Not specified"} />
@@ -318,7 +333,7 @@ export default async function PublicScholarshipPage({ params, searchParams }: Pr
             </div>
           </section>
 
-          <section className="rounded-md border border-[#9a1a27] bg-[#faf5f2] p-6 md:p-8">
+          {s.is_active && <section className="rounded-md border border-[#9a1a27] bg-[#faf5f2] p-6 md:p-8">
             <h2 className="text-lg font-semibold mb-2 font-serif">
               Applying to an Australian university?
             </h2>
@@ -328,7 +343,7 @@ export default async function PublicScholarshipPage({ params, searchParams }: Pr
               study goals alongside thousands of other Australian scholarships.
             </p>
             <TrackScholarshipCta key={`${s.id}:${slug}`} slug={slug} scholarshipId={s.id} />
-          </section>
+          </section>}
 
           {related.length > 0 && (
             <section className="mt-12">
