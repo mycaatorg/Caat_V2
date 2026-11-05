@@ -39,12 +39,12 @@ export default function ScholarshipComparison({ scholarships, now }: { scholarsh
     </div>],
   ];
   return <>
-    <p className="mb-4 text-sm text-muted-foreground">Compare the recorded details, then check each provider. Amounts may cover different costs or payment periods; this comparison does not confirm eligibility.</p>
-    <div role="region" aria-label="Scroll scholarship comparison horizontally" tabIndex={0} className="max-w-full overflow-x-auto rounded-md border focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#9a1a27]">
+    <p className="mb-4 shrink-0 text-sm text-muted-foreground">Compare the recorded details, then check each provider. Amounts may cover different costs or payment periods; this comparison does not confirm eligibility.</p>
+    <div role="region" aria-label="Scroll scholarship comparison" tabIndex={0} className="min-h-0 max-w-full overflow-auto rounded-md border focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#9a1a27]">
       <table className="w-full table-fixed border-collapse text-sm" style={{ minWidth: `${176 + choices.length * 280}px` }}>
         <caption className="sr-only">Side-by-side comparison of selected scholarships</caption>
         <colgroup><col style={{ width: 176 }} />{choices.map(choice => <col key={choice.row.id} style={{ width: 280 }} />)}</colgroup>
-        <thead><tr><th scope="col" className="bg-muted p-4 text-left">Recorded detail</th>{choices.map(({ row, position }) => <th scope="col" key={row.id} className="border-l bg-muted p-4 text-left align-top [overflow-wrap:anywhere]">
+        <thead className="sticky top-0 z-10"><tr><th scope="col" className="bg-muted p-4 text-left">Recorded detail</th>{choices.map(({ row, position }) => <th scope="col" key={row.id} className="border-l bg-muted p-4 text-left align-top [overflow-wrap:anywhere]">
           <Link href={`/scholarships/${encodeURIComponent(row.id)}`} className="font-display text-lg underline underline-offset-4">{row.title}{" "}<span className="sr-only">— listing {position}</span></Link>
           <span className="mt-2 block font-normal">{row.provider_name || 'Provider not recorded'}</span>
           {!row.is_active && <span className="mt-2 block font-normal">No longer active. Check current availability.</span>}

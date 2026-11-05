@@ -24,7 +24,7 @@ export function ScholarshipComparisonPanel({ selected, onRemove, onClear }: { se
               </div>
               <Dialog.Description className="text-sm text-muted-foreground">Check the same recorded details across your choices. Scroll the comparison to see every award.</Dialog.Description>
             </div>
-            <div className="min-h-0 overflow-y-auto p-4 sm:p-6">
+            <div className="flex min-h-0 flex-col p-4 sm:p-6">
               <ScholarshipComparison scholarships={selected} now={now} />
             </div>
           </Dialog.Content>

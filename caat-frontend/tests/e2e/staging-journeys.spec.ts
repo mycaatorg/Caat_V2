@@ -97,11 +97,16 @@ test("scholarship comparison retains choices across filters and restores keyboar
   await expect(dialog.locator('a[href="/scholarships/e2000000-0000-4000-8000-000000000239"]')).toHaveCount(1);
   await expect(dialog.getByText("Importing is not a new verification.", { exact: false })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
-  const region = dialog.getByRole("region", { name: "Scroll scholarship comparison horizontally" });
+  const region = dialog.getByRole("region", { name: "Scroll scholarship comparison" });
   await region.focus(); await expect(region).toBeFocused();
   const dialogBounds = await dialog.boundingBox();
   const closeBounds = await dialog.getByRole("button", { name: "Close scholarship comparison" }).boundingBox();
   expect(closeBounds!.y).toBeGreaterThanOrEqual(dialogBounds!.y);
+  await dialog.getByRole("rowheader", { name: "Source and verification", exact: true }).scrollIntoViewIfNeeded();
+  const headerBounds = await dialog.locator("thead").boundingBox();
+  const bottomCloseBounds = await dialog.getByRole("button", { name: "Close scholarship comparison" }).boundingBox();
+  expect(headerBounds!.y).toBeGreaterThanOrEqual(bottomCloseBounds!.y + bottomCloseBounds!.height);
+  expect(headerBounds!.y + headerBounds!.height).toBeLessThanOrEqual(dialogBounds!.y + dialogBounds!.height);
   await page.screenshot({ path: testInfo.outputPath("scholarship-comparison.png") });
   await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0); await expect(trigger).toBeFocused();
   await page.getByRole("button", { name: "Remove E2E Shared Award, listing 1 from comparison", exact: true }).click();
