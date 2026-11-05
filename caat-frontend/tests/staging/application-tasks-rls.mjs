@@ -30,10 +30,29 @@ try {
   assert.ok((await create(owner,taskId,app,'Different retry')).error,'changed retry cannot overwrite');
   assert.equal((await taskRows(taskId))[0].text,'My preparation');
 
-  const concurrentId=newId();
-  const concurrent=await Promise.all([create(owner,concurrentId,app),create(owner,concurrentId,app)]);
-  for(const result of concurrent)assert.equal(ok(result)[0].id,concurrentId);
-  assert.equal((await taskRows(concurrentId)).length,1,'concurrent duplicate creates one task');
+  for(let round=0;round<30;round++){
+    const concurrentId=newId();
+    const concurrent=await Promise.all(Array.from({length:8},()=>create(owner,concurrentId,app)));
+    for(const result of concurrent)assert.deepEqual(ok(result),[{id:concurrentId,text:'Personal task',due_date:'2026-11-10',done:false,priority:2}]);
+    assert.equal((await taskRows(concurrentId)).length,1,'concurrent duplicate creates one task');
+    assert.equal((await links(concurrentId)).length,1,'concurrent duplicate creates one link');
+  }
+
+  const mixedId=newId();
+  const mixed=await Promise.all(Array.from({length:8},(_,i)=>create(owner,mixedId,app,i%2?'Payload B':'Payload A')));
+  const winners=mixed.filter(r=>!r.error),losers=mixed.filter(r=>r.error);
+  assert.equal(winners.length,4);assert.equal(losers.length,4);
+  for(const result of winners)assert.deepEqual(ok(result),winners[0].data);
+  for(const result of losers)assert.equal(result.error.code,'PT409','changed concurrent payload cannot overwrite');
+  assert.equal((await taskRows(mixedId))[0].text,winners[0].data[0].text);
+  assert.equal((await links(mixedId)).length,1);
+  const contestedId=newId();
+  const contested=await Promise.all([create(owner,contestedId,app),create(peer,contestedId,peerApp)]);
+  assert.equal(contested.filter(r=>!r.error).length,1,'different owners sharing an ID have only one winner');
+  assert.equal(contested.filter(r=>r.error).length,1);
+  const winnerIndex=contested.findIndex(r=>!r.error),winnerOwner=winnerIndex===0?ownerId:peerId,winnerApp=winnerIndex===0?app:peerApp;
+  assert.equal((await taskRows(contestedId))[0].user_id,winnerOwner);
+  assert.deepEqual(await links(contestedId),[{task_id:contestedId,application_id:winnerApp,user_id:winnerOwner}]);
 
   assert.deepEqual(ok(await peer.from('application_task_links').select('*').eq('task_id',taskId)),[]);
   assert.deepEqual(ok(await peer.from('application_task_links').delete().eq('task_id',taskId).select('task_id')),[]);
