@@ -12,7 +12,7 @@ import {
   planScholarshipUpdates,
   runRefresh,
 } from '@/scripts/refresh-scholarship-sources.mjs';
-import { createMockSupabase } from './mock-supabase';
+import { createMockSupabase, type QueryContext } from './mock-supabase';
 
 // Imported 15 Oct: two days before the 17 Oct baselines used below, inside the anchor tolerance.
 const FRESH = '2026-10-15T00:00:00.000Z';
@@ -389,9 +389,43 @@ describe('runRefresh', () => {
 
 describe('supabase store', () => {
   const scholarships = { data: [row('a', 'https://u.example/a')], error: null };
+  const offset = (ctx: QueryContext) => Number(ctx.calls.find((call) => call.method === 'range')?.args[0] ?? 0);
+  const scholarshipPage = (ctx: QueryContext) => ({ ...scholarships, data: offset(ctx) === 0 ? scholarships.data : [] });
+
+  it.each([3, 4])('loads all %i rows when the server caps pages at two', async (size) => {
+    const catalogue = ['a', 'b', 'c', 'd'].slice(0, size).map((id) => row(id, `https://u.example/${id}`));
+    const supabase = createMockSupabase({ resolver: (ctx) => ({ data: catalogue.slice(offset(ctx), offset(ctx) + 2), error: null }) });
+
+    const result = await createSupabaseStore(supabase).loadActiveScholarships();
+
+    expect(result.map((r: Row) => r.id)).toEqual(size === 3 ? ['a', 'b', 'c'] : ['a', 'b', 'c', 'd']);
+    expect(supabase.queries.map(offset)).toEqual(size === 3 ? [0, 2, 3] : [0, 2, 4]);
+    for (const query of supabase.queries) {
+      expect(query.table).toBe('scholarships');
+      expect(query.calls).toContainEqual({ method: 'eq', args: ['is_active', true] });
+      expect(query.calls).toContainEqual({ method: 'not', args: ['external_url', 'is', null] });
+      expect(query.calls).toContainEqual({ method: 'order', args: ['id'] });
+    }
+  });
+
+  it.each([false, true])('stops before source fetches or writes after a later catalogue read fails (apply=%s)', async (apply) => {
+    const supabase = createMockSupabase({ resolver: (ctx) => {
+      if (ctx.op === 'insert' && ctx.table === 'scholarship_import_runs') return { data: { id: 'run' }, error: null };
+      if (ctx.op === 'insert' && ctx.table === 'scholarship_source_checks') return { data: { id: 'check', checked_at: '2026-10-24T12:00:00Z' }, error: null };
+      if (ctx.table !== 'scholarships') return { data: [], error: null };
+      return offset(ctx) === 0 ? scholarships : { data: null, error: { message: 'Second page unavailable' } };
+    } });
+    const fetchImpl = vi.fn(async () => new Response(page('x'), { headers: { 'content-type': 'text/html' } }));
+
+    await expect(runRefresh({ store: createSupabaseStore(supabase), fetchImpl, apply, log: () => {} })).rejects.toThrow(/Second page unavailable/);
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(supabase.queries.every((query) => query.op === 'select')).toBe(true);
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
 
   it('dry-run only reads through the client', async () => {
-    const supabase = createMockSupabase({ resolver: (ctx) => (ctx.table === 'scholarships' ? scholarships : { data: [], error: null }) });
+    const supabase = createMockSupabase({ resolver: (ctx) => (ctx.table === 'scholarships' ? scholarshipPage(ctx) : { data: [], error: null }) });
     await runRefresh({ store: createSupabaseStore(supabase), fetchImpl: stubFetch({ 'https://u.example/a': { status: 200, body: page('x') } }), apply: false, log: () => {} });
     expect(supabase.queries.length).toBeGreaterThan(0);
     expect(supabase.queries.every((q) => q.op === 'select')).toBe(true);
@@ -399,7 +433,7 @@ describe('supabase store', () => {
 
   it('dry-run treats a missing checks table as no history', async () => {
     const supabase = createMockSupabase({
-      resolver: (ctx) => (ctx.table === 'scholarships' ? scholarships : { data: null, error: { message: 'relation not found', code: 'PGRST205' } as { message: string } }),
+      resolver: (ctx) => (ctx.table === 'scholarships' ? scholarshipPage(ctx) : { data: null, error: { message: 'relation not found', code: 'PGRST205' } as { message: string } }),
     });
     const logs: string[] = [];
     const summary = await runRefresh({ store: createSupabaseStore(supabase), fetchImpl: stubFetch({ 'https://u.example/a': { status: 200, body: page('x') } }), apply: false, log: (m: string) => logs.push(m) });

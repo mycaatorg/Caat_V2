@@ -54,3 +54,16 @@ ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, category = EXCLUDED.categor
 
 -- PROD-153: a second application target for independent tailoring journeys.
 INSERT INTO public.schools (id,name,country,website,institution_type) VALUES (900153,'E2E Library University','Australia','https://library-university.example.test','university') ON CONFLICT (id) DO NOTHING;
+
+-- PROD-238: two independent public listings share a readable alias. Disposable
+-- test data only; no production migration or catalogue cleanup is performed.
+INSERT INTO public.scholarships
+  (id, slug, title, provider_name, description, amount_value, amount_currency,
+   study_level, funding_type, eligible_countries, is_active, is_featured, tags,
+   deadline_at, external_url)
+VALUES
+  ('e2000000-0000-4000-8000-000000000238', 'e2e-shared-public-award', 'E2E Shared Award', 'E2E North Foundation',
+   'Synthetic north listing for public identity tests.', 5000, 'AUD', ARRAY['undergraduate']::text[], ARRAY['merit']::text[], ARRAY['Australia']::text[], true, false, ARRAY['e2e']::text[], '2027-06-01', 'https://north.example.test/award'),
+  ('e2000000-0000-4000-8000-000000000239', 'e2e-shared-public-award', 'E2E Shared Award', 'E2E South Foundation',
+   'Synthetic south listing for public identity tests.', 9000, 'AUD', ARRAY['postgraduate']::text[], ARRAY['need']::text[], ARRAY['Australia']::text[], true, false, ARRAY['e2e']::text[], '2027-07-01', 'https://south.example.test/award')
+ON CONFLICT (id) DO NOTHING;
