@@ -1,0 +1,190 @@
+{
+  "issue": "PROD-244",
+  "repairs": [
+    {
+      "id": "3835db76-b053-4eb6-b744-ea76423c8ed4",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "UGTR1024",
+      "title": "Douglas N Daft Exchange Award",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1899/7088#UGTR1024",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/2001",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "f310a32811e7dcb6f5007937928266193fc587a9f71228f58a3c821a72bc4c77"
+    },
+    {
+      "id": "3ad2ac6d-d122-46ca-9707-145d12c8a212",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "PUCA1025",
+      "title": "International Scientia Coursework Scholarship (PUCA1025)",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1957/7176#PUCA1025",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1988",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "2ce9f4f8003083dfc70c753b0fe71b090ac27384db317b9c6c819b242a728faf"
+    },
+    {
+      "id": "4d16a3a3-09cb-44a6-8201-3b5790866563",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "UGCE1411",
+      "title": "Sanctuary Scholarship for People Seeking Asylum and Refugees with Temporary Protection",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1949/7160#UGCE1411",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1998",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "55751fdf89ed514e1c61c0d8f68b8bc1c05d14d16cf7026835e2f3dc204dc6a2"
+    },
+    {
+      "id": "659dc264-f173-4c63-b617-c3537f7529d4",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "UGTR1015",
+      "title": "Alumni Exchange Award",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1899/7088#UGTR1015",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/2001",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "f310a32811e7dcb6f5007937928266193fc587a9f71228f58a3c821a72bc4c77"
+    },
+    {
+      "id": "6744034b-e373-4470-9695-685af96d81ad",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "UGCE1534",
+      "title": "HMJ Sassafras Scholarship",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1949/7160#UGCE1534",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1998",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "55751fdf89ed514e1c61c0d8f68b8bc1c05d14d16cf7026835e2f3dc204dc6a2"
+    },
+    {
+      "id": "6bda616b-3573-4398-849c-62b9626f946f",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "PUCA1023",
+      "title": "UNSW Business School International Pathways Award (PUCA1023)",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1957/7176#PUCA1023",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1988",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "2ce9f4f8003083dfc70c753b0fe71b090ac27384db317b9c6c819b242a728faf"
+    },
+    {
+      "id": "ae65cf7e-35d6-4f24-b668-05c0a742f1a1",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "UGTR1049",
+      "title": "UNSW Student Exchange Engineering Award",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1899/7088#UGTR1049",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/2001",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "f310a32811e7dcb6f5007937928266193fc587a9f71228f58a3c821a72bc4c77"
+    },
+    {
+      "id": "b0ff4b5f-2507-474b-a055-583aee2e4e34",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "7186",
+      "title": "Kevin Rice Memorial Endowed Travel Award",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1932/7186",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1932",
+      "evidence": "Exact title on current official detail page",
+      "source_sha256": "c03cf6300d9a5176aee3e213e9598b97d43d83ceebb8cb00d184e1ae67211142"
+    },
+    {
+      "id": "bbca550f-9c59-4284-96ef-54f17edb5dd1",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "UGTR1044",
+      "title": "RC Sutton/ Jardine Matheson Scholarship",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1899/7088#UGTR1044",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/2001",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "f310a32811e7dcb6f5007937928266193fc587a9f71228f58a3c821a72bc4c77"
+    },
+    {
+      "id": "cac9c569-26db-407a-a4fe-e77a29f5a4a4",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "7191",
+      "title": "UNSW Co-op Program",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/126/7191",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/126",
+      "evidence": "Exact title on current official detail page",
+      "source_sha256": "f2c07e96b95e381f38adf459a14fd02e69e64a39052156af399d63de2dcb0794"
+    },
+    {
+      "id": "dad0a60b-49d8-4a26-9e96-3872dd513f2a",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "UGTR1011",
+      "title": "Vincent Lo Award",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1899/7088#UGTR1011",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/2001",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "f310a32811e7dcb6f5007937928266193fc587a9f71228f58a3c821a72bc4c77"
+    },
+    {
+      "id": "db4e457c-e0b1-4d1b-9264-2fcb5818ddb0",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "UGTR1012",
+      "title": "Harry Manson Award",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1899/7088#UGTR1012",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/2001",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "f310a32811e7dcb6f5007937928266193fc587a9f71228f58a3c821a72bc4c77"
+    },
+    {
+      "id": "ec0d9d58-0d9e-465f-9475-d754714bb149",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "PUCA1024",
+      "title": "UNSW Business School International Scholarship (PUCA1024)",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1957/7176#PUCA1024",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1988",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "2ce9f4f8003083dfc70c753b0fe71b090ac27384db317b9c6c819b242a728faf"
+    },
+    {
+      "id": "ecc070ac-154f-45bc-9e25-03dee13a0770",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "PUCA1028",
+      "title": "UNSW Law & Justice International Award (PUCA1028)",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1957/7176#PUCA1028",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1988",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "2ce9f4f8003083dfc70c753b0fe71b090ac27384db317b9c6c819b242a728faf"
+    },
+    {
+      "id": "f52ae18d-1773-4638-b46c-38f4387cc142",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "UGTR1052",
+      "title": "UNSW Business School BCom (International) Exchange Travel Award",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1899/7088#UGTR1052",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/2001",
+      "evidence": "Exact award code in official detail table",
+      "source_sha256": "f310a32811e7dcb6f5007937928266193fc587a9f71228f58a3c821a72bc4c77"
+    },
+    {
+      "id": "fafbd473-fd18-4979-88d8-130e87f33b7b",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "7185",
+      "title": "Ronald Lu Travel Award in Architecture",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1081/7185",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1081",
+      "evidence": "Exact title on current official detail page",
+      "source_sha256": "e7a744ec63c82df908e2ddf2c9c5e1994587b93078f547edb2fb8ab2e494aa1c"
+    },
+    {
+      "id": "fc85b19c-a5ca-4f45-bfb5-873a28a37bc0",
+      "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+      "external_id": "7115",
+      "title": "The Harvard Travel Award",
+      "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/632/7115",
+      "new_url": "https://www.scholarships.unsw.edu.au/scholarships/id/632",
+      "evidence": "Exact title on current official detail page",
+      "source_sha256": "5808cc98c605a2f9b2dc7699e69de22d9689365c402f7732d93a592215866a99"
+    }
+  ],
+  "excluded_code": "UGTR1048 (absent from current exchange page)",
+  "duplicate": {
+    "id": "a240b417-79d7-4241-9e08-d63bf1eba668",
+    "title": "TEST11",
+    "external_id": "1969",
+    "canonical_id": "d95e6c88-ef41-4ea1-913c-2306fc405200",
+    "canonical_title": "John Monash Scholarship",
+    "canonical_external_id": "744",
+    "canonical_url": "https://www.scholarships.unsw.edu.au/scholarships/id/744",
+    "evidence": "Imported description matches canonical programme; same amount; current official page confirms programme; separate active canonical row already exists. Proposed reviewed archive preserving row and saves, not automated gone classification.",
+    "description": "John Monash Scholarship\nThe John Monash Scholarship enables outstanding Australians to pursue a master's or PhD program at any world-class university outside of Australia, with no restrictions on field of study or institution.\nIf successful, you will receive\n$100,000 AUD per year\nfor up to\n$300,000 AUD\n. The scholarship can be used for tuition fees, accommodation, and living expenses. Scholars also receive personalised career support and leadership development through the Leadership Academy.",
+    "description_md5": "0ed8bd6ea6609f05e52fbdc37aa68396",
+    "source_id": "c2d4e6f8-1a3b-5c7d-9e0f-2b4c6d8e0f1a",
+    "old_url": "https://www.scholarships.unsw.edu.au/scholarships/id/1969"
+  }
+}
