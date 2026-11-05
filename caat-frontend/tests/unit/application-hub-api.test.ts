@@ -104,7 +104,7 @@ function hubResolver(overrides: Partial<Record<string, QueryResult>> = {}) {
   return (ctx: QueryContext): QueryResult => {
     const result = resolve(ctx);
     const range = ctx.calls.find(call => call.method === 'range')?.args as [number, number] | undefined;
-    if (range && ['essay_prompts','essay_drafts','documents'].includes(ctx.table) && Array.isArray(result.data)) return {...result, data:result.data.slice(range[0],range[1]+1)};
+    if (range && ['essay_prompts','essay_drafts','documents','user_course_bookmarks'].includes(ctx.table) && Array.isArray(result.data)) return {...result, data:result.data.slice(range[0],range[1]+1)};
     return result;
   };
 }
@@ -461,7 +461,7 @@ describe("hub saved courses at this university (PROD-148)", () => {
     use(ctx => {
       const offset = Number(ctx.calls.find(c => c.method === "range")?.args[0] ?? 0);
       // Without pagination, return the backend cap rather than looping forever.
-      return {data: offset === 0 ? Array.from({length:200}, (_,i)=>saved(`c${i}`)) : [saved("last")], error:null};
+      return {data: offset === 0 ? Array.from({length:200}, (_,i)=>saved(`c${i}`)) : offset === 200 ? [saved("last")] : [], error:null};
     });
     const result = await fetchSavedCoursesForSchool(7);
     expect(result).toHaveLength(201);
@@ -470,6 +470,21 @@ describe("hub saved courses at this university (PROD-148)", () => {
       expect(q.calls.filter(c=>c.method === "eq").map(c=>c.args)).toEqual([["user_id","student-1"],["course_offerings.school_id",7]]);
       expect(q.calls.find(c=>c.method === "order")?.args[0]).toBe("course_id");
     }
+  });
+  it("continues short capped pages through the empty terminator (PROD-232)", async () => {
+    const all = Array.from({length:5}, (_,i) => saved(`c${i}`));
+    use(ctx => { const from = Number(ctx.calls.find(c=>c.method==='range')?.args[0] ?? 0); return {data:all.slice(from,from+2),error:null}; });
+    expect((await fetchSavedCoursesForSchool(7)).map(c=>c.id)).toEqual(all.map(c=>c.course_id));
+    expect(io.client.queries.map(q=>q.calls.find(c=>c.method==='range')?.args[0])).toEqual([0,2,4,5]);
+    for (const q of io.client.queries) {
+      expect(q.calls.filter(c=>c.method==='eq').map(c=>c.args)).toEqual([['user_id','student-1'],['course_offerings.school_id',7]]);
+      expect(q.calls.find(c=>c.method==='order')?.args[0]).toBe('course_id');
+    }
+  });
+  it("does not publish a partial course card when a page after a short response fails", async () => {
+    const fallback=hubResolver();
+    use(ctx => {if(ctx.table!=='user_course_bookmarks')return fallback(ctx);const from=Number(ctx.calls.find(c=>c.method==='range')?.args[0]??0);return from===0?{data:[saved('first')],error:null}:{data:null,error:{message:'private backend'}};});
+    const hub=await fetchApplicationHub('app-1');expect(hub.savedCourses).toEqual([]);expect(hub.savedCoursesUnavailable).toBe(true);
   });
   it("rejects malformed saved rows instead of silently hiding them", async () => {
     use(hubResolver({user_course_bookmarks:{data:[saved("valid"),saved("invalid",{name:null})],error:null}}));
@@ -514,7 +529,7 @@ describe("hub saved courses at this university (PROD-148)", () => {
     use(hubResolver({ user_course_bookmarks: { data: [saved("c1")], error: null } }));
     const courses = await fetchSavedCoursesForSchool(7);
     expect(courses.map((c) => c.id)).toEqual(["c1"]);
-    expect(io.client.queries.map((q) => q.table)).toEqual(["user_course_bookmarks"]);
+    expect(io.client.queries.map((q) => q.table)).toEqual(["user_course_bookmarks", "user_course_bookmarks"]);
     use(hubResolver({ user_course_bookmarks: { data: null, error: { message: "offline" } } }));
     await expect(fetchSavedCoursesForSchool(7)).rejects.toThrow();
   });

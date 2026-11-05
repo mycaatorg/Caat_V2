@@ -3152,6 +3152,46 @@ test('workspace search opens exact owned files and writing and recovers missing 
     await expect(hubDocuments).toHaveCount(0);
     await page.unroute('**/rest/v1/documents?*'); await main.getByRole('button',{name:'Retry application',exact:true}).click();
     await expect(hubDocuments).toHaveCount(51); await expect(main.getByRole('alert')).toHaveCount(0);
+    // PROD-231: exact application brief, complete print snapshot, private bodies excluded.
+    await main.getByRole('link', { name: 'Preview application brief', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/applications/${app.id}/brief$`));
+    await assertIsolatedDetailRoute(page, '/applications/[id]/brief', `/applications/${app.id}/brief`);
+    const preview = main.locator('[data-application-brief-preview]');
+    await expect(preview.locator('tbody tr').filter({ hasText: `${title}-Doc-` })).toHaveCount(51);
+    await expect(preview).toContainText(`${title}-Doc-050.pdf`);
+    await expect(main.getByRole('checkbox', { name: 'Include my application notes' })).not.toBeChecked();
+    for (const privateText of ['Target body not searchable', 'Other draft body', 'isolated-metadata/', app.notes].filter(Boolean)) {
+      await expect(preview).not.toContainText(privateText);
+    }
+    await page.evaluate(() => {
+      const w = window as Window & { __briefPrint?: string };
+      w.print = () => { w.__briefPrint = document.querySelector('[data-print-application]')?.textContent ?? ''; };
+    });
+    await main.getByRole('button', { name: 'Print / Save PDF', exact: true }).click();
+    expect(await page.evaluate(() => (window as Window & { __briefPrint?: string }).__briefPrint)).toBe(await preview.textContent());
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await testInfo.attach('application-planning-brief', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    if (testInfo.project.name === 'staging') {
+      await page.emulateMedia({ media: 'print' });
+      await expect(page.locator('[data-print-application]')).toBeVisible();
+      await expect(main).toBeHidden();
+      const pdf = await page.pdf({ format: 'A4', preferCSSPageSize: true, printBackground: true });
+      expect(pdfPageCount(pdf)).toBeGreaterThan(1);
+      expect(pdfPageCount(pdf)).toBe(4); // 51 rows fit without a footer-only fifth page.
+      await testInfo.attach('application-planning-brief-pdf', { body: pdf, contentType: 'application/pdf' });
+      await page.emulateMedia({ media: 'screen' });
+    }
+    await page.route('**/rest/v1/documents?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'brief source outage' }) }));
+    await main.getByRole('button', { name: 'Refresh brief', exact: true }).click();
+    await expect(main.getByRole('alert')).toContainText('Could not load this application brief. Try again.');
+    await expect(page.locator('[data-print-application]')).toHaveCount(0);
+    await expect(main.getByRole('button', { name: 'Print / Save PDF', exact: true })).toHaveCount(0);
+    await page.unroute('**/rest/v1/documents?*');
+    await main.getByRole('button', { name: 'Retry brief', exact: true }).click();
+    await expect(preview.locator('tbody tr').filter({ hasText: `${title}-Doc-` })).toHaveCount(51);
+    await page.goto(`/applications/${crypto.randomUUID()}/brief`);
+    await expect(main.getByRole('alert')).toContainText('Could not load this application brief. Try again.');
+    await expect(page.locator('[data-print-application]')).toHaveCount(0);
     await page.goto('/workspace/search');
     await page.route('**/rest/v1/documents?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'temporary index outage' }) }));
     await main.getByRole('button', { name: 'Refresh results', exact: true }).click();
@@ -3358,4 +3398,112 @@ test('experience library finds complete owned work and preserves edit/delete pro
       async()=>{if(addedApplication)await remove('user_school_applications',`${own}&id=eq.${addedApplication}`);},
     ]);
   });
+});
+
+
+test('application hub includes every saved course and retries a late page failure (PROD-232)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, 'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const login = await request.post(`${api}/auth/v1/token?grant_type=password`, { headers: { apikey: key }, data: { email: STUDENT_EMAIL, password: process.env.E2E_TEST_PASSWORD } });
+  expect(login.ok()).toBe(true);
+  const session = await login.json();
+  const headers = { apikey: key, Authorization: `Bearer ${session.access_token}`, Prefer: 'return=representation' };
+  const own = `user_id=eq.${session.user.id}`;
+  const ids = Array.from({ length: 51 }, (_,i) => `e2e-complete-course-${String(i).padStart(3,'0')}`);
+  const added: string[] = [];
+  let addedApplication: string | null = null;
+  async function read(table: string, query: string) {
+    const r = await request.get(`${api}/rest/v1/${table}?${query}`, { headers }); expect(r.ok()).toBe(true); return r.json();
+  }
+  await withScopedCleanup(async () => {
+    // Read in small known batches so fixture preservation itself works at cap50.
+    for (let offset=0; offset<ids.length; offset+=25) {
+      const batch=ids.slice(offset,offset+25);
+      const existing=await read('user_course_bookmarks', `${own}&course_id=in.(${batch.join(',')})`);
+      const missing=batch.filter(id=>!existing.some((r:{course_id:string})=>r.course_id===id));
+      if(missing.length) {
+        // Track attempted writes before dispatch in case a successful write loses its response.
+        added.push(...missing);
+        const r=await request.post(`${api}/rest/v1/user_course_bookmarks`,{headers,data:missing.map(course_id=>({user_id:session.user.id,course_id}))});expect(r.ok()).toBe(true);
+      }
+    }
+    const applications=await read('user_school_applications',`${own}&school_id=eq.900232`);
+    let app=applications[0];
+    if(!app) {
+      addedApplication=crypto.randomUUID();
+      const r=await request.post(`${api}/rest/v1/user_school_applications`,{headers,data:{id:addedApplication,user_id:session.user.id,school_id:900232,status:'researching'}});expect(r.ok()).toBe(true);app=(await r.json())[0];
+    }
+    if(process.env.CAAT_EXPORT_TEST_ROW_CAP) {
+      expect((await read('user_course_bookmarks',`${own}&course_id=in.(${ids.join(',')})&order=course_id&limit=200`)).length).toBe(50);
+      console.log('Verified real saved-course PostgREST row cap: 50');
+    }
+    await signInToIsolatedStudent(page);await page.goto(`/applications/${app.id}`);
+    const card=page.getByRole('main').getByRole('region',{name:'Courses you saved at E2E Course Completeness University',exact:true});
+    const courses=card.getByRole('link',{name:/^E2E Completeness Course \d{3}$/});
+    await expect(courses).toHaveCount(51);
+    await expect(courses.last()).toHaveText('E2E Completeness Course 050');
+    await page.reload();await expect(courses).toHaveCount(51);
+    await page.route('**/rest/v1/user_course_bookmarks?*',route=>Number(new URL(route.request().url()).searchParams.get('offset')??0)>0
+      ? route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'late saved-course page outage'})}) : route.continue());
+    await page.reload();await expect(card.getByRole('status')).toContainText("Couldn't load your saved courses.");await expect(courses).toHaveCount(0);
+    await page.unroute('**/rest/v1/user_course_bookmarks?*');await card.getByRole('button',{name:'Retry loading saved courses',exact:true}).click();await expect(courses).toHaveCount(51);
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await testInfo.attach('complete-saved-courses',{body:await page.screenshot(),contentType:'image/png'});
+  }, async()=>{
+    await runScopedCleanup([
+      async()=>{if(!page.isClosed())await page.close();},
+      async()=>{if(added.length)expect((await request.delete(`${api}/rest/v1/user_course_bookmarks?${own}&course_id=in.(${added.join(',')})`,{headers})).ok()).toBe(true);},
+      async()=>{if(addedApplication)expect((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${addedApplication}`,{headers})).ok()).toBe(true);},
+    ]);
+  });
+});
+
+test('planning timeline searches complete owned dates and opens the exact task page (PROD-233)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  async function session(email:string){const r=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email,password:process.env.E2E_TEST_PASSWORD}});expect(r.ok()).toBe(true);const d=await r.json();return{id:d.user.id as string,headers:{apikey:key,Authorization:`Bearer ${d.access_token}`}};}
+  const owner=await session(STUDENT_EMAIL),peer=await session('e2e.peer@caat.local.test');
+  const title=marker(`Timeline-${testInfo.project.name}`);
+  const taskIds=Array.from({length:51},()=>crypto.randomUUID()).sort();
+  const past=crypto.randomUUID(),undated=crypto.randomUUID(),done=crypto.randomUUID(),award=crypto.randomUUID(),event=crypto.randomUUID(),privateTask=crypto.randomUUID();
+  async function insert(table:string,data:unknown,person=owner){const r=await request.post(`${api}/rest/v1/${table}`,{headers:person.headers,data});expect(r.ok(),`Create ${table}: ${r.ok()?'ok':await r.text()}`).toBe(true);}
+  await withScopedCleanup(async()=>{
+    await insert('user_todos',[
+      ...taskIds.map((id,i)=>({id,user_id:owner.id,text:`${title}-task-${String(i).padStart(3,'0')}`,due_date:'2099-12-01',done:false})),
+      {id:past,user_id:owner.id,text:`${title}-past`,due_date:'2000-01-01',done:false},
+      {id:undated,user_id:owner.id,text:`${title}-undated`,due_date:null,done:false},
+      {id:done,user_id:owner.id,text:`${title}-completed`,due_date:'2099-12-01',done:true},
+    ]);
+    await insert('user_todos',{id:privateTask,user_id:peer.id,text:`${title}-peer-private`,due_date:'2099-12-01'},peer);
+    await insert('user_scholarships',{id:award,user_id:owner.id,title:`${title}-award`,provider_name:'Isolated timeline provider',deadline_at:new Date(Date.now()+2*86400000).toISOString()});
+    await insert('calendar_events',{id:event,user_id:owner.id,title:`${title}-event`,event_date:'2099-12-02',time_start:'10:00',time_end:'11:00'});
+    if(process.env.CAAT_EXPORT_TEST_ROW_CAP){const r=await request.get(`${api}/rest/v1/user_todos?user_id=eq.${owner.id}&order=id&limit=200`,{headers:owner.headers});expect(r.ok()).toBe(true);expect((await r.json()).length).toBe(50);console.log('Verified real planning-timeline PostgREST row cap: 50');}
+    await signInToIsolatedStudent(page);
+    const main=page.getByRole('main');
+    await main.getByRole('link',{name:'Open planning timeline',exact:true}).click();
+    await expect(main.getByRole('heading',{name:'Planning timeline',exact:true,level:1})).toBeVisible();
+    const search=main.getByLabel('Search timeline',{exact:true}),source=main.getByLabel('Source',{exact:true}),range=main.getByLabel('Date range',{exact:true}),results=main.getByRole('status',{name:'Timeline results'});
+    await search.fill(title);await expect(results).toContainText('53 items');await expect(main.locator('[data-timeline-item]')).toHaveCount(20);
+    await main.getByRole('button',{name:'Next timeline page',exact:true}).click();await expect(results).toContainText('Page 2 of 3');
+    await main.getByRole('button',{name:'Next timeline page',exact:true}).click();await expect(main.locator('[data-timeline-item]')).toHaveCount(13);
+    await search.fill(`${title}-task-050`);await expect(results).toContainText('1 item');await main.getByRole('link',{name:new RegExp(`${title}-task-050`)}).click();
+    await expect(page.getByRole('checkbox',{name:`Mark "${title}-task-050" done`,exact:true})).toBeVisible();
+    await page.goto('/workspace/planner');await search.fill(title);await source.selectOption('custom');await range.selectOption('7');await expect(results).toContainText('1 item');await expect(main.getByRole('link',{name:new RegExp(`${title}-award`)})).toHaveAttribute('href','/scholarships?view=mine');
+    await source.selectOption('task');await range.selectOption('past');await expect(results).toContainText('1 item');await expect(main.getByRole('link',{name:new RegExp(`${title}-past`)})).toBeVisible();
+    await range.selectOption('all');await search.fill(`${title}-peer-private`);await expect(main.getByText('No dates match these filters',{exact:true})).toBeVisible();
+    await search.fill(`${title}-completed`);await expect(main.locator('[data-timeline-item]')).toHaveCount(0);
+    await source.selectOption('all');await search.fill(title);await expect(results).toContainText('53 items');
+    await page.route('**/rest/v1/calendar_events?*',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'timeline source outage'})}));
+    await main.getByRole('button',{name:'Refresh timeline',exact:true}).click();await expect(main.getByRole('alert')).toContainText('Could not load your planning timeline. Try again.');await expect(results).toHaveCount(0);await expect(main.locator('[data-timeline-item]')).toHaveCount(0);
+    await page.unroute('**/rest/v1/calendar_events?*');await main.getByRole('button',{name:'Retry timeline',exact:true}).click();await expect(results).toContainText('53 items');
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await testInfo.attach('planning-timeline',{body:await page.screenshot(),contentType:'image/png'});
+    await page.reload();await search.fill(`${title}-task-050`);await expect(results).toContainText('1 item');
+  },async()=>{await runScopedCleanup([
+    async()=>{if(!page.isClosed())await page.close();},
+    async()=>expect((await request.delete(`${api}/rest/v1/user_todos?user_id=eq.${owner.id}&id=in.(${[...taskIds,past,undated,done].join(',')})`,{headers:owner.headers})).ok()).toBe(true),
+    async()=>expect((await request.delete(`${api}/rest/v1/user_scholarships?user_id=eq.${owner.id}&id=eq.${award}`,{headers:owner.headers})).ok()).toBe(true),
+    async()=>expect((await request.delete(`${api}/rest/v1/calendar_events?user_id=eq.${owner.id}&id=eq.${event}`,{headers:owner.headers})).ok()).toBe(true),
+    async()=>expect((await request.delete(`${api}/rest/v1/user_todos?user_id=eq.${peer.id}&id=eq.${privateTask}`,{headers:peer.headers})).ok()).toBe(true),
+  ]);});
 });

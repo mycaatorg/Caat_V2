@@ -169,24 +169,22 @@ const SAVED_COURSE_COLUMNS =
 /** Owner-scoped read of the caller's saved courses at one university. Throws on
  *  a read error so the caller can show "unavailable", never an empty list. */
 async function readSavedCourses(userId: string, schoolId: number): Promise<HubCourse[]> {
-  const courses: HubCourse[] = [];
-  const pageSize = 200;
-  for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabase
+  const message = "Could not load your saved courses";
+  const rows = await evidencePages<{ course_offerings: unknown }>(
+    (from, to) => supabase
       .from("user_course_bookmarks")
       .select(SAVED_COURSE_COLUMNS)
       .eq("user_id", userId)
       .eq("course_offerings.school_id", schoolId)
       .order("course_id")
-      .range(offset, offset + pageSize - 1);
-    if (error) throw new Error("Could not load your saved courses");
-    for (const row of (data ?? []) as { course_offerings: unknown }[]) {
-      const course = normalizeHubCourse(row.course_offerings);
-      if (!course) throw new Error("Could not load your saved courses");
-      courses.push(course);
-    }
-    if (!data || data.length < pageSize) return courses;
-  }
+      .range(from, to),
+    message,
+  );
+  return rows.map(row => {
+    const course = normalizeHubCourse(row.course_offerings);
+    if (!course) throw new Error(message);
+    return course;
+  });
 }
 
 /** The scholarships card's own Retry: re-reads saved scholarships and ticks. */

@@ -95,6 +95,14 @@
       "expected": "E2E Test University"
     },
     {
+      "route": "/applications/[id]/brief",
+      "access": "authenticated",
+      "kind": "dynamic",
+      "coverage": "isolated-detail",
+      "expected": "Preview your application brief",
+      "limitation": "Isolated browser journey verifies all 51 document rows, private content exclusion, print snapshot and multipage PDF; separate guard checks unauthenticated redirects."
+    },
+    {
       "route": "/communities",
       "access": "authenticated",
       "kind": "static",
@@ -318,6 +326,13 @@
       "kind": "static",
       "coverage": "authenticated-content",
       "expected": "Experience library"
+    },
+    {
+      "route": "/workspace/planner",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Planning timeline"
     }
   ],
   "writeJourneys": [
