@@ -30,6 +30,7 @@ export const postBaselineSteps = [
   '../../supabase/migrations/20261029010000_document_review_integrity.sql',
   '../../supabase/migrations/20261105010000_community_resume_snapshot_validation.sql',
   '../../supabase/migrations/20261106020000_unsw_source_repair.sql',
+  '../../supabase/migrations/20261106030000_application_personal_tasks.sql',
 ];
 
 /** Pure preflight: usable by discovery CI without a database or credentials. */

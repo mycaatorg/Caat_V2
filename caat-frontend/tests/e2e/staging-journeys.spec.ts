@@ -3808,3 +3808,91 @@ test('application hub keeps tail scholarship attachments and ticks complete (PRO
     ]);
   });
 });
+
+test('application personal tasks stay shared with Today and complete beyond row caps (PROD-264)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const login=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:STUDENT_EMAIL,password:process.env.E2E_TEST_PASSWORD}});
+  expect(login.ok()).toBe(true);const session=await login.json();
+  const headers={apikey:key,Authorization:`Bearer ${session.access_token}`,Prefer:'return=representation'};
+  const own=`user_id=eq.${session.user.id}`,app=crypto.randomUUID();
+  const title=marker(`Personal-${testInfo.project.name}`),ids=Array.from({length:55},()=>crypto.randomUUID()).sort(),available=Array.from({length:55},()=>crypto.randomUUID()).sort();
+  const createdIds:string[]=[];
+  async function read(table:string,query:string){const r=await request.get(`${api}/rest/v1/${table}?${query}`,{headers});expect(r.ok()).toBe(true);return r.json();}
+  async function insert(table:string,data:unknown){const r=await request.post(`${api}/rest/v1/${table}`,{headers,data});expect(r.ok(),`Insert ${table}: ${r.ok()?'ok':await r.text()}`).toBe(true);}
+  await withScopedCleanup(async()=>{
+    await insert('user_school_applications',{id:app,user_id:session.user.id,school_id:900264});
+    await insert('user_todos',[...ids.map((id,i)=>({id,user_id:session.user.id,text:`${title}-linked-${String(i).padStart(3,'0')}`,due_date:'2099-12-01'})),...available.map((id,i)=>({id,user_id:session.user.id,text:`${title}-available-${String(i).padStart(3,'0')}`,due_date:'2099-12-02'}))]);
+    await insert('application_task_links',ids.map(id=>({task_id:id,application_id:app,user_id:session.user.id})));
+    if(process.env.CAAT_EXPORT_TEST_ROW_CAP){
+      for(const table of ['user_todos','application_task_links'])expect((await read(table,`${own}&limit=200`)).length).toBe(50);
+      console.log('Verified actual application task and link row caps: 50');
+    }
+    await signInToIsolatedStudent(page);await page.goto(`/applications/${app}`);
+    const card=page.getByRole('region',{name:'Personal application tasks',exact:true});
+    await expect(card).toContainText('55 linked · 55 open');
+    await card.getByRole('textbox',{name:'Search application tasks',exact:true}).fill(`${title}-linked-054`);
+    await expect(card.getByRole('checkbox',{name:`Mark ${title}-linked-054 done`,exact:true})).toBeVisible();
+    // A late page failure must hide the partial list, then recover explicitly.
+    const linkPattern='**/rest/v1/application_task_links?*';
+    await page.route(linkPattern,route=>Number(new URL(route.request().url()).searchParams.get('offset')??0)>0?route.fulfill({status:503,contentType:'application/json',body:'{"message":"late task links outage"}'}):route.continue());
+    await card.getByRole('button',{name:'Refresh tasks',exact:true}).click();
+    await expect(card.getByRole('alert')).toContainText('Could not load personal tasks completely');
+    await expect(card.getByRole('checkbox')).toHaveCount(0);
+    await page.unroute(linkPattern);await card.getByRole('button',{name:'Refresh tasks',exact:true}).click();
+    await expect(card).toContainText('55 linked · 55 open');
+    await card.getByRole('textbox',{name:'Search application tasks',exact:true}).fill('');
+    await card.getByRole('button',{name:'Add personal task',exact:true}).click();
+    const text=`${title}-created`,edited=`${title}-edited`;
+    await card.getByRole('textbox',{name:'New personal task',exact:true}).fill(text);
+    await card.getByLabel('Due date',{exact:true}).fill('2099-11-01');
+    // Persist on the server but lose the response: retry must not duplicate it.
+    const createPattern='**/rest/v1/rpc/create_application_task';
+    await page.route(createPattern,async route=>{
+      const body=route.request().postDataJSON();createdIds.push(body.p_task_id);
+      const response=await route.fetch();expect(response.ok()).toBe(true);
+      await route.fulfill({status:503,contentType:'application/json',body:'{"message":"simulated lost confirmation"}'});
+    });
+    await card.getByRole('button',{name:'Save task',exact:true}).click();
+    await expect(card.getByRole('alert')).toContainText('Could not confirm the change');
+    await expect(card.getByRole('textbox',{name:'New personal task',exact:true})).toHaveValue(text);
+    await page.unroute(createPattern);await card.getByRole('button',{name:'Save task',exact:true}).click();
+    await expect(card).toContainText('Personal task saved. It is also available in Today.');
+    await expect(card).toBeFocused();
+    await expect(card).toContainText('56 linked · 56 open');
+    expect(await read('user_todos',`${own}&text=eq.${encodeURIComponent(text)}&select=id`)).toEqual([{id:createdIds[0]}]);
+    await page.reload();await expect(card).toContainText('56 linked · 56 open');
+    await card.getByRole('button',{name:`Edit task: ${text}`,exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:'Edit personal task',exact:true});
+    await dialog.getByLabel('Task',{exact:true}).fill(edited);await dialog.getByRole('button',{name:'Save changes',exact:true}).click();
+    await expect(dialog).toHaveCount(0);await expect.poll(()=>card.evaluate(node=>node.contains(document.activeElement))).toBe(true);
+    await expect(card.getByRole('checkbox',{name:`Mark ${edited} done`,exact:true})).toBeVisible();
+    await page.goto('/workspace/planner');await page.getByLabel('Search timeline',{exact:true}).fill(edited);await page.getByRole('main').getByRole('link',{name:new RegExp(edited)}).click();
+    const checkbox=page.getByRole('checkbox',{name:`Mark "${edited}" done`,exact:true});await expect(checkbox).toBeVisible();
+    const row=page.getByRole('listitem').filter({has:checkbox});
+    const context=row.getByRole('link',{name:'Application: E2E Personal Task University',exact:true});
+    await expect(context).toHaveAttribute('href',`/applications/${app}#personal-tasks`);
+    await context.focus();await context.press('Enter');await expect(card.getByRole('checkbox',{name:`Mark ${edited} done`,exact:true})).not.toBeChecked();
+    await page.goto('/workspace/planner');await page.getByLabel('Search timeline',{exact:true}).fill(edited);await page.getByRole('main').getByRole('link',{name:new RegExp(edited)}).click();await checkbox.check();const restored=page.getByRole('checkbox',{name:`Restore "${edited}"`,exact:true});await expect(restored).toBeChecked();await expect(restored).toBeEnabled();
+    await page.goto(`/applications/${app}`);await card.getByRole('textbox',{name:'Search application tasks',exact:true}).fill(edited);
+    const reopen=card.getByRole('checkbox',{name:`Reopen ${edited}`,exact:true});await expect(reopen).toBeChecked();await reopen.click();
+    await expect(card.getByRole('checkbox',{name:`Mark ${edited} done`,exact:true})).not.toBeChecked();
+    await page.goto('/workspace/planner');await page.getByLabel('Search timeline',{exact:true}).fill(edited);
+    await expect(page.getByRole('status',{name:'Timeline results'})).toContainText('1 item');
+    await page.getByRole('main').getByRole('link',{name:new RegExp(edited)}).click();await expect(checkbox).toBeVisible();
+    await page.goto(`/applications/${app}`);await card.getByRole('button',{name:'Link existing task',exact:true}).click();
+    await card.getByRole('textbox',{name:'Search unlinked tasks',exact:true}).fill(`${title}-available-054`);
+    await card.getByRole('button',{name:`Link ${title}-available-054`,exact:true}).click();await expect(card).toContainText('57 linked · 57 open');
+    await card.getByRole('textbox',{name:'Search application tasks',exact:true}).fill(`${title}-available-054`);
+    await card.getByRole('button',{name:`Unlink ${title}-available-054`,exact:true}).click();await expect(card).toContainText('Task unlinked. It is still available in Today.');
+    expect(await read('user_todos',`${own}&id=eq.${available[54]}&select=id`)).toEqual([{id:available[54]}]);
+    expect(await read('application_task_links',`${own}&task_id=eq.${available[54]}`)).toEqual([]);
+    await card.getByRole('textbox',{name:'Search application tasks',exact:true}).fill(edited);
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await card.scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('application-personal-tasks.png')});
+  },async()=>{await runScopedCleanup([
+    async()=>{if(!page.isClosed())await page.close();},
+    async()=>expect((await request.delete(`${api}/rest/v1/user_todos?${own}&id=in.(${[...ids,...available,...createdIds].join(',')})`,{headers})).ok()).toBe(true),
+    async()=>expect((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${app}`,{headers})).ok()).toBe(true),
+  ]);});
+});

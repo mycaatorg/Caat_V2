@@ -83,3 +83,6 @@ select ('e2600000-0000-4000-8000-' || lpad(n::text,12,'0'))::uuid,
  'E2E Preparation Foundation', 'Synthetic local preparation fixture.', true, true, '2025-01-01',
  case when n=50 then jsonb_build_object('must_meet',(select jsonb_agg('Review synthetic evidence item ' || i || ': confirm the recorded information with the provider and keep the requested supporting material ready before submitting.') from generate_series(1,16) i)) else null end
 from generate_series(0,50) n on conflict(id) do nothing;
+
+-- PROD-264: independent personal task application fixture.
+INSERT INTO public.schools(id,name,country,institution_type) VALUES(900264,'E2E Personal Task University','Australia','university') ON CONFLICT(id) DO NOTHING;
