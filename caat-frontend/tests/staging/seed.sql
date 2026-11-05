@@ -73,3 +73,12 @@ insert into public.scholarships (id,slug,title,provider_name,description,externa
 values ('e2000000-0000-4000-8000-000000000245','e2e-archived-public-award','E2E Archived Award','E2E Historical Foundation',
 'Synthetic historical listing; provider availability is not inferred.','https://example.test/archived-award',false,5000,'AUD','2026-01-01')
 on conflict (id) do nothing;
+
+-- PROD-260: disposable catalogue rows for attachment/tick completeness.
+insert into public.schools (id,name,country,institution_type)
+values (900260,'E2E Preparation Completeness University','Australia','university') on conflict(id) do nothing;
+insert into public.scholarships (id,slug,title,provider_name,description,is_active,requires_essay)
+select ('e2600000-0000-4000-8000-' || lpad(n::text,12,'0'))::uuid,
+ 'e2e-preparation-' || lpad(n::text,3,'0'), 'E2E Preparation Award ' || lpad(n::text,3,'0'),
+ 'E2E Preparation Foundation', 'Synthetic local preparation fixture.', true, true
+from generate_series(0,50) n on conflict(id) do nothing;

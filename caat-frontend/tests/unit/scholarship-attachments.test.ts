@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 type Ctx = { table: string; op: string; calls: { method: string; args: unknown[] }[] };
 const state = vi.hoisted(() => ({
   userId: "user-1" as string | null,
+  rowCap: 200,
   queries: [] as Ctx[],
   resolver: (() => ({ data: null, error: null })) as (ctx: Ctx) => { data?: unknown; error?: { message: string; code?: string } | null },
 }));
@@ -18,9 +19,13 @@ vi.mock("@/lib/supabase/client", () => {
       if (op) ctx.op = op;
       return b;
     };
-    for (const m of ["select", "eq", "in", "order", "limit", "is"]) b[m] = pass(m);
+    for (const m of ["select", "eq", "in", "order", "limit", "is", "range"]) b[m] = pass(m);
     for (const m of ["insert", "update", "upsert", "delete"]) b[m] = pass(m, m);
-    b.then = (f: (v: unknown) => unknown, r?: (e: unknown) => unknown) => Promise.resolve(state.resolver(ctx)).then(f, r);
+    b.then = (f: (v: unknown) => unknown, r?: (e: unknown) => unknown) => Promise.resolve(state.resolver(ctx)).then(result => {
+      if (ctx.op !== "select" || !Array.isArray(result.data)) return result;
+      const [from, to] = (ctx.calls.find(c => c.method === "range")?.args ?? [0, 199]) as number[];
+      return { ...result, data: result.data.slice(from, Math.min(to + 1, from + state.rowCap)) };
+    }).then(f, r);
     return b;
   };
   const client = { from: (t: string) => build(t) };
@@ -41,6 +46,7 @@ const last = () => state.queries[state.queries.length - 1];
 
 beforeEach(() => {
   state.userId = "user-1";
+  state.rowCap = 200;
   state.queries = [];
   state.resolver = () => ({ data: null, error: null });
 });
@@ -168,5 +174,30 @@ describe("preparation ticks", () => {
   it("refuses keys the database would reject, before any request", async () => {
     await expect(setPrepCheck("s1", "Not a key", true)).rejects.toThrow();
     expect(state.queries).toHaveLength(0);
+  });
+});
+
+
+describe("complete scholarship preparation reads", () => {
+  const saved = Array.from({ length: 5 }, (_, i) => ({ scholarship_id: `s${i}`, status: "interested", school_id: 7, schools: null, scholarships: { id: `s${i}`, title: `Award ${i}`, provider_name: "Provider" } }));
+  const ticks = Array.from({ length: 5 }, (_, i) => ({ scholarship_id: `s${Math.floor(i / 2)}`, item_key: i % 2 ? "essay" : "deadline" }));
+  it.each(["saved", "ticks"])("reads every %s row through a cap smaller than the requested page", async kind => {
+    state.rowCap = 2;
+    state.resolver = () => ({ data: kind === "saved" ? saved : ticks, error: null });
+    const result = kind === "saved" ? await fetchSavedScholarshipsForHub() : await fetchPrepChecks();
+    if (kind === "saved") expect((result as {id: string}[]).map(r => r.id)).toEqual(["s0", "s1", "s2", "s3", "s4"]);
+    else expect(result).toEqual({ s0: ["deadline", "essay"], s1: ["deadline", "essay"], s2: ["deadline"] });
+    expect(state.queries.map(q => q.calls.find(c => c.method === "range")?.args)).toEqual([[0,199],[2,201],[4,203],[5,204]]);
+    for (const query of state.queries) {
+      expect(eqs(query)).toEqual([["user_id", "user-1"]]);
+      expect(query.calls.filter(c => c.method === "order").map(c => c.args[0])).toEqual(kind === "saved" ? ["scholarship_id"] : ["scholarship_id", "item_key"]);
+    }
+  });
+  it.each(["saved", "ticks"])("rejects a later %s page instead of returning partial preparation", async kind => {
+    state.rowCap = 2;
+    state.resolver = ctx => Number(ctx.calls.find(c => c.method === "range")?.args[0] ?? 0) > 0
+      ? { data: null, error: { message: "private backend details" } }
+      : { data: kind === "saved" ? saved : ticks, error: null };
+    await expect(kind === "saved" ? fetchSavedScholarshipsForHub() : fetchPrepChecks()).rejects.toThrow(kind === "saved" ? "Could not load your saved scholarships" : "Could not load your preparation ticks");
   });
 });

@@ -1,5 +1,6 @@
 // (data layer — see fetch/set functions below)
 import { supabase } from "@/lib/supabase/client";
+import { evidencePages } from "@/lib/evidence-pagination";
 import { getClientUserId } from "@/lib/current-user";
 import { ITEM_KEY_PATTERN, type ChecklistScholarship } from "@/lib/requirements-checklist";
 
@@ -158,17 +159,24 @@ const HUB_SAVED_COLUMNS =
 export async function fetchSavedScholarshipsForHub(): Promise<SavedScholarshipForHub[]> {
   const userId = await getUserId();
   if (!userId) throw new Error("Not authenticated");
-  const { data, error } = await supabase
-    .from("user_bookmarked_scholarships")
-    .select(HUB_SAVED_COLUMNS)
-    .eq("user_id", userId);
-  if (error) throw new Error("Could not load your saved scholarships");
-  const rows = (data ?? []) as unknown as {
+  type SavedRow = {
     status: string | null;
     school_id: number | null;
     schools: { name: string } | null;
     scholarships: (ChecklistScholarship & { title: string; provider_name: string; amount_display: string | null }) | null;
-  }[];
+  };
+  const data = await evidencePages(
+    (from, to) => supabase
+      .from("user_bookmarked_scholarships")
+      .select(HUB_SAVED_COLUMNS)
+      .eq("user_id", userId)
+      .order("scholarship_id")
+      .range(from, to),
+    "Could not load your saved scholarships",
+  );
+  // Preserve the existing catalogue boundary; checklist parsing validates the
+  // JSON requirements at rendering time.
+  const rows = data as unknown as SavedRow[];
   return rows.flatMap((r) => {
     const s = r.scholarships;
     if (!s) return [];
@@ -244,13 +252,18 @@ export function detachScholarship(scholarshipId: string, from: number): Promise<
 export async function fetchPrepChecks(): Promise<Record<string, string[]>> {
   const userId = await getUserId();
   if (!userId) throw new Error("Not authenticated");
-  const { data, error } = await supabase
-    .from("user_scholarship_prep_checks")
-    .select("scholarship_id, item_key")
-    .eq("user_id", userId);
-  if (error) throw new Error("Could not load your preparation ticks");
+  const rows = await evidencePages<{ scholarship_id: string; item_key: string }>(
+    (from, to) => supabase
+      .from("user_scholarship_prep_checks")
+      .select("scholarship_id, item_key")
+      .eq("user_id", userId)
+      .order("scholarship_id")
+      .order("item_key")
+      .range(from, to),
+    "Could not load your preparation ticks",
+  );
   const out: Record<string, string[]> = {};
-  for (const r of (data ?? []) as { scholarship_id: string; item_key: string }[]) {
+  for (const r of rows) {
     (out[r.scholarship_id] ??= []).push(r.item_key);
   }
   return out;
