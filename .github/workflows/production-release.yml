@@ -43,7 +43,7 @@ jobs:
         working-directory: caat-frontend
         run: npm ci
       - name: Prefer Ubuntu archive for browser dependencies
-        run: node .github/scripts/prefer-ubuntu-archive.js
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT "$(command -v node)" .github/scripts/prefer-ubuntu-archive.js
       - name: Install Chromium
         working-directory: caat-frontend
         run: npx playwright install --with-deps chromium

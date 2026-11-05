@@ -29,3 +29,11 @@ test('release checks bracket public-only browser coverage without leaking the pr
   assert.doesNotMatch(text, /SUPABASE_SERVICE_ROLE|VERCEL_TOKEN|staging-journeys|test:e2e:ci/);
   assert.equal((text.match(/secrets\.AUTH_HEALTH_CHECK_TOKEN/g) || []).length, 2);
 });
+
+test('hosted apt mirror mutation uses the established narrowly preserved sudo environment', () => {
+  const text = fs.readFileSync(workflowPath, 'utf8');
+  const step = text.match(/- name: Prefer Ubuntu archive for browser dependencies\n\s+run: ([^\n]+)/);
+  assert.ok(step, 'hosted mirror step exists');
+  assert.equal(step[1], 'sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT "$(command -v node)" .github/scripts/prefer-ubuntu-archive.js');
+  assert.ok(fs.existsSync(path.join(__dirname, 'prefer-ubuntu-archive.js')));
+});
