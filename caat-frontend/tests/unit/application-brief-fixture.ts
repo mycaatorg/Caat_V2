@@ -12,3 +12,12 @@ export function briefHub(overrides: Partial<ApplicationHub> = {}): ApplicationHu
   ...overrides,
  };
 }
+
+export function scholarshipBriefHub(overrides: Partial<ApplicationHub> = {}): ApplicationHub {
+ const scholarship = {
+  id:'award',title:'Attached award',provider:'Example Foundation',amount:'$5000',status:'interested' as const,
+  schoolId:7,attachedSchoolName:'Example University',scholarshipSchoolName:'Example University',
+  checklist:{id:'award',requires_essay:true,deadline_at:'2027-06-01',external_url:'https://example.test/award',application_requirements:{must_meet:['Check the residency rule']},eligibility_summary:null,last_verified_at:'2025-01-01',source_last_synced_at:null,school_name:'Example University',is_active:false},
+ };
+ return briefHub({savedScholarships:[scholarship,{...scholarship,id:'other',title:'Other application award',schoolId:8},{...scholarship,id:'suggestion',title:'Unattached suggestion',schoolId:null}],savedScholarshipsUnavailable:false,prepChecks:{award:['deadline']},prepChecksUnavailable:false,...overrides});
+}

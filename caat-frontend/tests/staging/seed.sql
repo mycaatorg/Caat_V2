@@ -77,8 +77,9 @@ on conflict (id) do nothing;
 -- PROD-260: disposable catalogue rows for attachment/tick completeness.
 insert into public.schools (id,name,country,institution_type)
 values (900260,'E2E Preparation Completeness University','Australia','university') on conflict(id) do nothing;
-insert into public.scholarships (id,slug,title,provider_name,description,is_active,requires_essay)
+insert into public.scholarships (id,slug,title,provider_name,description,is_active,requires_essay,last_verified_at,application_requirements)
 select ('e2600000-0000-4000-8000-' || lpad(n::text,12,'0'))::uuid,
  'e2e-preparation-' || lpad(n::text,3,'0'), 'E2E Preparation Award ' || lpad(n::text,3,'0'),
- 'E2E Preparation Foundation', 'Synthetic local preparation fixture.', true, true
+ 'E2E Preparation Foundation', 'Synthetic local preparation fixture.', true, true, '2025-01-01',
+ case when n=50 then jsonb_build_object('must_meet',(select jsonb_agg('Review synthetic evidence item ' || i || ': confirm the recorded information with the provider and keep the requested supporting material ready before submitting.') from generate_series(1,16) i)) else null end
 from generate_series(0,50) n on conflict(id) do nothing;

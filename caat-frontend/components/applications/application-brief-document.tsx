@@ -1,3 +1,4 @@
+import { CHECKLIST_NOTICE } from '@/lib/requirements-checklist';
 import { briefDate, type ApplicationBrief, type BriefRow } from '@/lib/application-brief';
 function WorkTable({rows,label}:{rows:BriefRow[];label:string}) {
  return rows.length ? <table aria-label={label}><thead><tr><th scope="col">Work</th><th scope="col">Applies to</th><th scope="col">Recorded status</th></tr></thead><tbody>{rows.map(row=><tr key={row.key}><td>{row.title}</td><td>{row.scope}</td><td>{row.status}</td></tr>)}</tbody></table> : <p>No {label.toLowerCase()} recorded.</p>;
@@ -11,6 +12,24 @@ export function ApplicationBriefDocument({brief}:{brief:ApplicationBrief}) {
   <section><h2>Preparation recorded in CAAT</h2><p>These checks track saved work, not admission eligibility.</p><ul className="brief-checks">{brief.checks.map(check=><li key={check.label}><span>{check.label}</span><strong>{check.recorded?'Recorded':'Not yet recorded'}</strong></li>)}</ul></section>
   <section><h2>Writing</h2><WorkTable rows={brief.essays} label="Writing"/></section>
   <section><h2>Documents</h2><WorkTable rows={brief.documents} label="Documents"/></section>
+  {brief.scholarships && <section aria-label="Attached scholarship checklists">
+   <h2>Attached scholarship checklists</h2>
+   {brief.scholarships.state === 'unavailable' ? <p>This section is unavailable. Refresh the brief or exclude it before printing.</p> : <>
+    <p>{CHECKLIST_NOTICE}</p>
+    {brief.scholarships.awards.length === 0 ? <p>No scholarships are attached to this application.</p> : brief.scholarships.awards.map(award => <div key={award.key} className="brief-award">
+     <h3>{award.title}</h3><p>{award.provider} · Recorded tracking status: {award.status}</p>
+     {award.inactive && <p>No longer active in CAAT’s catalogue.</p>}
+     <p className="brief-source-note">{award.sourceNote}</p>
+     <table aria-label={`Checklist for ${award.title}`}><thead><tr><th scope="col">Recorded requirement or next check</th><th scope="col">Your preparation</th></tr></thead>
+      <tbody>{award.items.map(item => <tr key={item.key}><td>
+       {item.href ? <a href={item.href} target="_blank" rel="noopener noreferrer">{item.label}</a> : item.label}
+       {item.detail && <p>{item.detail}</p>}
+       <p className="brief-source-note">{item.source} · {item.sourceSuffix}</p>
+      </td><td>{item.tick}</td></tr>)}</tbody>
+     </table>
+    </div>)}
+   </>}
+  </section>}
   {brief.notes && <section><h2>Application notes</h2><p className="brief-notes">{brief.notes}</p></section>}
   <footer>This is a snapshot of your records in CAAT. It is not a university submission or confirmation. Check official application requirements and deadlines before submitting.</footer>
  </article>;

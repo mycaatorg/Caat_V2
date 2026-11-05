@@ -3765,6 +3765,40 @@ test('application hub keeps tail scholarship attachments and ticks complete (PRO
     }
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await testInfo.attach('complete-scholarship-preparation', { body: await page.screenshot(), contentType: 'image/png' });
+    // PROD-261: the same complete snapshot feeds the optional printable checklist.
+    await main.getByRole('link', { name: 'Preview application brief', exact: true }).click();
+    const preview = main.locator('[data-application-brief-preview]');
+    const include = main.getByRole('checkbox', { name: 'Include attached scholarship checklists', exact: true });
+    await expect(include).not.toBeChecked(); await expect(preview).not.toContainText('E2E Preparation Award 050');
+    await include.check();
+    const section = preview.getByRole('region', { name: 'Attached scholarship checklists', exact: true });
+    await expect(section).toContainText('E2E Preparation Award 050');
+    await expect(section.getByRole('heading', { name: 'E2E Preparation Award 050', exact: true })).toHaveCSS('font-weight', '700');
+    await expect(section).not.toContainText('E2E Preparation Award 000');
+    await expect(section).toContainText('over 90 days ago');
+    await expect(section.locator('tr').filter({ hasText: 'No closing date recorded' })).toContainText('Marked prepared');
+    await expect(section.locator('tbody tr')).toHaveCount(20);
+    await page.evaluate(() => { (window as Window & { __briefPrint?: string }).print = () => { (window as Window & { __briefPrint?: string }).__briefPrint = document.querySelector('[data-print-application]')?.textContent ?? ''; }; });
+    await main.getByRole('button', { name: 'Print / Save PDF', exact: true }).click();
+    expect(await page.evaluate(() => (window as Window & { __briefPrint?: string }).__briefPrint)).toBe(await preview.textContent());
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('scholarship-brief.png'), fullPage: true });
+    if (testInfo.project.name === 'staging') {
+      const pdf = await page.pdf({ path: testInfo.outputPath('scholarship-brief.pdf'), format: 'A4', preferCSSPageSize: true, printBackground: true });
+      expect(pdfPageCount(pdf)).toBeGreaterThan(1); expect(pdfPageCount(pdf)).toBeLessThan(9);
+    }
+    await page.route('**/rest/v1/user_scholarship_prep_checks?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'optional brief source outage' }) }));
+    await main.getByRole('button', { name: 'Refresh brief', exact: true }).click();
+    await expect(main.getByRole('alert')).toContainText('Could not load the attached scholarship checklists completely');
+    await expect(main.getByRole('button', { name: 'Print / Save PDF', exact: true })).toBeDisabled();
+    await expect(page.locator('[data-print-application]')).toHaveCount(0);
+    await include.uncheck(); await expect(main.getByRole('button', { name: 'Print / Save PDF', exact: true })).toBeEnabled();
+    await expect(page.locator('[data-print-application]')).not.toContainText('E2E Preparation Award 050');
+    await include.check(); await page.unroute('**/rest/v1/user_scholarship_prep_checks?*');
+    await main.getByRole('button', { name: 'Refresh brief', exact: true }).click();
+    await expect(section).toContainText('E2E Preparation Award 050');
+    await expect(main.getByRole('button', { name: 'Print / Save PDF', exact: true })).toBeEnabled();
+
   }, async () => {
     await runScopedCleanup([
       async () => { if (!page.isClosed()) await page.close(); },

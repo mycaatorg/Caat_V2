@@ -343,6 +343,12 @@ html { scroll-behavior: smooth; }
 .application-brief-document th, .application-brief-document td { text-align:left; vertical-align:top; padding:0.55rem 0.35rem; border-bottom:1px solid #d4d4d4; }
 .application-brief-document th { font-size:0.75rem; color:#525252; font-weight:600; }
 .application-brief-document th:first-child { width:48%; }
+.application-brief-document .brief-award { margin-top:1.25rem; }
+.application-brief-document .brief-award h3 { font-size:1rem; font-weight:700; break-after:avoid; }
+.application-brief-document .brief-source-note { color:#525252; font-size:0.75rem; margin-top:0.35rem; }
+.application-brief-document .brief-award table { margin-top:0.6rem; }
+.application-brief-document .brief-award th:first-child { width:70%; }
+.application-brief-document .brief-award a { text-decoration:underline; text-underline-offset:0.15em; }
 .application-brief-document .brief-notes { white-space:pre-wrap; }
 .application-brief-document footer { margin-top:1.75rem; border-top:1px solid #d4d4d4; padding-top:1rem; color:#525252; font-size:0.75rem; }
 @media(max-width:480px) { .application-brief-document { padding:1rem; font-size:0.8rem; } .application-brief-document h1 { font-size:1.6rem; } }
