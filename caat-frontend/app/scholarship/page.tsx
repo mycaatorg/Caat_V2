@@ -63,6 +63,7 @@ function ScholarshipCard({ s }: { s: ScholarshipRow }) {
       <h2 className="text-base font-semibold leading-snug text-black mb-2 font-serif">
         {s.title}
       </h2>
+      {!s.is_active && <p className="text-xs font-semibold text-[#525252] mb-2">Archived listing</p>}
       {hasAmount && <p className="text-lg font-bold text-black mb-2">{amount}</p>}
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-3">
@@ -79,7 +80,7 @@ function ScholarshipCard({ s }: { s: ScholarshipRow }) {
         </div>
       )}
       <div className="mt-auto text-xs text-[#525252]">
-        {deadline ? `Closes ${deadline}` : "Rolling / see details"}
+        {!s.is_active ? (deadline ? `Recorded deadline ${deadline}` : "Deadline not recorded") : (deadline ? `Closes ${deadline}` : "Rolling / see details")}
       </div>
     </Link>
   );
@@ -204,7 +205,7 @@ export default async function PublicScholarshipsIndex({
                   defaultChecked={params.open === "1"}
                   className="h-4 w-4 accent-[#9a1a27]"
                 />
-                Open for applications only
+                Active listings only
               </label>
               <button
                 type="submit"

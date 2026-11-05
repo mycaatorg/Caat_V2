@@ -67,3 +67,9 @@ VALUES
   ('e2000000-0000-4000-8000-000000000239', 'e2e-shared-public-award', 'E2E Shared Award', 'E2E South Foundation',
    'Synthetic south listing for public identity tests.', 9000, 'AUD', ARRAY['postgraduate']::text[], ARRAY['need']::text[], ARRAY['Australia']::text[], true, false, ARRAY['e2e']::text[], '2027-07-01', 'https://south.example.test/award')
 ON CONFLICT (id) DO NOTHING;
+
+-- PROD-245 archived public detail fixture (excluded from active catalogue).
+insert into public.scholarships (id,slug,title,provider_name,description,external_url,is_active,amount_value,amount_currency,deadline_at)
+values ('e2000000-0000-4000-8000-000000000245','e2e-archived-public-award','E2E Archived Award','E2E Historical Foundation',
+'Synthetic historical listing; provider availability is not inferred.','https://example.test/archived-award',false,5000,'AUD','2026-01-01')
+on conflict (id) do nothing;
