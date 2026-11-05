@@ -326,6 +326,13 @@
       "kind": "static",
       "coverage": "authenticated-content",
       "expected": "Experience library"
+    },
+    {
+      "route": "/workspace/planner",
+      "access": "authenticated",
+      "kind": "static",
+      "coverage": "authenticated-content",
+      "expected": "Planning timeline"
     }
   ],
   "writeJourneys": [

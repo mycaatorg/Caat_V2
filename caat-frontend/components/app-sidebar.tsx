@@ -19,6 +19,7 @@ import {
   ListChecks,
   Search,
   Library,
+  CalendarClock,
 } from "lucide-react"
 
 import {
@@ -64,6 +65,7 @@ const navGroups: { label: string | null; items: NavItem[] }[] = [
   {
     label: "Workspace",
     items: [
+      { title: "Planning timeline", icon: CalendarClock, url: "/workspace/planner" },
       { title: "Experience library", icon: Library, url: "/workspace/library" },
       { title: "Writing desk", icon: BookOpen, url: "/workspace/writing" },
       { title: "Essays", icon: FileText, url: "/essays" },

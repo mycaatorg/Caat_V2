@@ -1,3 +1,4 @@
+export const TODAY_PAGE_SIZE = 10;
 /**
  * Today view (PROD-74): pure derivation of what a student should do next.
  *
