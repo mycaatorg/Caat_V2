@@ -74,6 +74,38 @@ test("public duplicate scholarship links preserve the chosen listing", { tag: "@
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/scholarship\/e2e-test-scholarship$/);
 });
 
+test("archived public scholarship remains readable without a tracking promotion", { tag: "@phone" }, async ({ page }, testInfo) => {
+  const path = "/scholarship/e2e-archived-public-award";
+  const response = await page.goto(path);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "E2E Archived Award", level: 1, exact: true })).toBeVisible();
+  const notice = page.getByRole("region", { name: "Archived listing", exact: true });
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText("Check the official provider for current availability.");
+  await expect(page.getByRole("link", { name: "Visit official site", exact: true })).toHaveAttribute("href", "https://example.test/archived-award");
+  await expect(page.getByRole("link", { name: "Track this scholarship", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Recorded deadline", { exact: true })).toBeVisible();
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", new RegExp(`${path}$`));
+  const grant = await page.locator('script[type="application/ld+json"]').evaluateAll(nodes => nodes.some(node => JSON.parse(node.textContent || "{}")["@type"] === "MonetaryGrant"));
+  expect(grant).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("archived-scholarship.png"), fullPage: true });
+  const browse = notice.getByRole("link", { name: "Browse active listings", exact: true });
+  await browse.focus(); await expect(browse).toBeFocused(); await browse.press("Enter");
+  await expect(page).toHaveURL(/\/scholarship\?open=1$/);
+  await expect(page.getByRole("heading", { name: "Find scholarships for your Australian university journey", exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Active listings only", exact: true })).toBeChecked();
+  await expect(page.getByRole("heading", { name: "E2E Archived Award", exact: true })).toHaveCount(0);
+  await page.goto("/scholarship?q=E2E+Archived+Award");
+  const archivedCard = page.locator('a[href^="/scholarship/e2e-archived-public-award?"]');
+  await expect(archivedCard).toContainText("Archived listing");
+  await expect(archivedCard).toContainText("Recorded deadline");
+  await page.goto("/scholarship/e2e-test-scholarship");
+  await expect(page.getByRole("region", { name: "Archived listing", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Track this scholarship", exact: true })).toHaveCount(2);
+});
+
 test("scholarship comparison retains choices across filters and restores keyboard focus", { tag: "@phone" }, async ({ page }, testInfo) => {
   await signInToIsolatedStudent(page);
   const bookmarkWrites: string[] = [];
