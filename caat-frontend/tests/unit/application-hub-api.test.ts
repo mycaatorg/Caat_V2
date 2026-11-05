@@ -653,3 +653,22 @@ describe('custom draft visibility (PROD-267)',()=>{
   await expect(fetchApplicationHub('app-1')).rejects.toThrow('Could not load application preparation. Try again.');
  });
 });
+
+it.each([
+ ['2026-11-01T00:00:00+00:00','2026-11-01T00:00:00.123+00:00'],
+ ['2026-11-01T00:00:00.123100+00:00','2026-11-01T00:00:00.123900+00:00'],
+ ['2026-11-01T01:00:00+01:00','2026-11-01T00:00:00.001Z'],
+])('selects chronological newest custom draft with exact timestamp precision: %s before %s',async(older,newer)=>{
+ use(hubResolver({custom_essay_prompts:{data:[{id:'custom',title:'Statement'}],error:null},essay_drafts:{data:[
+  {id:'z-older',prompt_id:'custom',school_id:7,label:'Older',updated_at:older},
+  {id:'a-newer',prompt_id:'custom',school_id:7,label:'Newer',updated_at:newer},
+ ],error:null}}));
+ expect((await fetchApplicationHub('app-1')).essaysForSchool.at(-1)).toMatchObject({draftId:'a-newer',title:'Statement — Newer'});
+});
+it('breaks equivalent timestamp instants by ID, including differing offsets and fractional formatting',async()=>{
+ use(hubResolver({custom_essay_prompts:{data:[{id:'custom',title:'Statement'}],error:null},essay_drafts:{data:[
+  {id:'a',prompt_id:'custom',school_id:null,label:'A',updated_at:'2026-11-01T01:00:00.100000+01:00'},
+  {id:'z',prompt_id:'custom',school_id:null,label:'Z',updated_at:'2026-11-01T00:00:00.1Z'},
+ ],error:null}}));
+ expect((await fetchApplicationHub('app-1')).essaysShared.at(-1)).toMatchObject({draftId:'z',title:'Statement — Z'});
+});
