@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { createPublicClient } from "@/lib/supabase/public";
+import { evidencePages } from "@/lib/evidence-pagination";
 import type { ScholarshipRow } from "@/types/scholarships";
 
 // Catalog-only columns exposed on the public directory. Deliberately explicit
@@ -157,24 +158,18 @@ export const getRelatedScholarships = unstable_cache(
 export const getPublicScholarshipSlugs = unstable_cache(
   async (): Promise<{ slug: string; updated_at: string }[]> => {
     const sb = createPublicClient();
-    const pageSize = 1000;
-    const out: { slug: string; updated_at: string }[] = [];
-    for (let from = 0; ; from += pageSize) {
-      const { data, error } = await sb
+    const rows = await evidencePages<{ slug: string | null; updated_at: string }>(
+      (from, to) => sb
         .from("scholarships")
         .select("slug, updated_at")
         .eq("is_active", true)
         .not("slug", "is", null)
         .order("updated_at", { ascending: false })
-        .range(from, from + pageSize - 1);
-      if (error) throw new Error(error.message);
-      const batch = (data as { slug: string | null; updated_at: string }[] | null) ?? [];
-      for (const r of batch) {
-        if (r.slug) out.push({ slug: r.slug, updated_at: r.updated_at });
-      }
-      if (batch.length < pageSize) break;
-    }
-    return out;
+        .order("id", { ascending: true })
+        .range(from, to),
+      "Could not load the complete public scholarship sitemap.",
+    );
+    return rows.flatMap(({ slug, updated_at }) => slug ? [{ slug, updated_at }] : []);
   },
   ["public-scholarship-slugs"],
   { revalidate: 3600, tags: ["scholarship-catalog"] },
