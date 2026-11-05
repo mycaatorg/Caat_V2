@@ -28,6 +28,7 @@ export const postBaselineSteps = [
   '../../supabase/migrations/20261028010000_community_write_validation.sql',
   '../../supabase/migrations/20261028020000_owned_community_content_cursors.sql',
   '../../supabase/migrations/20261029010000_document_review_integrity.sql',
+  '../../supabase/migrations/20261105010000_community_resume_snapshot_validation.sql',
 ];
 
 /** Pure preflight: usable by discovery CI without a database or credentials. */
