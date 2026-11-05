@@ -139,7 +139,7 @@ test("scholarship comparison retains choices across filters and restores keyboar
   page.on("request", request => {
     if (request.url().includes("/rest/v1/user_bookmarked_scholarships") && ["POST", "PATCH", "DELETE"].includes(request.method())) bookmarkWrites.push(request.method());
   });
-  await page.goto("/scholarships?q=E2E");
+  await page.goto("/scholarships?q=E2E+Shared+Award");
   const north = page.getByRole("button", { name: /^Compare E2E Shared Award at E2E North Foundation/ });
   const south = page.getByRole("button", { name: /^Compare E2E Shared Award at E2E South Foundation/ });
   await north.click(); await south.click();
@@ -3702,4 +3702,109 @@ test("application university search ignores old responses and adds the current c
     await page.unroute(pattern);
     await removeSeededApplication(page);
   }
+});
+
+test('application hub keeps tail scholarship attachments and ticks complete (PROD-260)', { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, 'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const login = await request.post(`${api}/auth/v1/token?grant_type=password`, { headers: { apikey: key }, data: { email: STUDENT_EMAIL, password: process.env.E2E_TEST_PASSWORD } });
+  expect(login.ok()).toBe(true);
+  const session = await login.json();
+  const headers = { apikey: key, Authorization: `Bearer ${session.access_token}`, Prefer: 'return=representation' };
+  const own = `user_id=eq.${session.user.id}`;
+  const ids = Array.from({ length: 51 }, (_, i) => `e2600000-0000-4000-8000-${String(i).padStart(12,'0')}`);
+  const tail = ids[50];
+  const added: string[] = [];
+  let addedApplication: string | null = null;
+  async function read(table: string, query: string) {
+    const r = await request.get(`${api}/rest/v1/${table}?${query}`, { headers }); expect(r.ok()).toBe(true); return r.json();
+  }
+  await withScopedCleanup(async () => {
+    // Preserve any existing fixture state rather than overwrite it. Each query
+    // is smaller than the cap so the preservation check cannot truncate.
+    for (let offset = 0; offset < ids.length; offset += 25) {
+      expect(await read('user_bookmarked_scholarships', `${own}&scholarship_id=in.(${ids.slice(offset,offset+25).join(',')})`)).toEqual([]);
+    }
+    let app = (await read('user_school_applications', `${own}&school_id=eq.900260`))[0];
+    if (!app) {
+      addedApplication = crypto.randomUUID();
+      const r = await request.post(`${api}/rest/v1/user_school_applications`, { headers, data: { id: addedApplication, user_id: session.user.id, school_id: 900260, status: 'researching' } });
+      expect(r.ok()).toBe(true); app = (await r.json())[0];
+    }
+    added.push(...ids); // Track attempted writes before dispatch.
+    expect((await request.post(`${api}/rest/v1/user_bookmarked_scholarships`, { headers, data: ids.map(id => ({ user_id: session.user.id, scholarship_id: id, status: 'interested', school_id: id === tail ? 900260 : null })) })).ok()).toBe(true);
+    expect((await request.post(`${api}/rest/v1/user_scholarship_prep_checks`, { headers, data: ids.map(id => ({ user_id: session.user.id, scholarship_id: id, item_key: 'deadline' })) })).ok()).toBe(true);
+    if (process.env.CAAT_EXPORT_TEST_ROW_CAP) {
+      for (const table of ['user_bookmarked_scholarships', 'user_scholarship_prep_checks']) {
+        expect((await read(table, `${own}&scholarship_id=in.(${ids.join(',')})&order=scholarship_id&limit=200`)).length).toBe(50);
+      }
+      console.log('Verified real scholarship attachment and preparation tick row cap: 50');
+    }
+    await signInToIsolatedStudent(page); await page.goto(`/applications/${app.id}`);
+    const main = page.getByRole('main');
+    const card = main.locator(`[data-attached-scholarship="${tail}"]`);
+    const tick = card.locator('[data-checklist-item="deadline"] input[type="checkbox"]');
+    await expect(card.getByRole('link', { name: 'E2E Preparation Award 050', exact: true })).toBeVisible();
+    await expect(tick).toBeChecked();
+    await page.reload(); await expect(tick).toBeChecked();
+    for (const table of ['user_bookmarked_scholarships', 'user_scholarship_prep_checks']) {
+      const routePattern = `**/rest/v1/${table}?*`;
+      await page.route(routePattern, route => Number(new URL(route.request().url()).searchParams.get('offset') ?? 0) > 0
+        ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'late preparation page outage' }) }) : route.continue());
+      await page.reload();
+      if (table === 'user_bookmarked_scholarships') {
+        await expect(main.getByRole('status').filter({ hasText: "Couldn't load your saved scholarships." })).toBeVisible();
+        await expect(card).toHaveCount(0);
+        await page.unroute(routePattern); await main.getByRole('button', { name: 'Retry loading saved scholarships', exact: true }).click();
+      } else {
+        const unavailable = main.getByRole('status').filter({ hasText: "Couldn't load your ticks." });
+        await expect(unavailable).toBeVisible(); await expect(tick).toBeDisabled();
+        await page.unroute(routePattern); await unavailable.getByRole('button', { name: 'Retry', exact: true }).click();
+      }
+      await expect(tick).toBeChecked(); await expect(tick).toBeEnabled();
+    }
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await testInfo.attach('complete-scholarship-preparation', { body: await page.screenshot(), contentType: 'image/png' });
+    // PROD-261: the same complete snapshot feeds the optional printable checklist.
+    await main.getByRole('link', { name: 'Preview application brief', exact: true }).click();
+    const preview = main.locator('[data-application-brief-preview]');
+    const include = main.getByRole('checkbox', { name: 'Include attached scholarship checklists', exact: true });
+    await expect(include).not.toBeChecked(); await expect(preview).not.toContainText('E2E Preparation Award 050');
+    await include.check();
+    const section = preview.getByRole('region', { name: 'Attached scholarship checklists', exact: true });
+    await expect(section).toContainText('E2E Preparation Award 050');
+    await expect(section.getByRole('heading', { name: 'E2E Preparation Award 050', exact: true })).toHaveCSS('font-weight', '700');
+    await expect(section).not.toContainText('E2E Preparation Award 000');
+    await expect(section).toContainText('over 90 days ago');
+    await expect(section.locator('tr').filter({ hasText: 'No closing date recorded' })).toContainText('Marked prepared');
+    await expect(section.locator('tbody tr')).toHaveCount(20);
+    await page.evaluate(() => { (window as Window & { __briefPrint?: string }).print = () => { (window as Window & { __briefPrint?: string }).__briefPrint = document.querySelector('[data-print-application]')?.textContent ?? ''; }; });
+    await main.getByRole('button', { name: 'Print / Save PDF', exact: true }).click();
+    expect(await page.evaluate(() => (window as Window & { __briefPrint?: string }).__briefPrint)).toBe(await preview.textContent());
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('scholarship-brief.png'), fullPage: true });
+    if (testInfo.project.name === 'staging') {
+      const pdf = await page.pdf({ path: testInfo.outputPath('scholarship-brief.pdf'), format: 'A4', preferCSSPageSize: true, printBackground: true });
+      expect(pdfPageCount(pdf)).toBeGreaterThan(1); expect(pdfPageCount(pdf)).toBeLessThan(9);
+    }
+    await page.route('**/rest/v1/user_scholarship_prep_checks?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'optional brief source outage' }) }));
+    await main.getByRole('button', { name: 'Refresh brief', exact: true }).click();
+    await expect(main.getByRole('alert')).toContainText('Could not load the attached scholarship checklists completely');
+    await expect(main.getByRole('button', { name: 'Print / Save PDF', exact: true })).toBeDisabled();
+    await expect(page.locator('[data-print-application]')).toHaveCount(0);
+    await include.uncheck(); await expect(main.getByRole('button', { name: 'Print / Save PDF', exact: true })).toBeEnabled();
+    await expect(page.locator('[data-print-application]')).not.toContainText('E2E Preparation Award 050');
+    await include.check(); await page.unroute('**/rest/v1/user_scholarship_prep_checks?*');
+    await main.getByRole('button', { name: 'Refresh brief', exact: true }).click();
+    await expect(section).toContainText('E2E Preparation Award 050');
+    await expect(main.getByRole('button', { name: 'Print / Save PDF', exact: true })).toBeEnabled();
+
+  }, async () => {
+    await runScopedCleanup([
+      async () => { if (!page.isClosed()) await page.close(); },
+      async () => { if (added.length) expect((await request.delete(`${api}/rest/v1/user_scholarship_prep_checks?${own}&scholarship_id=in.(${added.join(',')})`, { headers })).ok()).toBe(true); },
+      async () => { if (added.length) expect((await request.delete(`${api}/rest/v1/user_bookmarked_scholarships?${own}&scholarship_id=in.(${added.join(',')})`, { headers })).ok()).toBe(true); },
+      async () => { if (addedApplication) expect((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${addedApplication}`, { headers })).ok()).toBe(true); },
+    ]);
+  });
 });
