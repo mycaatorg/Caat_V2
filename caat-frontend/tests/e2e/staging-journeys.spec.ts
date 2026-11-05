@@ -3,6 +3,7 @@
  * This spec is intentionally excluded from the default Playwright project.
  */
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { localDatabaseUrl, checkLocalPsql, runLocalPsql } from "../staging/local-db.mjs";
 import routeCoverage from "./route-coverage.json";
 import { runScopedCleanup, withScopedCleanup } from "./scoped-cleanup";
 
@@ -739,8 +740,10 @@ test("an already-saved scholarship moves from Interested to Applied and stays Ap
   }
 });
 
-test("school notes and application status/checklist persist across list and detail reloads", { tag: "@phone" }, async ({ page }) => {
+test("school notes and application status/checklist persist across list and detail reloads (PROD-270, PROD-274)", { tag: "@phone" }, async ({ page }) => {
+  page.setDefaultTimeout(10_000);
   await signInToIsolatedStudent(page);
+  await removeSeededApplication(page);
   const schoolNote = marker("School note");
   const applicationNote = marker("Application note");
   try {
@@ -755,6 +758,59 @@ test("school notes and application status/checklist persist across list and deta
     const reloadedSchoolNotes = page.locator('textarea[placeholder*="Jot down anything you want to remember about this school"]:visible');
     await expect(reloadedSchoolNotes).toHaveCount(1);
     await expect(reloadedSchoolNotes).toHaveValue(schoolNote, { timeout: 15_000 });
+
+    // PROD-274: deny the actual server read only in the disposable loopback DB.
+    // This suite is sequential; always restore the existing SELECT privilege.
+    const db = localDatabaseUrl();
+    expect(checkLocalPsql(db, ["-At", "-c", "select has_table_privilege('authenticated', 'public.user_school_notes', 'select')"])).toBe("t");
+    try {
+      runLocalPsql(db, ["-v", "ON_ERROR_STOP=1", "-c", "revoke select on public.user_school_notes from authenticated"]);
+      await page.reload();
+      await expect(page.getByRole('alert').filter({hasText:'Your notes could not be loaded'})).toBeVisible();
+      await expect(schoolNotes).toHaveCount(0);
+    } finally {
+      runLocalPsql(db, ["-v", "ON_ERROR_STOP=1", "-c", "grant select on public.user_school_notes to authenticated"]);
+    }
+    await page.getByRole('button', {name:'Retry loading notes', exact:true}).click();
+    await expect(schoolNotes).toHaveValue(schoolNote, {timeout:15_000});
+
+    // Hold the actual server-action request so reverting to the persisted text
+    // happens while an older edit is still pending. Releasing it must not leave
+    // that older edit stored or falsely show the revert as already saved.
+    const temporaryNote = marker("Pending school note");
+    let held = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/schools/**", async (route) => {
+      const request = route.request();
+      if (!held && request.method() === "POST" && request.headers()["next-action"] && request.postData()?.includes(temporaryNote)) {
+        held = true;
+        await gate;
+      }
+      await route.continue();
+    });
+    try {
+      await reloadedSchoolNotes.fill(temporaryNote);
+      await expect.poll(() => held).toBe(true);
+      await reloadedSchoolNotes.fill(schoolNote);
+      // Cross the real 1.5s debounce while the first server action is held.
+      await page.waitForTimeout(1_650);
+    } finally {
+      release();
+    }
+    await expect(page.getByText(/last saved/i).last()).toBeVisible({ timeout: 10_000 });
+    await page.unroute("**/schools/**");
+    await page.reload();
+    await expect(schoolNotes).toHaveValue(schoolNote, { timeout: 15_000 });
+
+    const navigationNote = marker("School note before navigation");
+    await schoolNotes.fill(navigationNote);
+    const flushed = page.waitForResponse((response) => response.request().method() === "POST"
+      && !!response.request().headers()["next-action"] && !!response.request().postData()?.includes(navigationNote));
+    await page.getByRole("link", { name: "Back to Schools", exact: true }).click();
+    expect((await flushed).ok()).toBe(true);
+    await page.goto(`/schools/${SCHOOL_ID}`);
+    await expect(schoolNotes).toHaveValue(navigationNote, { timeout: 15_000 });
 
     await page.getByRole("button", { name: "Track Application" }).click();
     await expect(page.getByRole("link", { name: "Researching" })).toBeVisible({ timeout: 15_000 });
@@ -798,14 +854,9 @@ test("school notes and application status/checklist persist across list and deta
     await expect(seededScholarship.getByRole("link")).toHaveAttribute("href", "/scholarships/e2000000-0000-4000-8000-000000000002");
     await expect(seededScholarship).toContainText("No closing date listed");
   } finally {
-    await page.goto("/applications").catch(() => {});
-    const schoolLink = page.getByRole("link", { name: /E2E Test University/ }).first();
-    await schoolLink.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
-    if (await schoolLink.count()) {
-      const card = page.locator("div.rounded-lg.border.p-4").filter({ has: schoolLink }).first();
-      await card.getByRole("button", { name: "Remove application" }).click().catch(() => {});
-      await card.getByRole("button", { name: "Confirm", exact: true }).click().catch(() => {});
-    }
+    // Wait for the persisted removal before leaving; clicking Confirm alone
+    // can abort its request and strand the next phone project's fixture.
+    await removeSeededApplication(page);
     await page.goto(`/schools/${SCHOOL_ID}`).catch(() => {});
     const notesField = page.locator('textarea[placeholder*="Jot down anything you want to remember about this school"]:visible');
     if (await notesField.count()) {
@@ -2926,6 +2977,9 @@ test('Today downloads an owner-only deadline calendar snapshot (PROD-203)', {tag
 // PROD-218: one real student workspace, including failed writes and remounted cards.
 test('Applications board preserves drafts across views and recovers status moves (PROD-218)',{tag:'@phone'},async({page,request},testInfo)=>{
  test.setTimeout(120_000);
+ // Install before navigation; each scheduled pause is farther ahead than the whole test timeout.
+ const clockStart = Date.now();
+ await page.clock.install({time:clockStart});
  const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin;
  const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
  const auth=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:STUDENT_EMAIL,password:process.env.E2E_TEST_PASSWORD}});
@@ -2956,7 +3010,7 @@ test('Applications board preserves drafts across views and recovers status moves
   await page.getByLabel('Sort applications',{exact:true}).selectOption('deadline');
   await card.getByRole('button',{name:'Notes',exact:true}).click();
   // Freeze just the debounce window, so the view switch certainly precedes save.
-  await page.clock.install();await page.clock.pauseAt(new Date());
+  await page.clock.pauseAt(clockStart + 180_000);
   await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(note);
   await page.getByRole('button',{name:'List view',exact:true}).click();
   await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(note);
@@ -2977,14 +3031,25 @@ test('Applications board preserves drafts across views and recovers status moves
   await page.unroute(APPLICATION_WRITES);
   await failNextApplicationWrite(page,'"notes"');
   const failedNote=`${note} after outage`;
+  // Pause before scheduling the failed write so the new error cannot expire.
+  await page.clock.pauseAt(clockStart + 360_000);
   await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(failedNote);
+  await page.clock.runFor(800);
   await expect(card.getByText('Not saved',{exact:true})).toBeVisible();
+  // PROD-273: hold expiry through setup, then keep the notification hovered during keyboard retry.
   await page.getByRole('button',{name:'Outcome',exact:true}).click();
   await page.getByRole('button',{name:'All',exact:true}).click();
   await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(failedNote);
   await expect(card.getByText('Not saved',{exact:true})).toBeVisible();
-  await page.unroute(APPLICATION_WRITES);await card.getByRole('button',{name:'Save',exact:true}).click();
+  await page.unroute(APPLICATION_WRITES);
+  const noteError = page.locator('[data-sonner-toast]').filter({hasText:'Failed to update notes.'});
+  await noteError.hover();
+  await expect(noteError).toHaveAttribute('data-expanded','true');
+  await card.getByRole('button',{name:'Save',exact:true}).focus();
+  await page.keyboard.press('Enter');
   await expect(card.getByText('Saved',{exact:true})).toBeVisible();
+  // Resume animation frames; hover continues to pause ordinary auto-dismissal.
+  await page.clock.resume();
   await expect(page.getByText('Failed to update notes.',{exact:true})).toHaveCount(0,{timeout:10_000});
   await testInfo.attach('applications-board',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
@@ -2995,7 +3060,7 @@ test('Applications board preserves drafts across views and recovers status moves
   await expect(status()).toContainText('Applying');
   // Leave before the 800ms debounce: ordinary workspace navigation still saves.
   const navigationNote=`${note} before navigation`;
-  await page.clock.pauseAt(new Date());
+  await page.clock.pauseAt(clockStart + 540_000);
   await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(navigationNote);
   await page.getByRole('link',{name:'Plan today',exact:true}).click();
   await page.waitForURL(/\/today(?:$|\?)/);await page.clock.resume();
@@ -3970,5 +4035,55 @@ test('application brief includes complete optional course preparation and person
   async()=>expect((await request.delete(`${api}/rest/v1/user_todos?${own}&id=in.(${taskIds.join(',')})`,{headers})).ok()).toBe(true),
   async()=>expect((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${app}`,{headers})).ok()).toBe(true),
   async()=>{if(bookmarkWriteAttempted)expect((await request.delete(`${api}/rest/v1/user_course_bookmarks?${own}&course_id=in.(${courseIds.join(',')})`,{headers})).ok()).toBe(true);},
+ ]);});
+});
+
+test('application hubs and briefs include scoped custom drafts and exact navigation (PROD-267)',{tag:'@phone'},async({page,request},testInfo)=>{
+ test.setTimeout(120_000);page.setDefaultTimeout(10_000);
+ const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin,key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ const auth=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:STUDENT_EMAIL,password:process.env.E2E_TEST_PASSWORD}});expect(auth.ok()).toBe(true);
+ const session=await auth.json(),own=`user_id=eq.${session.user.id}`,headers={apikey:key,Authorization:`Bearer ${session.access_token}`,Prefer:'return=representation'};
+ const app=crypto.randomUUID(),promptIds=Array.from({length:55},()=>crypto.randomUUID()).sort(),draftIds=Array.from({length:58},()=>crypto.randomUUID()).sort(),targetPrompt=promptIds[54],targetDraft=draftIds[54],title=marker(`HubCustom-${testInfo.project.name}`);
+ const schoolTitle=`${title} 054 — School version`,sharedTitle=`${title} 054 — Shared version`;
+ const insert=async(table:string,data:unknown)=>{const r=await request.post(`${api}/rest/v1/${table}`,{headers,data});expect(r.ok(),`Create ${table}: ${r.ok()?'ok':await r.text()}`).toBe(true);};
+ await withScopedCleanup(async()=>{
+  await insert('user_school_applications',{id:app,user_id:session.user.id,school_id:900266});
+  await insert('custom_essay_prompts',promptIds.map((id,i)=>({id,user_id:session.user.id,title:`${title} ${String(i).padStart(3,'0')}${i===0?' '+ 'W'.repeat(200):''}`})));
+  const drafts=draftIds.slice(0,55).map((id,i)=>({id,user_id:session.user.id,prompt_id:promptIds[i],prompt_slug:`custom-${promptIds[i]}`,label:i===54?'School version':'Saved version',school_id:900266,content:i===54?'EXACT SCHOOL DRAFT BODY 267':'PRIVATE OTHER BODY 267',is_current:false,updated_at:'2026-10-01T00:00:00Z'}));
+  await insert('essay_drafts',[
+   ...drafts,
+   {...drafts[54],id:draftIds[55],label:'Older version',updated_at:'2025-01-01T00:00:00Z'},
+   {...drafts[54],id:draftIds[56],label:'Foreign version',school_id:900264,is_current:true,updated_at:'2030-01-01T00:00:00Z',content:'PRIVATE FOREIGN BODY 267'},
+   {...drafts[54],id:draftIds[57],label:'Shared version',school_id:null,updated_at:'2026-11-01T00:00:00Z',content:'PRIVATE SHARED BODY 267'},
+  ]);
+  if(process.env.CAAT_EXPORT_TEST_ROW_CAP){
+   for(const table of ['custom_essay_prompts','essay_drafts']){const r=await request.get(`${api}/rest/v1/${table}?${own}&id=in.(${(table==='custom_essay_prompts'?promptIds:draftIds).join(',')})&order=id&limit=200`,{headers});expect(r.ok()).toBe(true);expect(await r.json()).toHaveLength(50);}
+   console.log('Verified actual custom-draft hub metadata row caps: 50');
+  }
+  await signInToIsolatedStudent(page);await page.goto(`/applications/${app}`);
+  const main=page.getByRole('main');
+  await expect(main.getByRole('link',{name:schoolTitle,exact:true})).toHaveAttribute('href',`/essays?prompt=${targetPrompt}&draft=${targetDraft}`);
+  await expect(main.getByRole('link',{name:sharedTitle,exact:true})).toBeVisible();
+  await expect(main).not.toContainText('Foreign version');await expect(main).not.toContainText('Older version');await expect(main).not.toContainText('BODY 267');
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await main.getByRole('link',{name:schoolTitle,exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('custom-draft-hub.png')});
+  await main.getByRole('link',{name:schoolTitle,exact:true}).click();
+  await expect(page).toHaveURL(new RegExp(`draft=${targetDraft}`));
+  await expect(main.getByPlaceholder('Start writing your essay here.')).toHaveValue('EXACT SCHOOL DRAFT BODY 267');
+  await page.goto(`/applications/${app}/brief`);
+  const preview=page.locator('[data-application-brief-preview]');
+  await expect(preview).toContainText(schoolTitle);await expect(preview).toContainText(sharedTitle);await expect(preview).not.toContainText('BODY 267');await expect(preview).not.toContainText('Foreign version');
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await expect(preview.getByRole('row').filter({hasText:schoolTitle})).toContainText('This school');await expect(preview.getByRole('row').filter({hasText:sharedTitle})).toContainText('Shared');
+  expect(await page.locator('[data-print-application]').textContent()).toBe(await preview.textContent());
+  await page.route('**/rest/v1/custom_essay_prompts?*',route=>Number(new URL(route.request().url()).searchParams.get('offset')??0)>0?route.fulfill({status:503,contentType:'application/json',body:'{"message":"private late metadata failure"}'}):route.continue());
+  await page.getByRole('button',{name:'Refresh brief',exact:true}).click();
+  await expect(page.locator('[data-print-application]')).toHaveCount(0);await expect(main).toContainText('Could not load');await expect(main).not.toContainText('private late metadata failure');
+  await page.unroute('**/rest/v1/custom_essay_prompts?*');await main.getByRole('button',{name:'Retry brief',exact:true}).click();await expect(preview).toContainText(schoolTitle);
+ },async()=>{await runScopedCleanup([
+  async()=>{if(!page.isClosed())await page.close();},
+  async()=>expect((await request.delete(`${api}/rest/v1/essay_drafts?${own}&id=in.(${draftIds.join(',')})`,{headers})).ok()).toBe(true),
+  async()=>expect((await request.delete(`${api}/rest/v1/custom_essay_prompts?${own}&id=in.(${promptIds.join(',')})`,{headers})).ok()).toBe(true),
+  async()=>expect((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${app}`,{headers})).ok()).toBe(true),
  ]);});
 });
