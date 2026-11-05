@@ -48,6 +48,7 @@ export function RequirementWorkProvider({ applicationId, schoolId, children }: {
   }, [applicationId]);
   const cancelPending = useCallback(() => { generation.current++; }, []);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
     void load();
     const refresh = () => { if (!writing.current) void load(); };
     const knownChange = () => { void load(); };

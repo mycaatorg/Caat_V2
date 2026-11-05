@@ -516,7 +516,6 @@ export default function ResumePreviewPanel({
 
   useLayoutEffect(() => {
     if (!fontsReady || !measurementRef.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPages([]);
       return;
     }
@@ -524,6 +523,7 @@ export default function ResumePreviewPanel({
     if (blocks.length === 0) {
       const empty: PageModel[] = [{ pageIndex: 0, sections: [] }];
        
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
       setPages(empty);
       onPagesComputed?.(empty, personalHeader);
       return;

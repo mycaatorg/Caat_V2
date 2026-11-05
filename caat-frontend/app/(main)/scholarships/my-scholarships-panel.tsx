@@ -138,6 +138,7 @@ function ScholarshipFormDialog({
   useEffect(() => {
     if (open) {
        
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
       setErrors({});
       setSaveError(null);
       if (initial) {

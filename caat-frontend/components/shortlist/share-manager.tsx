@@ -41,6 +41,7 @@ export function ShareManager(){
  },[]);
  useEffect(()=>{
   const actionGeneration=generation, candidateGeneration=candidateLoad, historyGeneration=historyLoad;
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
   void reloadCandidates();void reloadHistory();
   return()=>{actionGeneration.current++;candidateGeneration.current++;historyGeneration.current++;};
  },[reloadCandidates,reloadHistory]);
@@ -75,6 +76,7 @@ export function ShareManager(){
   <section aria-labelledby="manage-links"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 id="manage-links" className="font-display text-2xl">Manage shared links</h2><Button disabled={busy} variant="outline" className="rounded-none" onClick={()=>void reloadHistory()}>Refresh links</Button></div>
    {historyError?<p role="alert">{historyError}</p>:null}
    {!records.length&&!historyError?<p className="text-sm text-muted-foreground">No shared links yet.</p>:null}
+   {/* eslint-disable-next-line react-hooks/purity -- PROD-248: retain current sharing expiry display pending a reactive clock migration. */}
    <ul className="space-y-4">{records.map(row=>{const expired=Date.parse(row.expires_at)<=Date.now();const active=!row.revoked_at&&!expired;return <li key={row.id} className="border p-5">
     <h3 className="font-display text-xl">{row.items[0].title}{row.items.length>1?` + ${row.items.length-1} more`:''}</h3><p className="my-2 text-sm text-muted-foreground">{row.revoked_at?'Revoked':expired?'Expired':`Active until ${new Date(row.expires_at).toLocaleDateString()}`} · Created {new Date(row.created_at).toLocaleDateString()}</p>
     <div className="flex flex-wrap gap-2"><Button variant="outline" className="rounded-none" onClick={()=>setViewId(viewId===row.id?null:row.id)} aria-expanded={viewId===row.id}>View shared items</Button>{active?<><Button disabled={busy} variant="outline" className="rounded-none" onClick={()=>setConfirm({record:row,action:'replace'})}>Replace link</Button><Button disabled={busy} variant="outline" className="rounded-none" onClick={()=>void action(async()=>{const revoked=await revokeShare(row.id);updateRecord(revoked);if(link?.id===row.id)setLink(null);setStatus('Link revoked. Future access is blocked.');})}>Revoke link</Button></>:null}<Button disabled={busy} variant="ghost" className="rounded-none" onClick={()=>setConfirm({record:row,action:'remove'})}>Remove link</Button></div>
