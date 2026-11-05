@@ -2977,6 +2977,9 @@ test('Today downloads an owner-only deadline calendar snapshot (PROD-203)', {tag
 // PROD-218: one real student workspace, including failed writes and remounted cards.
 test('Applications board preserves drafts across views and recovers status moves (PROD-218)',{tag:'@phone'},async({page,request},testInfo)=>{
  test.setTimeout(120_000);
+ // Install before navigation; each scheduled pause is farther ahead than the whole test timeout.
+ const clockStart = Date.now();
+ await page.clock.install({time:clockStart});
  const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin;
  const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
  const auth=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:STUDENT_EMAIL,password:process.env.E2E_TEST_PASSWORD}});
@@ -3007,7 +3010,7 @@ test('Applications board preserves drafts across views and recovers status moves
   await page.getByLabel('Sort applications',{exact:true}).selectOption('deadline');
   await card.getByRole('button',{name:'Notes',exact:true}).click();
   // Freeze just the debounce window, so the view switch certainly precedes save.
-  await page.clock.install();await page.clock.pauseAt(await page.evaluate(() => Date.now()));
+  await page.clock.pauseAt(clockStart + 180_000);
   await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(note);
   await page.getByRole('button',{name:'List view',exact:true}).click();
   await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(note);
@@ -3028,10 +3031,12 @@ test('Applications board preserves drafts across views and recovers status moves
   await page.unroute(APPLICATION_WRITES);
   await failNextApplicationWrite(page,'"notes"');
   const failedNote=`${note} after outage`;
+  // Pause before scheduling the failed write so the new error cannot expire.
+  await page.clock.pauseAt(clockStart + 360_000);
   await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(failedNote);
+  await page.clock.runFor(800);
   await expect(card.getByText('Not saved',{exact:true})).toBeVisible();
   // PROD-273: hold expiry through setup, then keep the notification hovered during keyboard retry.
-  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
   await page.getByRole('button',{name:'Outcome',exact:true}).click();
   await page.getByRole('button',{name:'All',exact:true}).click();
   await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(failedNote);
@@ -3055,7 +3060,7 @@ test('Applications board preserves drafts across views and recovers status moves
   await expect(status()).toContainText('Applying');
   // Leave before the 800ms debounce: ordinary workspace navigation still saves.
   const navigationNote=`${note} before navigation`;
-  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
+  await page.clock.pauseAt(clockStart + 540_000);
   await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(navigationNote);
   await page.getByRole('link',{name:'Plan today',exact:true}).click();
   await page.waitForURL(/\/today(?:$|\?)/);await page.clock.resume();
