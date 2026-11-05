@@ -38,6 +38,7 @@ import {
   type ApplicationHub,
 } from "./api";
 import { CoursePreparationCard } from "@/components/applications/course-preparation-card";
+import { ApplicationPersonalTasks } from "@/components/applications/application-personal-tasks";
 import { SavedCoursesCard } from "@/components/applications/saved-courses-card";
 import { updateApplicationMajors } from "@/app/(main)/applications/api";
 import { mentionsSchool, type SavedScholarshipForHub } from "@/lib/scholarship-tracking";
@@ -346,6 +347,7 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
             />
 
             <CoursePreparationCard key={applicationId} applicationId={applicationId} schoolId={hub.schoolId} />
+            <ApplicationPersonalTasks applicationId={applicationId}/>
 
             {/* essays */}
             <Card className="shadow-sm">

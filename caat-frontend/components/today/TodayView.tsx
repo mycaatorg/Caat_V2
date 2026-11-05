@@ -207,7 +207,8 @@ function TodoRows({ items, todayISO, pendingIds, onToggle, onSaved, onMissing, f
         return (
           <li key={t.id} className={`flex items-start gap-3 px-4 py-3 ${t.done ? "opacity-60" : ""}`}>
             <Checkbox id={`todo-${t.id}`} checked={t.done} disabled={pendingIds.has(t.id)} className="mt-0.5 rounded-none" onCheckedChange={(checked) => onToggle(t, checked === true)} aria-label={t.done ? `Restore "${t.text}"` : `Mark "${t.text}" done`} />
-            <label htmlFor={`todo-${t.id}`} className="flex-1 min-w-0 text-sm cursor-pointer">
+            <div className="flex-1 min-w-0 text-sm">
+            <label htmlFor={`todo-${t.id}`} className="cursor-pointer">
               <span className={`block break-words ${t.done ? "line-through" : ""}`}>{t.text}</span>
               {t.dueDate && !t.done ? (
                 <span className={`block text-xs ${overdue ? MAROON : "text-muted-foreground"}`}>
@@ -216,6 +217,8 @@ function TodoRows({ items, todayISO, pendingIds, onToggle, onSaved, onMissing, f
                 </span>
               ) : null}
             </label>
+            {t.application&&<Link className="mt-1 block text-xs underline underline-offset-4" href={`/applications/${encodeURIComponent(t.application.id)}#personal-tasks`}>Application: {t.application.name}</Link>}
+            </div>
             <TaskEditor task={t} disabled={pendingIds.has(t.id)} onSaved={onSaved} onMissing={onMissing} fallbackFocusRef={fallbackFocusRef} returnTo={returnTo} />
           </li>
         );

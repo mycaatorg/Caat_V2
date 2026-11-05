@@ -18,6 +18,15 @@ export type Database = {
   }
   public: {
     Tables: {
+      application_task_links: {
+        Row: {task_id:string;application_id:string;user_id:string;created_at:string}
+        Insert: {task_id:string;application_id:string;user_id:string}
+        Update: never
+        Relationships: [
+          {foreignKeyName:"application_task_links_task_fkey";columns:["task_id","user_id"];isOneToOne:true;referencedRelation:"user_todos";referencedColumns:["id","user_id"]},
+          {foreignKeyName:"application_task_links_application_fkey";columns:["application_id","user_id"];isOneToOne:false;referencedRelation:"user_school_applications";referencedColumns:["id","user_id"]}
+        ]
+      }
       community_resume_publications: {Row:{id:string;user_id:string;created_at:string};Insert:never;Update:never;Relationships:[]}
       community_resume_shares: { Row: {post_id:string;user_id:string;snapshot:Json;request_hash:string;created_at:string}; Insert:never; Update:never; Relationships:[] }
       shortlist_shares: { Row: ShareRecord; Insert: never; Update: never; Relationships: [] }
@@ -1885,6 +1894,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_application_task: {Args:{p_task_id:string;p_application_id:string;p_text:string;p_due_date:string|null};Returns:{id:string;text:string;due_date:string|null;done:boolean;priority:number}[]}
       list_owned_community_content_page: {Args:{p_created_at?:string;p_id?:string;p_kind?:string;p_direction?:string};Returns:{kind:string;id:string;content:string;created_at:string;removed:boolean}[]}
       list_owned_community_content: {Args:{p_page?:number};Returns:{kind:string;id:string;content:string;created_at:string;removed:boolean}[]}
       remove_owned_community_content: {Args:{p_kind:string;p_id:string};Returns:boolean}
