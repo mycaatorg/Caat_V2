@@ -37,6 +37,33 @@ test.beforeAll(() => {
   }
 });
 
+test("sidebar follows viewport changes and preserves phone navigation after reload", { tag: "@phone" }, async ({ page }, testInfo) => {
+  await signInToIsolatedStudent(page);
+  const desktopSidebar = page.locator('[data-slot="sidebar"][data-state]');
+  const toggle = page.getByRole("button", { name: "Toggle Sidebar" }).first();
+  await page.setViewportSize({ width: 768, height: 900 });
+  await expect(desktopSidebar).toBeVisible();
+  await page.setViewportSize({ width: 767, height: 900 });
+  await expect(desktopSidebar).toHaveCount(0);
+  await toggle.click();
+  const menu = page.getByRole("dialog", { name: "Sidebar", exact: true });
+  await expect(menu).toBeInViewport();
+  await menu.getByRole("link", { name: /my shortlist/i }).click();
+  await expect(page).toHaveURL(/\/shortlist$/);
+  await expect(menu).toHaveCount(0);
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await expect(desktopSidebar).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(desktopSidebar).toHaveCount(0);
+  await toggle.click();
+  await expect(menu).toBeInViewport();
+  await expect(menu.getByRole("link", { name: /my shortlist/i })).toHaveAttribute("data-active", "true");
+  await page.screenshot({ path: testInfo.outputPath("mobile-menu.png"), animations: "disabled" });
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+});
+
 test("public duplicate scholarship links preserve the chosen listing", { tag: "@phone" }, async ({ page }, testInfo) => {
   const path = "/scholarship/e2e-shared-public-award";
   const chosen = "e2000000-0000-4000-8000-000000000239";
