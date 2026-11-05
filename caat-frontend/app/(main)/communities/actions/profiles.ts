@@ -37,13 +37,25 @@ export async function updatePrivacySettingsAction(
 
 // ─── Community profile ────────────────────────────────────────────────────────
 
+const PROFILE_LOAD_ERROR = "Could not load this community profile. Please try again.";
+
+function profileLoadFailure(stage: string, error?: unknown) {
+  const rawCode = error && typeof error === "object" && "code" in error ? error.code : null;
+  // Fixed stage labels and constrained codes only: never log raw messages,
+  // profile IDs, query details, cookies or tokens.
+  const code = typeof rawCode === "string" && /^[A-Z0-9_]{1,24}$/i.test(rawCode) ? rawCode : "unknown";
+  console.error("[community-profile] load failed", { stage, code });
+  return { profile: null, error: PROFILE_LOAD_ERROR };
+}
+
 export async function fetchCommunityProfileAction(
   targetUserId: string,
 ): Promise<{ profile: CommunityProfileData | null; error: string | null }> {
   const supabase = await createSupabaseServer();
   const {
-    data: { user },
+    data: { user }, error: authError,
   } = await supabase.auth.getUser();
+  if (authError || !user) return profileLoadFailure("auth", authError);
 
   const [
     profileResult,
@@ -79,6 +91,15 @@ export async function fetchCommunityProfileAction(
       : Promise.resolve({ data: null }),
   ]);
 
+  const reads = [
+    ["profile", profileResult], ["privacy", settingsResult],
+    ["followers", followerResult], ["following", followingResult],
+    ["follow-state", isFollowingResult],
+  ] as const;
+  for (const [stage, result] of reads) {
+    if ("error" in result && result.error) return profileLoadFailure(stage, result.error);
+  }
+
   const profileRows = (profileResult.data ?? []) as {
     id: string;
     first_name: string | null;
@@ -89,7 +110,7 @@ export async function fetchCommunityProfileAction(
     preferred_countries: string[] | null;
     target_majors: string[] | null;
   }[];
-  if (!profileRows.length) return { profile: null, error: "User not found" };
+  if (!profileRows.length) return { profile: null, error: null };
   const p = profileRows[0];
   const s = settingsResult.data ?? {
     show_graduation_year: true,

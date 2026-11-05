@@ -33,7 +33,19 @@ export default async function CommunityProfilePage({ params }: Props) {
   const { userId } = await params;
   const { profile, error } = await fetchCommunityProfileAction(userId);
 
-  if (error || !profile) notFound();
+  if (error) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-8 text-center">
+        <h1 className="text-xl font-semibold">Could not load this profile</h1>
+        <p className="max-w-sm text-sm text-muted-foreground">Please try again. This does not mean the person or their profile has been removed.</p>
+        <Button asChild>
+          {/* A full navigation retries the server read, including a cached failed prefetch. */}
+          <a href={`/communities/profile/${encodeURIComponent(userId)}`}>Try again</a>
+        </Button>
+      </div>
+    );
+  }
+  if (!profile) notFound();
 
   const supabase = await createSupabaseServer();
   const { data: { user } } = await supabase.auth.getUser();

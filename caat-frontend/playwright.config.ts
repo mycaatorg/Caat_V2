@@ -19,7 +19,8 @@ export default defineConfig({
 
   use: {
     baseURL: BASE_URL,
-    trace: "on-first-retry",
+    // Keep the failed attempt itself; a passing retry cannot explain the failure.
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
 
