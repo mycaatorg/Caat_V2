@@ -32,24 +32,20 @@ test("public scholarship detail shows the not-found page for a missing slug", as
 
 test("public scholarship detail renders catalog content", async ({ page }) => {
   expect(PUBLIC_DETAIL, "route manifest needs a public successful detail case").toBeTruthy();
-  let detailHref: string | null = null;
-  let expectedTitle: string;
-
-  if (process.env.CAAT_ISOLATED_E2E === "1") {
-    expectedTitle = PUBLIC_DETAIL!.expected!;
-    detailHref = `/scholarship/e2e-test-scholarship`;
-  } else {
-    await page.goto("/scholarship");
-    const detailLink = page.locator("a[href^='/scholarship/']").first();
-    await expect(detailLink, "public catalog needs at least one active scholarship").toBeVisible();
-    expectedTitle = (await detailLink.locator("h2").innerText()).trim();
-    detailHref = await detailLink.getAttribute("href");
-  }
-
-  expect(detailHref).toMatch(/^\/scholarship\/[^/]+$/);
+  // Exercise the same directory link in isolated CI and production. A selected
+  // award may carry a query string; dropping it would lose record identity.
+  await page.goto("/scholarship");
+  const detailLink = page.locator("a[href^='/scholarship/']").first();
+  await expect(detailLink, "public catalog needs at least one active scholarship").toBeVisible();
+  const expectedTitle = (await detailLink.locator("h2").innerText()).trim();
+  const detailHref = await detailLink.getAttribute("href");
+  expect(detailHref).toBeTruthy();
+  const target = new URL(detailHref!, page.url());
+  expect(target.pathname).toMatch(/^\/scholarship\/[^/]+$/);
   const response = await page.goto(detailHref!);
   expect(response?.status()).toBe(200);
-  expect(new URL(page.url()).pathname).toBe(detailHref);
+  const actual = new URL(page.url());
+  expect(actual.pathname + actual.search).toBe(target.pathname + target.search);
   await expect(page.getByRole("heading", { name: expectedTitle, exact: true, level: 1 })).toBeVisible();
 });
 
