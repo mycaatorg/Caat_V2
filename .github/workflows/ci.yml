@@ -244,6 +244,11 @@ jobs:
             npm install --no-fund --no-audit
           fi
 
+      # PROD-257: the Azure apt mirror can trickle font downloads for 10+ minutes.
+      # Only swap priorities in the exact known hosted list; preserve fallbacks.
+      - name: Prefer Ubuntu archive for browser dependencies
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT "$(command -v node)" ../.github/scripts/prefer-ubuntu-archive.js
+
       - name: Install Playwright (chromium only)
         run: npx playwright install --with-deps chromium
 
