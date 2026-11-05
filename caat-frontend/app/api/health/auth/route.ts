@@ -7,8 +7,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 10;
 
 function reply(status: number) {
+  const revision = status === 200 ? process.env.VERCEL_GIT_COMMIT_SHA : undefined;
   return Response.json(
-    { status: status === 200 ? "ok" : "unavailable" },
+    { status: status === 200 ? "ok" : "unavailable", ...(revision && /^[a-f0-9]{40}$/.test(revision) ? { revision } : {}) },
     { status, headers: { "Cache-Control": "no-store, max-age=0" } },
   );
 }

@@ -1,0 +1,78 @@
+name: Production release verification
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-release-verification
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: >-
+      github.repository == 'mycaatorg/Caat_V2' &&
+      ((github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository) ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      EXPECTED_RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      # Only immutable commits from trusted main push CI reach this checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: caat-frontend/package-lock.json
+      - name: Install locked browser test dependencies
+        working-directory: caat-frontend
+        run: npm ci
+      - name: Prefer Ubuntu archive for browser dependencies
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT "$(command -v node)" .github/scripts/prefer-ubuntu-archive.js
+      - name: Install Chromium
+        working-directory: caat-frontend
+        run: npx playwright install --with-deps chromium
+      - name: Wait for expected release and provider readiness
+        id: release_ready
+        env:
+          AUTH_HEALTH_CHECK_TOKEN: ${{ secrets.AUTH_HEALTH_CHECK_TOKEN }}
+        run: node .github/scripts/release-health-check.js --wait
+      - name: Verify read-only public journeys
+        working-directory: caat-frontend
+        env:
+          PLAYWRIGHT_BASE_URL: https://mycaat.com
+        run: npx playwright test public-smoke.spec.ts route-guard.spec.ts --project=public-smoke --retries=0
+      - name: Confirm the same release remained live
+        if: ${{ !cancelled() && steps.release_ready.outcome == 'success' }}
+        env:
+          AUTH_HEALTH_CHECK_TOKEN: ${{ secrets.AUTH_HEALTH_CHECK_TOKEN }}
+        run: node .github/scripts/release-health-check.js
+      - name: Retain public browser failure evidence
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: production-public-smoke
+          path: caat-frontend/playwright-report
+          retention-days: 7
+      - name: State verification boundary
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Coverage boundary
+          This run checks the expected revision on the canonical production origin before and after read-only public browser journeys, plus provider readiness. It makes no student writes. Sitemap checks cover structure and uniqueness; catalogue-count parity, authenticated journeys, Vercel alias topology and runtime-log review remain separate release checks. It does not roll back a deployment automatically.
+          SUMMARY
