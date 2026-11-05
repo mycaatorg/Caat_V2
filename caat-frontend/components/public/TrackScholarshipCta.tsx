@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getBrowserClient } from "@/lib/supabase/client";
+import { publicScholarshipPath } from "@/lib/public-scholarship-identity";
 
 /**
  * Conversion CTA for a public scholarship page.
@@ -21,7 +22,7 @@ export function TrackScholarshipCta({
   slug: string;
   scholarshipId: string;
 }) {
-  const signupHref = `/signup?next=${encodeURIComponent(`/scholarship/${slug}`)}`;
+  const signupHref = `/signup?next=${encodeURIComponent(publicScholarshipPath(slug, scholarshipId))}`;
   const [href, setHref] = useState(signupHref);
   const [label, setLabel] = useState("Track this scholarship");
 

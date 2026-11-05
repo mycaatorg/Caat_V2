@@ -1,6 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { createPublicClient } from "@/lib/supabase/public";
 import { evidencePages } from "@/lib/evidence-pagination";
+import { selectPublicScholarship } from "@/lib/public-scholarship-identity";
 import type { ScholarshipRow } from "@/types/scholarships";
 
 // Catalog-only columns exposed on the public directory. Deliberately explicit
@@ -83,24 +84,29 @@ export const getPublicScholarshipsPage = unstable_cache(
 );
 
 /**
- * A single public scholarship by its slug, or null if it does not exist.
- * Cached per-slug so repeated crawler/social hits are near-free.
+ * All public records behind a readable alias. Slugs are not unique in the
+ * imported catalogue; a bare ambiguous link must let the visitor choose.
  */
-export const getPublicScholarshipBySlug = unstable_cache(
-  async (slug: string): Promise<ScholarshipRow | null> => {
+export const getPublicScholarshipsBySlug = unstable_cache(
+  async (slug: string): Promise<ScholarshipRow[]> => {
     const sb = createPublicClient();
-    const { data, error } = await sb
-      .from("scholarships")
-      .select(PUBLIC_SCHOLARSHIP_COLUMNS)
-      .eq("slug", slug)
-      .maybeSingle();
-
-    if (error) throw new Error(error.message);
-    return (data as unknown as ScholarshipRow | null) ?? null;
+    return evidencePages<ScholarshipRow>(async (from, to) => {
+      const { data, error } = await sb.from("scholarships")
+        .select(PUBLIC_SCHOLARSHIP_COLUMNS).eq("slug", slug)
+        .order("is_active", { ascending: false })
+        .order("updated_at", { ascending: false })
+        .order("id", { ascending: true }).range(from, to);
+      return { data: data as unknown as ScholarshipRow[] | null, error };
+    }, "Could not load the scholarship listings.");
   },
-  ["public-scholarship-by-slug"],
+  ["public-scholarship-candidates-v1"],
   { revalidate: 3600, tags: ["scholarship-catalog"] },
 );
+
+/** Ambiguous bare aliases have no single award (including their social image). */
+export async function getPublicScholarshipBySlug(slug: string, awardId?: string): Promise<ScholarshipRow | null> {
+  return selectPublicScholarship(await getPublicScholarshipsBySlug(slug), awardId);
+}
 
 /**
  * Related scholarships for internal linking / crawl discovery: same school
@@ -156,12 +162,12 @@ export const getRelatedScholarships = unstable_cache(
  * is returned in one list.
  */
 export const getPublicScholarshipSlugs = unstable_cache(
-  async (): Promise<{ slug: string; updated_at: string }[]> => {
+  async (): Promise<{ id: string; slug: string; updated_at: string }[]> => {
     const sb = createPublicClient();
-    const rows = await evidencePages<{ slug: string | null; updated_at: string }>(
+    const rows = await evidencePages<{ id: string; slug: string | null; updated_at: string }>(
       (from, to) => sb
         .from("scholarships")
-        .select("slug, updated_at")
+        .select("id, slug, updated_at")
         .eq("is_active", true)
         .not("slug", "is", null)
         .order("updated_at", { ascending: false })
@@ -169,8 +175,8 @@ export const getPublicScholarshipSlugs = unstable_cache(
         .range(from, to),
       "Could not load the complete public scholarship sitemap.",
     );
-    return rows.flatMap(({ slug, updated_at }) => slug ? [{ slug, updated_at }] : []);
+    return rows.flatMap(({ id, slug, updated_at }) => slug ? [{ id, slug, updated_at }] : []);
   },
-  ["public-scholarship-slugs"],
+  ["public-scholarship-slugs-with-identity-v1"],
   { revalidate: 3600, tags: ["scholarship-catalog"] },
 );

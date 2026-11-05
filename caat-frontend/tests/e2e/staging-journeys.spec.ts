@@ -37,6 +37,43 @@ test.beforeAll(() => {
   }
 });
 
+test("public duplicate scholarship links preserve the chosen listing", { tag: "@phone" }, async ({ page }, testInfo) => {
+  const path = "/scholarship/e2e-shared-public-award";
+  const chosen = "e2000000-0000-4000-8000-000000000239";
+  const response = await page.goto(path);
+  expect(response?.ok()).toBe(true);
+  await expect(page.getByRole("heading", { name: "Choose a scholarship", exact: true })).toBeVisible();
+  const north = page.getByRole("listitem").filter({ hasText: "E2E North Foundation" });
+  const south = page.getByRole("listitem").filter({ hasText: "E2E South Foundation" });
+  await expect(north.getByRole("link", { name: "E2E Shared Award", exact: true })).toHaveAttribute("href", `${path}?award=e2000000-0000-4000-8000-000000000238`);
+  const selected = south.getByRole("link", { name: "E2E Shared Award", exact: true });
+  await expect(selected).toHaveAttribute("href", `${path}?award=${chosen}`);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("scholarship-choices.png"), fullPage: true });
+  await selected.focus();
+  await expect(selected).toBeFocused();
+  await selected.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`award=${chosen}`));
+  await expect(page.getByRole("heading", { name: "E2E Shared Award", exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByText("E2E South Foundation", { exact: true })).toBeVisible();
+  await expect(page.getByText("Synthetic south listing for public identity tests.", { exact: true })).toBeVisible();
+  const canonical = await page.locator('link[rel="canonical"]').getAttribute("href");
+  expect(canonical).toContain(`${path}?award=${chosen}`);
+  const grant = await page.locator('script[type="application/ld+json"]').evaluateAll((nodes) => nodes.map((node) => JSON.parse(node.textContent || "{}")).find((item) => item["@type"] === "MonetaryGrant"));
+  expect(grant.url).toContain(`${path}?award=${chosen}`);
+  const tracking = page.getByRole("link", { name: "Track this scholarship", exact: true }).first();
+  expect(new URL((await tracking.getAttribute("href"))!, "https://example.test").searchParams.get("next")).toBe(`${path}?award=${chosen}`);
+  await page.screenshot({ path: testInfo.outputPath("scholarship-selected.png"), fullPage: true });
+  await tracking.click();
+  await expect(page).toHaveURL(/\/signup\?/);
+  expect(new URL(page.url()).searchParams.get("next")).toBe(`${path}?award=${chosen}`);
+  await page.goto(`${path}?award=e2000000-0000-4000-8000-000000000002`);
+  await expect(page.getByRole("heading", { name: "Page not found", level: 1, exact: true })).toBeVisible();
+  await page.goto("/scholarship/e2e-test-scholarship");
+  await expect(page.getByRole("heading", { name: "E2E Test Scholarship", level: 1, exact: true })).toBeVisible();
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/scholarship\/e2e-test-scholarship$/);
+});
+
 async function signInToIsolatedStudent(page: Page) {
   // The dedicated project normally starts with an empty browser context. Clear
   // any inherited state as a defense against accidentally reusing a shared DB

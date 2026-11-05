@@ -9,7 +9,7 @@ import sitemap from '@/app/sitemap';
 
 const at = '2026-11-01T12:00:00Z';
 const offset = (query: QueryContext) => Number(query.calls.find((call) => call.method === 'range')?.args[0] ?? 0);
-const catalogue = ['award-a', 'award-b', 'award-c', 'award-d'].map((slug) => ({ slug, updated_at: at }));
+const catalogue = ['award-a', 'award-b', 'award-c', 'award-d'].map((slug) => ({ id: slug, slug, updated_at: at }));
 beforeEach(() => { client.current = null; });
 
 describe('public scholarship sitemap completeness', () => {
@@ -33,7 +33,7 @@ describe('public scholarship sitemap completeness', () => {
     expect(await getPublicScholarshipSlugs()).toEqual([]);
     const query = sb.queries[0];
     expect(query.table).toBe('scholarships');
-    expect(query.calls).toContainEqual({ method: 'select', args: ['slug, updated_at'] });
+    expect(query.calls).toContainEqual({ method: 'select', args: ['id, slug, updated_at'] });
     expect(query.calls).toContainEqual({ method: 'eq', args: ['is_active', true] });
     expect(query.calls).toContainEqual({ method: 'not', args: ['slug', 'is', null] });
     expect(query.calls.filter((call) => call.method === 'order')).toEqual([
@@ -60,7 +60,7 @@ describe('public scholarship sitemap completeness', () => {
     const sb = createMockSupabase({ resolver: (query) => ({ data: rows.slice(offset(query), offset(query) + 2), error: null }) });
     client.current = sb;
 
-    expect(await getPublicScholarshipSlugs()).toEqual([{ slug: 'award-a', updated_at: at }]);
+    expect(await getPublicScholarshipSlugs()).toEqual([{ id: 'award-a', slug: 'award-a', updated_at: at }]);
     expect(sb.queries.map(offset)).toEqual([0, 2, 3]);
   });
 });
