@@ -6,6 +6,8 @@ import { StrictMode } from 'react';
 import { SchoolNotesPanel } from '@/app/(main)/schools/[id]/SchoolNotesPanel';
 
 const save = vi.hoisted(() => vi.fn());
+const refresh = vi.hoisted(() => vi.fn());
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }));
 vi.mock('@/app/(main)/schools/[id]/notes-actions', () => ({ saveSchoolNoteAction: save }));
 type Result = { updated_at: string | null; error: string | null };
 const ok: Result = { updated_at: '2026-11-06T00:00:00Z', error: null };
@@ -23,7 +25,7 @@ async function debounce() { await act(async () => { await vi.advanceTimersByTime
 async function settle(request: ReturnType<typeof deferred>, value = ok) {
   await act(async () => { request.resolve(value); await request.promise; });
 }
-beforeEach(() => { vi.useFakeTimers(); save.mockReset(); save.mockResolvedValue(ok); });
+beforeEach(() => { vi.useFakeTimers(); save.mockReset(); refresh.mockReset(); save.mockResolvedValue(ok); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('school note saving', () => {
@@ -174,5 +176,32 @@ describe('school note saving', () => {
     change('x'.repeat(5001)); await debounce();
     expect(screen.getByRole('textbox')).toHaveValue('Keep this');
     expect(save).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('initial school note load safety', () => {
+  it('never mounts a writable blank after a failed read and recovers the original snapshot on retry', async () => {
+    const view = render(<SchoolNotesPanel ownerId="owner-a" schoolId={1} initialNotes="" initialUpdatedAt={null} loadError="Could not load note." />);
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Your notes could not be loaded');
+    await debounce(); fireEvent(window, new Event('beforeunload'));
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry loading notes' }));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    view.rerender(<SchoolNotesPanel ownerId="owner-a" schoolId={1} initialNotes="Original private note" initialUpdatedAt={null} loadError={null} />);
+    expect(screen.getByRole('textbox')).toHaveValue('Original private note');
+    expect(save).not.toHaveBeenCalled();
+  });
+  it('shows sign-in recovery without an editor for a signed-out visitor', () => {
+    render(<SchoolNotesPanel ownerId={null} schoolId={1} initialNotes="" initialUpdatedAt={null} loadError="Not signed in" />);
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
+    expect(screen.queryByRole('button', { name: 'Retry loading notes' })).not.toBeInTheDocument();
+  });
+  it('fails closed when no trusted owner is present even without an explicit error', () => {
+    render(<SchoolNotesPanel ownerId={null} schoolId={1} initialNotes="" initialUpdatedAt={null} />);
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry loading notes' })).toBeInTheDocument();
   });
 });

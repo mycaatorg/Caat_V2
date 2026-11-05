@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { NotebookPen, Lock, AlertCircle, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,8 +25,36 @@ type SchoolNotesProps = {
   initialUpdatedAt: string | null;
 };
 
-export function SchoolNotesPanel(props: SchoolNotesProps) {
-  return <SchoolNotesEditor key={`${props.ownerId}:${props.schoolId}`} {...props} />;
+type SchoolNotesLoadProps = Omit<SchoolNotesProps, "ownerId"> & {
+  ownerId: string | null;
+  loadError?: string | null;
+};
+
+export function SchoolNotesPanel(props: SchoolNotesLoadProps) {
+  if (props.loadError || !props.ownerId) {
+    return <SchoolNotesUnavailable signedOut={props.loadError === "Not signed in"} />;
+  }
+  return <SchoolNotesEditor key={`${props.ownerId}:${props.schoolId}`} {...props} ownerId={props.ownerId} />;
+}
+
+function SchoolNotesUnavailable({ signedOut }: { signedOut: boolean }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  return (
+    <section className="border-t border-border pt-6">
+      <h2 className="mb-3 text-sm font-semibold tracking-tight">My Notes</h2>
+      <p role="alert" className="mb-3 text-sm text-muted-foreground">
+        {signedOut ? "Sign in to see your private notes." : "Your notes could not be loaded. Try again before editing."}
+      </p>
+      {signedOut ? (
+        <Button size="sm" variant="outline" asChild><Link href="/login">Sign in</Link></Button>
+      ) : (
+        <Button size="sm" variant="outline" disabled={pending} onClick={() => startTransition(() => router.refresh())}>
+          {pending ? "Loading notes…" : "Retry loading notes"}
+        </Button>
+      )}
+    </section>
+  );
 }
 
 function SchoolNotesEditor({ ownerId, schoolId, initialNotes, initialUpdatedAt }: SchoolNotesProps) {

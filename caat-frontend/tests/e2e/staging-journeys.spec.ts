@@ -3,6 +3,7 @@
  * This spec is intentionally excluded from the default Playwright project.
  */
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { localDatabaseUrl, checkLocalPsql, runLocalPsql } from "../staging/local-db.mjs";
 import routeCoverage from "./route-coverage.json";
 import { runScopedCleanup, withScopedCleanup } from "./scoped-cleanup";
 
@@ -739,7 +740,7 @@ test("an already-saved scholarship moves from Interested to Applied and stays Ap
   }
 });
 
-test("school notes and application status/checklist persist across list and detail reloads (PROD-270)", { tag: "@phone" }, async ({ page }) => {
+test("school notes and application status/checklist persist across list and detail reloads (PROD-270, PROD-274)", { tag: "@phone" }, async ({ page }) => {
   page.setDefaultTimeout(10_000);
   await signInToIsolatedStudent(page);
   await removeSeededApplication(page);
@@ -757,6 +758,21 @@ test("school notes and application status/checklist persist across list and deta
     const reloadedSchoolNotes = page.locator('textarea[placeholder*="Jot down anything you want to remember about this school"]:visible');
     await expect(reloadedSchoolNotes).toHaveCount(1);
     await expect(reloadedSchoolNotes).toHaveValue(schoolNote, { timeout: 15_000 });
+
+    // PROD-274: deny the actual server read only in the disposable loopback DB.
+    // This suite is sequential; always restore the existing SELECT privilege.
+    const db = localDatabaseUrl();
+    expect(checkLocalPsql(db, ["-At", "-c", "select has_table_privilege('authenticated', 'public.user_school_notes', 'select')"])).toBe("t");
+    try {
+      runLocalPsql(db, ["-v", "ON_ERROR_STOP=1", "-c", "revoke select on public.user_school_notes from authenticated"]);
+      await page.reload();
+      await expect(page.getByRole('alert').filter({hasText:'Your notes could not be loaded'})).toBeVisible();
+      await expect(schoolNotes).toHaveCount(0);
+    } finally {
+      runLocalPsql(db, ["-v", "ON_ERROR_STOP=1", "-c", "grant select on public.user_school_notes to authenticated"]);
+    }
+    await page.getByRole('button', {name:'Retry loading notes', exact:true}).click();
+    await expect(schoolNotes).toHaveValue(schoolNote, {timeout:15_000});
 
     // Hold the actual server-action request so reverting to the persisted text
     // happens while an older edit is still pending. Releasing it must not leave

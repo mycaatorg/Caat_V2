@@ -17,33 +17,41 @@ export interface SchoolNote {
 export async function fetchSchoolNoteAction(
   schoolId: number,
 ): Promise<{ note: SchoolNote; error: string | null; ownerId: string | null }> {
-  const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return { note: { notes: "", updated_at: null }, error: "Not signed in", ownerId: null };
-  }
+  try {
+    const supabase = await createSupabaseServer();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError && authError.name !== "AuthSessionMissingError") {
+      return { note: { notes: "", updated_at: null }, error: "Could not load note.", ownerId: null };
+    }
+    if (!user || authError) {
+      return { note: { notes: "", updated_at: null }, error: "Not signed in", ownerId: null };
+    }
 
-  const { data, error } = await supabase
-    .from("user_school_notes")
-    .select("notes, updated_at")
-    .eq("user_id", user.id)
-    .eq("school_id", schoolId)
-    .maybeSingle();
+    const { data, error } = await supabase
+      .from("user_school_notes")
+      .select("notes, updated_at")
+      .eq("user_id", user.id)
+      .eq("school_id", schoolId)
+      .maybeSingle();
 
-  if (error) {
+    if (error) {
+      return {
+        note: { notes: "", updated_at: null },
+        error: "Could not load note.",
+        ownerId: user.id,
+      };
+    }
     return {
-      note: { notes: "", updated_at: null },
-      error: "Could not load note.",
+      note: { notes: data?.notes ?? "", updated_at: data?.updated_at ?? null },
+      error: null,
       ownerId: user.id,
     };
+  } catch {
+    return { note: { notes: "", updated_at: null }, error: "Could not load note.", ownerId: null };
   }
-  return {
-    note: { notes: data?.notes ?? "", updated_at: data?.updated_at ?? null },
-    error: null,
-    ownerId: user.id,
-  };
 }
 
 /**
