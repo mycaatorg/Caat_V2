@@ -33,3 +33,34 @@ it.each(['account','application'])('discards an older %s response and removes th
   io.auth.user=null;await act(async()=>root.render(<ApplicationBriefClient applicationId={id}/>));expect(portal()).toBeNull();expect(document.body.textContent).not.toContain('New school');
  }finally{act(()=>root.unmount());c.remove();}
 });
+
+import { scholarshipBriefHub } from './application-brief-fixture';
+const scholarshipChoice=()=>document.querySelector<HTMLInputElement>('input[name="includeScholarships"]')!;
+it('includes scholarship checklists only on explicit selection in both preview and print',async()=>{
+ io.read.mockResolvedValue(scholarshipBriefHub());await mountComponent(<ApplicationBriefClient applicationId="app"/>);await flush();
+ expect(preview().textContent).not.toContain('Attached award');await click(scholarshipChoice());
+ expect(preview().textContent).toContain('Attached award');expect(portal()?.textContent).toContain('Attached award');expect(portal()?.textContent).not.toContain('Other application award');
+ expect(portal()?.textContent).not.toContain('Private application notes');await click(scholarshipChoice());expect(portal()?.textContent).not.toContain('Attached award');
+});
+it.each(['savedScholarshipsUnavailable','prepChecksUnavailable'] as const)('blocks requested incomplete checklists for %s and lets the student exclude them',async key=>{
+ io.read.mockResolvedValue(scholarshipBriefHub({[key]:true}));await mountComponent(<ApplicationBriefClient applicationId="app"/>);await flush();await click(scholarshipChoice());
+ expect(document.querySelector('[role=alert]')?.textContent).toContain('Could not load the attached scholarship checklists');
+ expect(button('Print / Save PDF').disabled).toBe(true);expect(portal()).toBeNull();expect(preview().textContent).not.toContain('Attached award');
+ await click(scholarshipChoice());expect(button('Print / Save PDF').disabled).toBe(false);expect(portal()).not.toBeNull();
+});
+it('refreshes unavailable optional data without printing stale snapshots, then keeps the requested choice',async()=>{
+ const pending=deferred<ReturnType<typeof briefHub>>();io.read.mockResolvedValueOnce(scholarshipBriefHub({prepChecksUnavailable:true})).mockReturnValueOnce(pending.promise);
+ await mountComponent(<ApplicationBriefClient applicationId="app"/>);await flush();await click(scholarshipChoice());await click(button('Refresh brief'));
+ expect(portal()).toBeNull();expect(document.querySelector('[data-application-brief-preview]')).toBeNull();
+ await act(async()=>pending.resolve(scholarshipBriefHub()));expect((scholarshipChoice() as HTMLInputElement).checked).toBe(true);expect(portal()?.textContent).toContain('Attached award');expect(button('Print / Save PDF').disabled).toBe(false);
+});
+it.each(['account','application'])('resets scholarship and notes choices on an %s change',async kind=>{
+ io.read.mockResolvedValue(scholarshipBriefHub());const c=document.createElement('div');document.body.append(c);const root=createRoot(c);
+ try {
+  await act(async()=>root.render(<ApplicationBriefClient applicationId="app"/>));await flush();await click(scholarshipChoice());await click(c.querySelector<HTMLInputElement>('input[type=checkbox]')!);
+  expect(portal()?.textContent).toContain('Attached award');expect(portal()?.textContent).toContain('Private application notes');
+  if(kind==='account')io.auth.user={id:'other-owner'};
+  await act(async()=>root.render(<ApplicationBriefClient applicationId={kind==='application'?'new-app':'app'}/>));await flush();
+  expect((scholarshipChoice() as HTMLInputElement).checked).toBe(false);expect(portal()?.textContent).not.toContain('Attached award');expect(portal()?.textContent).not.toContain('Private application notes');
+ }finally{act(()=>root.unmount());c.remove();}
+});

@@ -15,17 +15,21 @@ export default function ApplicationBriefClient({applicationId}:{applicationId:st
 }
 function BriefWorkspace({applicationId}:{applicationId:string}) {
  const [snapshot,setSnapshot]=useState<{hub:ApplicationHub;preparedAt:string}|null>(null);
- const [error,setError]=useState(false),[version,setVersion]=useState(0),[includeNotes,setIncludeNotes]=useState(false);
+ const [error,setError]=useState(false),[version,setVersion]=useState(0),[includeNotes,setIncludeNotes]=useState(false),[includeScholarships,setIncludeScholarships]=useState(false);
  useEffect(()=>{let active=true;fetchApplicationHub(applicationId).then(hub=>{if(active)setSnapshot({hub,preparedAt:new Date().toISOString()});}).catch(()=>{if(active)setError(true);});return()=>{active=false;};},[applicationId,version]);
  function reload(){setSnapshot(null);setError(false);setVersion(v=>v+1);}
  const back=<Link className="text-sm underline underline-offset-4" href={`/applications/${encodeURIComponent(applicationId)}`}>Back to application</Link>;
  if(error)return <div className="space-y-4 p-6"><p role="alert">Could not load this application brief. Try again.</p><Button onClick={reload}>Retry brief</Button><div>{back}</div></div>;
  if(!snapshot)return <p role="status" className="p-6">Loading your application brief…</p>;
- const brief=buildApplicationBrief(snapshot.hub,{preparedAt:snapshot.preparedAt,includeNotes});
+ const brief=buildApplicationBrief(snapshot.hub,{preparedAt:snapshot.preparedAt,includeNotes,includeScholarships});
+ const incomplete = brief.scholarships?.state === 'unavailable';
  return <div className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6 lg:p-8">
-  <div className="flex flex-wrap items-center justify-between gap-3">{back}<div className="flex flex-wrap gap-2"><Button variant="outline" onClick={reload}>Refresh brief</Button><Button onClick={()=>window.print()}>Print / Save PDF</Button></div></div>
-  <div className="space-y-3 rounded-lg border bg-muted/20 p-4"><h1 className="text-xl font-semibold">Preview your application brief</h1><p className="max-w-prose text-sm text-muted-foreground">Print includes the preparation information shown below. Essay bodies and document contents are excluded.</p><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeNotes} onChange={e=>setIncludeNotes(e.target.checked)} disabled={!snapshot.hub.application.notes?.trim()} className="h-4 w-4 accent-[#9a1a27]"/>Include my application notes</label></div>
+  <div className="flex flex-wrap items-center justify-between gap-3">{back}<div className="flex flex-wrap gap-2"><Button variant="outline" onClick={reload}>Refresh brief</Button><Button disabled={incomplete} onClick={()=>{if(!incomplete)window.print();}}>Print / Save PDF</Button></div></div>
+  <div className="space-y-3 rounded-lg border bg-muted/20 p-4"><h1 className="text-xl font-semibold">Preview your application brief</h1><p className="max-w-prose text-sm text-muted-foreground">Print includes the preparation information shown below. Essay bodies and document contents are excluded.</p><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeNotes} onChange={e=>setIncludeNotes(e.target.checked)} disabled={!snapshot.hub.application.notes?.trim()} className="h-4 w-4 accent-[#9a1a27]"/>Include my application notes</label>
+   <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="includeScholarships" checked={includeScholarships} onChange={e=>setIncludeScholarships(e.target.checked)} className="h-4 w-4 accent-[#9a1a27]"/>Include attached scholarship checklists</label>
+   {incomplete && <p role="alert" className="text-sm">Could not load the attached scholarship checklists completely. Refresh the brief to try again, or uncheck this section to print without it.</p>}
+  </div>
   <div data-application-brief-preview className="overflow-hidden rounded-lg border shadow-sm"><ApplicationBriefDocument brief={brief}/></div>
-  {typeof document!=='undefined' && createPortal(<div data-print-application aria-hidden="true"><ApplicationBriefDocument brief={brief}/></div>,document.body)}
+  {!incomplete && typeof document!=='undefined' && createPortal(<div data-print-application aria-hidden="true"><ApplicationBriefDocument brief={brief}/></div>,document.body)}
  </div>;
 }

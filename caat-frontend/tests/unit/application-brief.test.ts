@@ -18,3 +18,31 @@ it('includes notes only when explicitly requested and leaves empty work honest',
 it('formats date-only deadlines in UTC and rejects invalid dates',()=>{
  expect(briefDate('2026-12-01')).toBe('1 December 2026');expect(briefDate(null)).toBe('Not recorded');expect(briefDate('2026-02-30')).toBe('Not recorded');
 });
+
+import { scholarshipBriefHub } from './application-brief-fixture';
+import { ruleKey } from '@/lib/requirements-checklist';
+it('keeps scholarship details out by default and includes only exact attachments when selected',()=>{
+ const hub=scholarshipBriefHub();const before=JSON.stringify(hub);
+ expect(buildApplicationBrief(hub,{preparedAt}).scholarships).toBeNull();
+ const section=buildApplicationBrief(hub,{preparedAt,includeScholarships:true}).scholarships;
+ expect(section?.state).toBe('ready');
+ if(section?.state!=='ready')throw new Error('Expected complete scholarships');
+ expect(section.awards).toHaveLength(1);expect(section.awards[0]).toMatchObject({title:'Attached award',provider:'Example Foundation',inactive:true});
+ expect(section.awards[0].sourceNote).toContain('over 90 days');
+ expect(section.awards[0].items.find(i=>i.key==='deadline')?.tick).toBe('Marked prepared');
+ expect(section.awards[0].items.find(i=>i.key==='essay')?.tick).toBe('No preparation tick recorded');
+ expect(JSON.stringify(section)).not.toContain('Other application award');expect(JSON.stringify(section)).not.toContain('Unattached suggestion');
+ expect(JSON.stringify(section)).not.toContain('Private application notes');expect(JSON.stringify(section)).not.toContain('user_id');expect(JSON.stringify(hub)).toBe(before);
+});
+it.each(['savedScholarshipsUnavailable','prepChecksUnavailable'] as const)('does not expose partial scholarship work when %s is true',key=>{
+ expect(buildApplicationBrief(scholarshipBriefHub({[key]:true}),{preparedAt,includeScholarships:true}).scholarships).toEqual({state:'unavailable'});
+});
+it('distinguishes no attachments from unavailable sources and uses checked-with-provider wording for rules',()=>{
+ expect(buildApplicationBrief(scholarshipBriefHub({savedScholarships:[]}),{preparedAt,includeScholarships:true}).scholarships).toEqual({state:'ready',awards:[]});
+ const hub=scholarshipBriefHub({prepChecks:{award:[ruleKey('Check the residency rule')]}});
+ hub.savedScholarships[0].checklist.external_url='javascript:alert(1)';
+ const section=buildApplicationBrief(hub,{preparedAt,includeScholarships:true}).scholarships;
+ if(section?.state!=='ready')throw new Error('Expected complete scholarships');
+ expect(section.awards[0].items.find(i=>i.key.startsWith('rule:'))?.tick).toBe('Marked checked with the provider');
+ expect(section.awards[0].items.find(i=>i.key==='official-link')?.href).toBeNull();
+});
