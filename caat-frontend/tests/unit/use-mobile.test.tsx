@@ -11,12 +11,21 @@ let root: Root | undefined;
 const listeners = new Set<() => void>();
 const subscribe = vi.fn((_type: string, listener: () => void) => listeners.add(listener));
 const unsubscribe = vi.fn((_type: string, listener: () => void) => listeners.delete(listener));
-const media = {
-  get matches() { return width < 768; },
-  addEventListener: subscribe,
-  removeEventListener: unsubscribe,
-};
-const matchMedia = vi.fn(() => media);
+// jsdom has no media-query layout engine. Evaluate the query supplied by the
+// hook, so a max-width: 767px regression cannot hide behind a fixed breakpoint.
+function mediaForQuery(query: string) {
+  const range = /^\(width\s*<\s*(\d+(?:\.\d+)?)px\)$/.exec(query);
+  const maximum = /^\(max-width:\s*(\d+(?:\.\d+)?)px\)$/.exec(query);
+  if (!range && !maximum) throw new Error(`Unsupported test media query: ${query}`);
+  return {
+    get matches() {
+      return range ? width < Number(range[1]) : width <= Number(maximum![1]);
+    },
+    addEventListener: subscribe,
+    removeEventListener: unsubscribe,
+  };
+}
+const matchMedia = vi.fn(mediaForQuery);
 function Probe({ onRender }: { onRender?: (mobile: boolean) => void }) {
   const mobile = useIsMobile();
   onRender?.(mobile);
@@ -34,7 +43,7 @@ beforeEach(() => {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
   listeners.clear();
   vi.clearAllMocks();
-  matchMedia.mockReset().mockImplementation(() => media);
+  matchMedia.mockReset().mockImplementation(mediaForQuery);
   container = document.createElement("div");
   document.body.append(container);
 });
@@ -58,6 +67,8 @@ describe("mobile viewport state", () => {
     root = createRoot(container);
     await act(async () => root!.render(<Probe />));
     expect(container.textContent).toBe("desktop");
+    await resize(767);
+    expect(container.textContent).toBe("mobile");
     await resize(767.5);
     expect(container.textContent).toBe("mobile");
     await resize(1024);
@@ -80,7 +91,7 @@ describe("mobile viewport state", () => {
     matchMedia.mockImplementationOnce(() => { throw new Error("Browser API during SSR"); });
     expect(renderToString(<Probe />)).toBe("<output>desktop</output>");
     expect(matchMedia).not.toHaveBeenCalled();
-    matchMedia.mockReset().mockImplementation(() => media);
+    matchMedia.mockReset().mockImplementation(mediaForQuery);
   });
   it("hydrates the server fallback before adopting the mobile viewport", async () => {
     container.innerHTML = renderToString(<Probe />);
