@@ -245,9 +245,34 @@ describe("fetchCommunityProfileAction (A1 privacy gating)", () => {
       const res = await fetchCommunityProfileAction("target");
       expect(res.profile).toBeNull();
       expect(res.error).toBe("Could not load this community profile. Please try again.");
-      expect(log).toHaveBeenCalledExactlyOnceWith("[community-profile] load failed", { stage: "profile", code: "unknown" });
+      expect(log).toHaveBeenCalledExactlyOnceWith("[community-profile] load failed", { stage: "profile", code: "unknown", status: null });
     } finally { log.mockRestore(); }
   });
+
+  it.each([0, 100, 200, 502, 599])("retains bounded response status %s when the backend error has no code", async (status) => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      serverState.client = createMockSupabase({ user: { id: "viewer" }, rpc: () => ({
+        data: null, status,
+        error: { code: "", message: "private fetch URL/token", details: "private query", hint: "private hint" },
+      }) });
+      expect(await fetchCommunityProfileAction("target")).toEqual({ profile: null, error: "Could not load this community profile. Please try again." });
+      expect(log).toHaveBeenCalledExactlyOnceWith("[community-profile] load failed", { stage: "profile", code: "unknown", status });
+    } finally { log.mockRestore(); }
+  });
+
+  it.each([undefined, null, -1, 1, 99, 600, 502.5, NaN, Infinity, "502", "private status", { secret: "private status" }])(
+    "does not log or coerce a malformed response status (%j)", async (status) => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        serverState.client = createMockSupabase({ user: { id: "viewer" }, rpc: () => ({
+          data: null, status, error: { code: "", message: "private details" },
+        }) });
+        await fetchCommunityProfileAction("target");
+        expect(log).toHaveBeenCalledExactlyOnceWith("[community-profile] load failed", { stage: "profile", code: "unknown", status: null });
+      } finally { log.mockRestore(); }
+    }
+  );
 
   it.each(["privacy", "followers", "following", "follow-state"] as const)(
     "does not render partial profile data when only %s fails", async (stage) => {
@@ -263,7 +288,7 @@ describe("fetchCommunityProfileAction (A1 privacy gating)", () => {
               : "following";
             if (read === stage) {
               failedReads.push(read);
-              return { data: null, error: { message: "private details", code: "XX000" } };
+              return { data: null, error: { message: "private details", code: "XX000" }, status: 503 };
             }
             return { data: null, error: null, count: 0 };
           },
@@ -272,21 +297,21 @@ describe("fetchCommunityProfileAction (A1 privacy gating)", () => {
         expect(res.profile).toBeNull();
         expect(res.error).toBe("Could not load this community profile. Please try again.");
         expect(failedReads).toEqual([stage]);
-        expect(log).toHaveBeenCalledExactlyOnceWith("[community-profile] load failed", { stage, code: "XX000" });
+        expect(log).toHaveBeenCalledExactlyOnceWith("[community-profile] load failed", { stage, code: "XX000", status: 503 });
       } finally { log.mockRestore(); }
     }
   );
 
   it("stops all profile queries for a returned auth error even when a user is supplied", async () => {
     const client = createMockSupabase({ user: { id: "viewer" }, rpc: () => ({ data: [profile], error: null }) });
-    serverState.client = { ...client, auth: { ...client.auth, getUser: vi.fn(async () => ({ data: { user: { id: "viewer" } }, error: { code: "AUTH_ERROR", message: "private auth details" } })) } };
+    serverState.client = { ...client, auth: { ...client.auth, getUser: vi.fn(async () => ({ data: { user: { id: "viewer" } }, error: { code: "AUTH_ERROR", message: "private auth details", status: 401 } })) } };
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const res = await fetchCommunityProfileAction("target");
       expect(res).toEqual({ profile: null, error: "Could not load this community profile. Please try again." });
       expect(client.rpc).not.toHaveBeenCalled();
       expect(client.from).not.toHaveBeenCalled();
-      expect(log).toHaveBeenCalledExactlyOnceWith("[community-profile] load failed", { stage: "auth", code: "AUTH_ERROR" });
+      expect(log).toHaveBeenCalledExactlyOnceWith("[community-profile] load failed", { stage: "auth", code: "AUTH_ERROR", status: 401 });
     } finally { log.mockRestore(); }
   });
 

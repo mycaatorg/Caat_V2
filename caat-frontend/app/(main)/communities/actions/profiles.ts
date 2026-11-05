@@ -39,12 +39,16 @@ export async function updatePrivacySettingsAction(
 
 const PROFILE_LOAD_ERROR = "Could not load this community profile. Please try again.";
 
-function profileLoadFailure(stage: string, error?: unknown) {
+function profileLoadFailure(stage: string, error?: unknown, rawStatus?: unknown) {
   const rawCode = error && typeof error === "object" && "code" in error ? error.code : null;
-  // Fixed stage labels and constrained codes only: never log raw messages,
+  // Fixed stage labels, constrained codes and numeric status only: never log raw messages,
   // profile IDs, query details, cookies or tokens.
   const code = typeof rawCode === "string" && /^[A-Z0-9_]{1,24}$/i.test(rawCode) ? rawCode : "unknown";
-  console.error("[community-profile] load failed", { stage, code });
+  // PostgREST uses 0 when no HTTP response arrived. Keep that distinguishable
+  // from an HTTP failure or an absent/invalid status without inspecting details.
+  const status = typeof rawStatus === "number" && Number.isInteger(rawStatus)
+    && (rawStatus === 0 || (rawStatus >= 100 && rawStatus <= 599)) ? rawStatus : null;
+  console.error("[community-profile] load failed", { stage, code, status });
   return { profile: null, error: PROFILE_LOAD_ERROR };
 }
 
@@ -55,7 +59,7 @@ export async function fetchCommunityProfileAction(
   const {
     data: { user }, error: authError,
   } = await supabase.auth.getUser();
-  if (authError || !user) return profileLoadFailure("auth", authError);
+  if (authError || !user) return profileLoadFailure("auth", authError, authError?.status);
 
   const [
     profileResult,
@@ -95,7 +99,7 @@ export async function fetchCommunityProfileAction(
     ["follow-state", isFollowingResult],
   ] as const;
   for (const [stage, result] of reads) {
-    if ("error" in result && result.error) return profileLoadFailure(stage, result.error);
+    if ("error" in result && result.error) return profileLoadFailure(stage, result.error, result.status);
   }
 
   const profileRows = (profileResult.data ?? []) as {
