@@ -451,6 +451,155 @@ describe("adding schools", () => {
   }
   const searchBox = () => document.querySelector('input[placeholder="Search for a university by name..."]') as HTMLInputElement | null;
 
+  it("keeps newer results when an older request finishes last", async () => {
+    const old = deferred<{ id: number; name: string; country: string }[]>();
+    io.searchSchools.mockReturnValueOnce(old.promise).mockResolvedValueOnce([{ id: 43, name: "New Institute", country: "Australia" }]);
+    await mount();
+    await search("old");
+    await change(searchBox()!, "new");
+    await advance(300);
+    expect(queryButton(/New Institute/)).not.toBeNull();
+    await act(async () => old.resolve([{ id: 42, name: "Old Institute", country: "Australia" }]));
+    expect(queryButton(/New Institute/)).not.toBeNull();
+    expect(queryButton(/Old Institute/)).toBeNull();
+  });
+
+  it("ignores old errors and keeps the current search pending", async () => {
+    const old = deferred<[]>(), current = deferred<[]>();
+    io.searchSchools.mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);
+    await mount();
+    await search("old");
+    await change(searchBox()!, "current");
+    await advance(300);
+    await act(async () => old.reject(new Error("old failure")));
+    expect(hasText("Searching…")).toBe(true);
+    expect(io.toast.error).not.toHaveBeenCalled();
+    await act(async () => current.resolve([]));
+    expect(hasText("Searching…")).toBe(false);
+    expect(hasText("No universities found.")).toBe(true);
+  });
+
+  it("removes old choices as soon as the query changes", async () => {
+    io.searchSchools.mockResolvedValueOnce([{ id: 42, name: "Old Institute", country: "Australia" }]);
+    await mount();
+    await search("old");
+    await change(searchBox()!, "new");
+    expect(queryButton(/Old Institute/)).toBeNull();
+    expect(hasText("Searching…")).toBe(true);
+  });
+
+  it("clears loading and cancels a debounce when the query becomes blank", async () => {
+    await mount();
+    await click(button(/Add university/));
+    await change(searchBox()!, "old");
+    await change(searchBox()!, "   ");
+    await advance(300);
+    expect(io.searchSchools).not.toHaveBeenCalled();
+    expect(hasText("Searching…")).toBe(false);
+    expect(hasText("No universities found.")).toBe(false);
+  });
+
+  it("does not resurrect results after an in-flight query is cleared", async () => {
+    const old = deferred<{ id: number; name: string; country: string }[]>();
+    io.searchSchools.mockReturnValueOnce(old.promise);
+    await mount();
+    await search("old");
+    await change(searchBox()!, "");
+    await act(async () => old.resolve([{ id: 42, name: "Old Institute", country: "Australia" }]));
+    expect(queryButton(/Old Institute/)).toBeNull();
+    expect(hasText("Searching…")).toBe(false);
+  });
+
+  it("resets a closed panel and ignores its in-flight failure after reopening", async () => {
+    const old = deferred<[]>();
+    io.searchSchools.mockReturnValueOnce(old.promise);
+    await mount();
+    await search("old");
+    await click(button(/Add university/));
+    await click(button(/Add university/));
+    expect(searchBox()?.value).toBe("");
+    await act(async () => old.reject(new Error("old failure")));
+    expect(io.toast.error).not.toHaveBeenCalled();
+    expect(hasText("Searching…")).toBe(false);
+  });
+
+  it("cancels a pending search when the panel closes", async () => {
+    await mount();
+    await click(button(/Add university/));
+    await change(searchBox()!, "old");
+    await click(button(/Add university/));
+    await advance(300);
+    expect(io.searchSchools).not.toHaveBeenCalled();
+  });
+
+  it("cancels pending search timers on unmount", async () => {
+    await mount();
+    await click(button(/Add university/));
+    await change(searchBox()!, "old");
+    unmountAll();
+    await advance(300);
+    expect(io.searchSchools).not.toHaveBeenCalled();
+  });
+
+  it("does not toast an in-flight failure after unmount", async () => {
+    const old = deferred<[]>();
+    io.searchSchools.mockReturnValueOnce(old.promise);
+    await mount();
+    await search("old");
+    unmountAll();
+    await act(async () => old.reject(new Error("late failure")));
+    expect(io.toast.error).not.toHaveBeenCalled();
+  });
+
+  it("reports a current failure without claiming no universities exist", async () => {
+    io.searchSchools.mockRejectedValueOnce(new Error("current failure"));
+    await mount();
+    await search("current");
+    expect(io.toast.error).toHaveBeenCalledWith("School search failed. Please try again.");
+    expect(hasText("Searching…")).toBe(false);
+    expect(hasText("No universities found.")).toBe(false);
+    expect(hasText("School search failed. Please try again.")).toBe(true);
+    io.searchSchools.mockResolvedValueOnce([{ id: 42, name: "Recovered Institute", country: "Australia" }]);
+    await change(searchBox()!, "retry");
+    expect(hasText("School search failed. Please try again.")).toBe(false);
+    await advance(300);
+    expect(queryButton(/Recovered Institute/)).not.toBeNull();
+  });
+
+  it("distinguishes repeated identical queries and works under StrictMode", async () => {
+    const old = deferred<{ id: number; name: string; country: string }[]>();
+    io.fetchApplications.mockResolvedValue([]);
+    io.searchSchools.mockReturnValueOnce(old.promise).mockResolvedValue([]);
+    await mountComponent(<React.StrictMode><ApplicationsClient /></React.StrictMode>);
+    await flush();
+    await search("same");
+    await change(searchBox()!, "other");
+    await advance(300);
+    await change(searchBox()!, "same");
+    await advance(300);
+    await act(async () => old.resolve([{ id: 42, name: "Outdated Institute", country: "Australia" }]));
+    expect(queryButton(/Outdated Institute/)).toBeNull();
+    expect(hasText("No universities found.")).toBe(true);
+    expect(io.searchSchools.mock.calls.map(([q]) => q)).toEqual(["same", "other", "same"]);
+  });
+
+  it("invalidates a later search when a pending add succeeds", async () => {
+    const insert = deferred<ApplicationRow>(), later = deferred<[]>();
+    io.searchSchools.mockResolvedValueOnce([{ id: 42, name: "Gamma Institute", country: "Australia" }]).mockReturnValueOnce(later.promise);
+    io.addApplication.mockReturnValueOnce(insert.promise);
+    await mount();
+    await search("gamma");
+    await click(button(/Gamma Institute/));
+    await change(searchBox()!, "later");
+    await advance(300);
+    await act(async () => insert.resolve(row("app-42", "Gamma Institute", { school_id: 42 })));
+    await act(async () => later.reject(new Error("late error")));
+    expect(io.toast.error).not.toHaveBeenCalled();
+    await click(button(/Add university/));
+    expect(searchBox()?.value).toBe("");
+    expect(hasText("Searching…")).toBe(false);
+  });
+
   it("adds a searched school once even when clicked twice", async () => {
     io.searchSchools.mockResolvedValue([{ id: 42, name: "Gamma Institute", country: "Australia" }]);
     const insert = deferred<ApplicationRow>();

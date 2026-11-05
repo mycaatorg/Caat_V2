@@ -108,8 +108,26 @@ export default function ApplicationsClient() {
     { id: number; name: string; country: string | null }[]
   >([]);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+  const searchGeneration = useRef(0);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const addingSchoolRef = useRef(false);
+
+  const cancelSearch = useCallback(() => {
+    searchGeneration.current += 1;
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    searchTimeout.current = null;
+  }, []);
+
+  useEffect(() => cancelSearch, [cancelSearch]);
+
+  function resetSearch() {
+    cancelSearch();
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearching(false);
+    setSearchError(false);
+  }
 
   // Delete confirmation
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -201,27 +219,31 @@ export default function ApplicationsClient() {
     }
   }
 
-  // Debounced school search
+  // Each input/reset invalidates earlier responses, including their error and
+  // loading updates. Cancelling only the debounce cannot stop an in-flight read.
   const handleSearchInput = useCallback((q: string) => {
+    cancelSearch();
+    const generation = searchGeneration.current;
     setSearchQuery(q);
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    if (!q.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    setSearching(true);
+    setSearchResults([]);
+    setSearchError(false);
+    setSearching(Boolean(q.trim()));
+    if (!q.trim()) return;
     searchTimeout.current = setTimeout(async () => {
+      searchTimeout.current = null;
       try {
         const results = await searchSchools(q);
+        if (generation !== searchGeneration.current) return;
         setSearchResults(results);
       } catch {
-        setSearchResults([]);
+        if (generation !== searchGeneration.current) return;
+        setSearchError(true);
         toast.error("School search failed. Please try again.");
       } finally {
-        setSearching(false);
+        if (generation === searchGeneration.current) setSearching(false);
       }
     }, 300);
-  }, []);
+  }, [cancelSearch]);
 
   async function handleAddSchool(schoolId: number) {
     // Check if already tracked
@@ -238,8 +260,7 @@ export default function ApplicationsClient() {
       const row = await addApplication(schoolId);
       setApps((prev) => [row, ...prev]);
       setShowSearch(false);
-      setSearchQuery("");
-      setSearchResults([]);
+      resetSearch();
       toast.success("School added to applications.");
     } catch {
       toast.error("Failed to add school.");
@@ -386,7 +407,10 @@ export default function ApplicationsClient() {
           )}
           <Button
             size="sm"
-            onClick={() => setShowSearch(!showSearch)}
+            onClick={() => {
+              if (showSearch) resetSearch();
+              setShowSearch(!showSearch);
+            }}
             className="gap-1.5 bg-[#9a1a27] text-white hover:bg-[#7d141f] border-[#9a1a27] dark:border-[#e06b78]"
           >
             <Plus className="h-4 w-4" />
@@ -453,7 +477,10 @@ export default function ApplicationsClient() {
               })}
             </div>
           )}
-          {searchQuery && !searching && searchResults.length === 0 && (
+          {searchError && (
+            <p role="alert" className="text-sm text-destructive">School search failed. Please try again.</p>
+          )}
+          {searchQuery.trim() && !searching && !searchError && searchResults.length === 0 && (
             <p className="text-sm text-muted-foreground">No universities found.</p>
           )}
         </div>
