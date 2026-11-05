@@ -146,11 +146,13 @@ DECLARE
   duplicate_row public.scholarships%ROWTYPE;
   canonical_row public.scholarships%ROWTYPE;
   has_duplicate boolean;
+  found_targets integer := 0;
 BEGIN
   -- Lock and validate the complete target set before changing any row.
   FOR item IN SELECT value FROM jsonb_array_elements(targets) ORDER BY value->>'id' LOOP
     SELECT * INTO current_row FROM public.scholarships WHERE id=(item->>'id')::uuid FOR UPDATE;
     IF NOT FOUND THEN CONTINUE; END IF; -- Fresh isolated databases have no production records.
+    found_targets := found_targets + 1;
     IF current_row.source_id IS DISTINCT FROM (item->>'source_id')::uuid
        OR current_row.external_id IS DISTINCT FROM item->>'external_id'
        OR current_row.title IS DISTINCT FROM item->>'title'
@@ -161,6 +163,9 @@ BEGIN
       RAISE EXCEPTION 'PROD-244 source identity drift for %',item->>'id';
     END IF;
   END LOOP;
+  IF found_targets NOT IN (0,jsonb_array_length(targets)) THEN
+    RAISE EXCEPTION 'PROD-244 partial target set: found % of % expected records',found_targets,jsonb_array_length(targets);
+  END IF;
 
   SELECT * INTO duplicate_row FROM public.scholarships WHERE id='a240b417-79d7-4241-9e08-d63bf1eba668'::uuid FOR UPDATE;
   has_duplicate := FOUND;

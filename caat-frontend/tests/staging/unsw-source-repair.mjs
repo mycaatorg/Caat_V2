@@ -106,6 +106,13 @@ try {
   assert.throws(apply, /PROD-244.*canonical/i);
   assert.deepEqual(snapshot(), absentCanonical, 'missing canonical cannot permit partial changes');
   assert.deepEqual(saves(), remainingSaves);
+  // Restore the synthetic canonical, then simulate one missing repair target.
+  const canonicalFixture = before.find(row => row.id === duplicate.canonical_id);
+  sql(`INSERT INTO public.scholarships SELECT * FROM jsonb_populate_record(NULL::public.scholarships,${quote(JSON.stringify(canonicalFixture))}::jsonb); DELETE FROM public.scholarships WHERE id=${quote(last.id)};`);
+  const partialTargets = snapshot(), partialSaves = saves();
+  assert.throws(apply, /PROD-244.*partial target set/i);
+  assert.deepEqual(snapshot(), partialTargets, 'a missing target prevents all remaining link changes');
+  assert.deepEqual(saves(), partialSaves, 'partial target failure preserves all remaining saves');
   console.log('PROD-244: 17 exact URL repairs, guarded duplicate archive, all protected facts/saves, idempotency and atomic drift failures passed.');
 } catch (error) { failure = error; } finally {
   const errors = failure ? [failure] : [];
