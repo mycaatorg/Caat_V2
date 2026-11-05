@@ -86,9 +86,3 @@ from generate_series(0,50) n on conflict(id) do nothing;
 
 -- PROD-264: independent personal task application fixture.
 INSERT INTO public.schools(id,name,country,institution_type) VALUES(900264,'E2E Personal Task University','Australia','university') ON CONFLICT(id) DO NOTHING;
-
--- PROD-266: independent local-only catalogue for complete planning briefs.
-INSERT INTO public.schools(id,name,country,institution_type) VALUES(900266,'E2E Brief Planning University','Australia','university') ON CONFLICT(id) DO NOTHING;
-INSERT INTO public.course_offerings(id,institution_key,institution_name,program_code,name,school_id,campus,prerequisites,prerequisites_url,assumed_knowledge,application_route,application_url,source_url,source_year,verified_at,active)
-SELECT 'e2e-brief-course-'||lpad(n::text,3,'0'),'e2e-brief','E2E Brief Planning University','BRIEF'||n,'E2E Brief Course '||lpad(n::text,3,'0'),900266,'City','Recorded Mathematics','https://brief.example.test/entry',NULL,'Apply through provider','https://brief.example.test/apply','https://brief.example.test/course',2026,'2026-10-01'::timestamptz,true FROM generate_series(0,17) n
-ON CONFLICT(id) DO NOTHING;
