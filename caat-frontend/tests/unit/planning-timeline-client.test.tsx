@@ -12,6 +12,24 @@ import PlannerClient from '@/app/(main)/workspace/planner/client';
 const data=():TimelineData=>({items:Array.from({length:21},(_,i)=>({id:`task-${i}`,title:`Task ${i}`,dateISO:'2099-12-01',source:'task',href:'/today?view=todos'})),undatedTasks:2});
 beforeEach(()=>{vi.clearAllMocks();io.auth={user:{id:'owner'},loading:false};io.read.mockResolvedValue(data());});
 afterEach(()=>unmountAll());
+it('renders ordered month groups when Map.groupBy is unavailable',async()=>{
+ const descriptor=Object.getOwnPropertyDescriptor(Map,'groupBy');
+ Object.defineProperty(Map,'groupBy',{value:undefined,configurable:true});
+ try{
+  io.read.mockResolvedValueOnce({items:[
+   {id:'jan',title:'January task',dateISO:'2099-01-01',source:'task',href:'/today?view=todos'},
+   {id:'feb',title:'February deadline',dateISO:'2099-02-01',source:'app',href:'/applications/feb'},
+  ],undatedTasks:0});
+  await mountComponent(<PlannerClient/>);await flush();
+  expect(Array.from(document.querySelectorAll('section[aria-label]'),section=>section.getAttribute('aria-label'))).toEqual(['January 2099','February 2099']);
+  expect(Array.from(document.querySelectorAll('[data-timeline-item] a'),link=>link.getAttribute('href'))).toEqual(['/today?view=todos','/applications/feb']);
+ }finally{if(descriptor)Object.defineProperty(Map,'groupBy',descriptor);else Reflect.deleteProperty(Map,'groupBy');}
+});
+it('keeps the visible search label in its accessible name for voice control',async()=>{
+ await mountComponent(<PlannerClient/>);await flush();
+ const input=document.querySelector('input')!;
+ expect(input.getAttribute('aria-label')).toContain(input.closest('label')!.textContent!.trim());
+});
 it('paginates complete results and resets on search/source changes',async()=>{
  await mountComponent(<PlannerClient/>);await flush();expect(document.querySelectorAll('[data-timeline-item]')).toHaveLength(20);
  await click(button('Next timeline page'));expect(document.querySelectorAll('[data-timeline-item]')).toHaveLength(1);expect(document.body.textContent).toContain('Task 20');

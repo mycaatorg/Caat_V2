@@ -37,7 +37,12 @@ function TimelineWorkspace({userId}:{userId:string}) {
   const safePage=Math.min(page,pages);
   if(data && page!==safePage)setPage(safePage);
   const visible=filtered.slice((safePage-1)*PAGE_SIZE,safePage*PAGE_SIZE);
-  const groups=Map.groupBy(visible,item=>item.dateISO.slice(0,7));
+  const groups=new Map<string,typeof visible>();
+  for(const item of visible){
+    const month=item.dateISO.slice(0,7);
+    const group=groups.get(month);
+    if(group)group.push(item);else groups.set(month,[item]);
+  }
   return <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6 p-4 sm:p-6 lg:p-8">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="max-w-2xl space-y-2"><p className="font-code text-xs uppercase tracking-widest text-muted-foreground">Your planning workspace</p><h1 className="font-display text-3xl font-semibold">Planning timeline</h1><p className="text-sm text-muted-foreground">See recorded dates across applications, scholarships, calendar events and your open tasks. Check official sources for closing times and changes.</p></div>
@@ -46,7 +51,7 @@ function TimelineWorkspace({userId}:{userId:string}) {
     {error?<div className="space-y-3 rounded-lg border p-6"><p role="alert">{TIMELINE_ERROR}</p><Button onClick={reload}>Retry timeline</Button></div>:!data?<p role="status">Loading your planning timeline…</p>:<>
       <p className="text-xs text-muted-foreground">Date ranges start {timelineDay(data.today)} · {data.timeZone}. Refresh to load changes.</p>
       <div className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-3">
-        <label className="space-y-1 text-sm">Search titles<input aria-label="Search timeline" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}} placeholder="Find a deadline, event or task" className="block w-full min-w-0 rounded-md border bg-background px-3 py-2"/></label>
+        <label className="space-y-1 text-sm">Search timeline<input aria-label="Search timeline" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}} placeholder="Find a deadline, event or task" className="block w-full min-w-0 rounded-md border bg-background px-3 py-2"/></label>
         <label className="space-y-1 text-sm">Source<select aria-label="Source" value={source} onChange={e=>{setSource(e.target.value as TimelineSource|'all');setPage(1);}} className="block w-full rounded-md border bg-background px-3 py-2"><option value="all">All sources</option>{Object.entries(TIMELINE_SOURCES).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
         <label className="space-y-1 text-sm">Date range<select aria-label="Date range" value={period} onChange={e=>{setPeriod(e.target.value as TimelinePeriod);setPage(1);}} className="block w-full rounded-md border bg-background px-3 py-2"><option value="all">All upcoming</option><option value="7">Next 7 days</option><option value="30">Next 30 days</option><option value="90">Next 90 days</option><option value="past">Past-due tasks</option></select></label>
       </div>
