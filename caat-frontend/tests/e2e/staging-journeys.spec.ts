@@ -3117,7 +3117,8 @@ test('workspace search opens exact owned files and writing and recovers missing 
     return { id: data.user.id as string, headers: { apikey: key, Authorization: `Bearer ${data.access_token}`, Prefer: 'return=representation' } };
   }
   const student = await session(STUDENT_EMAIL), peer = await session('e2e.peer@caat.local.test');
-  const title = marker(`Search-${testInfo.project.name}`);
+  // Keep every printed filename on two lines even when the random suffix uses narrow glyphs.
+  const title = marker(`Search-${testInfo.project.name}-layout-fixture`);
   const promptIds = Array.from({ length: 51 }, () => crypto.randomUUID()), promptId = promptIds[50];
   const docIds = Array.from({ length: 51 }, () => crypto.randomUUID()).sort();
   const draftIds = [crypto.randomUUID(), crypto.randomUUID()], resumeIds = Array.from({ length: 51 }, () => crypto.randomUUID()), peerResume = crypto.randomUUID();
@@ -3213,9 +3214,9 @@ test('workspace search opens exact owned files and writing and recovers missing 
       await expect(page.locator('[data-print-application]')).toBeVisible();
       await expect(main).toBeHidden();
       const pdf = await page.pdf({ format: 'A4', preferCSSPageSize: true, printBackground: true });
+      await testInfo.attach('application-planning-brief-pdf', { body: pdf, contentType: 'application/pdf' });
       expect(pdfPageCount(pdf)).toBeGreaterThan(1);
       expect(pdfPageCount(pdf)).toBe(4); // 51 rows fit without a footer-only fifth page.
-      await testInfo.attach('application-planning-brief-pdf', { body: pdf, contentType: 'application/pdf' });
       await page.emulateMedia({ media: 'screen' });
     }
     await page.route('**/rest/v1/documents?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'brief source outage' }) }));
