@@ -32,6 +32,7 @@ interface Props {
   matchReason?: string | null;
   /** Tracking status label (e.g. "Applied") shown when the user tracks this. */
   statusLabel?: string | null;
+  comparison?: { selected: boolean; disabled: boolean; label: string; onToggle: () => void };
 }
 
 export default function ScholarshipCard({
@@ -40,6 +41,7 @@ export default function ScholarshipCard({
   onToggleBookmark,
   matchReason,
   statusLabel,
+  comparison,
 }: Props) {
   return (
     <Card className={`flex flex-col h-[420px] overflow-hidden hover:shadow-lg transition-shadow ${matchReason ? "border-l-[3px] border-l-[#9a1a27]" : ""}`}>
@@ -118,13 +120,14 @@ export default function ScholarshipCard({
         </div>
       </CardContent>
 
-      <CardFooter className="pt-0">
+      <CardFooter className="pt-0 gap-2">
         <Button
           asChild
-          className="w-full bg-[#9a1a27] hover:bg-[#7d1520] text-white"
+          className="flex-1 bg-[#9a1a27] hover:bg-[#7d1520] text-white"
         >
           <Link href={`/scholarships/${scholarship.id}`}>View Details</Link>
         </Button>
+        {comparison && <Button variant="outline" className="shrink-0" aria-label={comparison.label} aria-pressed={comparison.selected} disabled={comparison.disabled} onClick={comparison.onToggle}>{comparison.selected ? "Selected" : "Compare"}</Button>}
       </CardFooter>
     </Card>
   );

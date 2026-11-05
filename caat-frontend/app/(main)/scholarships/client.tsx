@@ -49,6 +49,8 @@ import {
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/components/providers/AuthContext";
 import { toast } from "sonner";
+import { useScholarshipComparison, MAX_SCHOLARSHIP_COMPARISON } from "@/components/scholarships/use-scholarship-comparison";
+import { ScholarshipComparisonPanel } from "@/components/scholarships/scholarship-comparison-panel";
 import {
   SCHOLARSHIP_STATUS_LABELS,
   type BookmarkTracking,
@@ -170,6 +172,7 @@ export default function ScholarshipsClient({
 
   const { user } = useAuth();
   const userId = user?.id ?? null;
+  const comparison = useScholarshipComparison(rows, userId);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
 
@@ -678,10 +681,12 @@ export default function ScholarshipsClient({
 
             <p className="text-sm text-muted-foreground mb-4">Suggestions reflect your interests and profile. Open a scholarship to check its criteria and source freshness.</p>
 
+            <ScholarshipComparisonPanel key={userId ?? "signed-out"} selected={comparison.selected} onRemove={comparison.remove} onClear={comparison.clear} />
+
             {/* Scholarship grid */}
             {rows.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-                {rows.map((row) => {
+                {rows.map((row, index) => {
                   const match = matchScholarship(profile, row);
                   return (
                     <ScholarshipCard
@@ -689,6 +694,12 @@ export default function ScholarshipsClient({
                       scholarship={rowToCard(row)}
                       isBookmarked={bookmarkedIds.has(row.id)}
                       onToggleBookmark={handleToggleBookmark}
+                      comparison={{
+                        selected: comparison.selected.some(item => item.id === row.id),
+                        disabled: !userId || (comparison.selected.length >= MAX_SCHOLARSHIP_COMPARISON && !comparison.selected.some(item => item.id === row.id)),
+                        label: `Compare ${row.title} at ${row.provider_name}, listing ${index + 1} on this page`,
+                        onToggle: () => comparison.toggle(row),
+                      }}
                       matchReason={match.reason}
                       statusLabel={
                         bookmarkedIds.has(row.id) && tracking.get(row.id)

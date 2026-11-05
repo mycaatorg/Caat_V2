@@ -74,6 +74,46 @@ test("public duplicate scholarship links preserve the chosen listing", { tag: "@
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/scholarship\/e2e-test-scholarship$/);
 });
 
+test("scholarship comparison retains choices across filters and restores keyboard focus", { tag: "@phone" }, async ({ page }, testInfo) => {
+  await signInToIsolatedStudent(page);
+  const bookmarkWrites: string[] = [];
+  page.on("request", request => {
+    if (request.url().includes("/rest/v1/user_bookmarked_scholarships") && ["POST", "PATCH", "DELETE"].includes(request.method())) bookmarkWrites.push(request.method());
+  });
+  await page.goto("/scholarships?q=E2E");
+  const north = page.getByRole("button", { name: /^Compare E2E Shared Award at E2E North Foundation/ });
+  const south = page.getByRole("button", { name: /^Compare E2E Shared Award at E2E South Foundation/ });
+  await north.click(); await south.click();
+  await expect(north).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("region", { name: "Scholarship comparison selection", exact: true }).getByText("2 of 3 scholarships selected", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Search scholarships", exact: true }).fill("E2E Test Scholarship");
+  await expect(north).toHaveCount(0);
+  const trigger = page.getByRole("button", { name: "Compare selected scholarships", exact: true });
+  await trigger.focus(); await trigger.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Compare scholarships", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("columnheader")).toHaveCount(3);
+  await expect(dialog.locator('a[href="/scholarships/e2000000-0000-4000-8000-000000000238"]')).toBeVisible();
+  await expect(dialog.locator('a[href="/scholarships/e2000000-0000-4000-8000-000000000239"]')).toHaveCount(1);
+  await expect(dialog.getByText("Importing is not a new verification.", { exact: false })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  const region = dialog.getByRole("region", { name: "Scroll scholarship comparison horizontally" });
+  await region.focus(); await expect(region).toBeFocused();
+  const dialogBounds = await dialog.boundingBox();
+  const closeBounds = await dialog.getByRole("button", { name: "Close scholarship comparison" }).boundingBox();
+  expect(closeBounds!.y).toBeGreaterThanOrEqual(dialogBounds!.y);
+  await page.screenshot({ path: testInfo.outputPath("scholarship-comparison.png") });
+  await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0); await expect(trigger).toBeFocused();
+  await page.getByRole("button", { name: "Remove E2E Shared Award, listing 1 from comparison", exact: true }).click();
+  await expect(trigger).toBeDisabled();
+  await page.getByRole("button", { name: "Clear scholarship comparison", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Scholarship comparison selection", exact: true }).getByText("0 of 3 scholarships selected", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Compare E2E Test Scholarship at/ }).click();
+  await expect(page.getByRole("region", { name: "Scholarship comparison selection", exact: true }).getByText("1 of 3 scholarships selected", { exact: true })).toBeVisible();
+  await page.reload(); await expect(page.getByRole("region", { name: "Scholarship comparison selection", exact: true }).getByText("0 of 3 scholarships selected", { exact: true })).toBeVisible();
+  expect(bookmarkWrites).toEqual([]);
+});
+
 async function signInToIsolatedStudent(page: Page) {
   // The dedicated project normally starts with an empty browser context. Clear
   // any inherited state as a defense against accidentally reusing a shared DB
