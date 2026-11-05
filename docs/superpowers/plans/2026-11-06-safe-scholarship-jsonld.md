@@ -1,0 +1,5 @@
+# Safe scholarship JSON-LD (PROD-246)
+
+Execute inline. Public provider catalogue text is untrusted even though students cannot edit global scholarships. Both structured-data script elements currently use raw JSON.stringify, which does not escape HTML parser closing tags. Scope: escape all less-than characters to literal JSON Unicode escapes at both insertion points. Preserve decoded values; do not scrub scholarship facts or add dependencies.
+
+RED: parse real rendered active/inactive route HTML with jsdom using harmless closing-script/extra-element text in title/provider/description; assert no injected nodes, exact structured-script count and JSON round-trip values. GREEN: two serialization changes. Run full coverage, types/lint/build and hosted browser CI. Existing archive/identity browser journeys must remain green; synthetic malicious text exists only in unit fixtures, never in production. Actual Claude plus fresh independent whole-branch review, one fix pass, normal release gates and read-only live smoke.
