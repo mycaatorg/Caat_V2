@@ -6,6 +6,26 @@ Before keeping a function or trigger definition, the definitions were checked fo
 
 ## Start on a disposable local Supabase instance
 
+### Run the local release checks in sequence
+
+After preparing the disposable stack and environment below, run from `caat-frontend`:
+
+```sh
+npm run verify:local
+```
+
+This checks the loopback URLs and seeded account before starting, then runs
+type checking, lint, whole-source unit coverage, and the desktop browser suite
+against a fresh production build. Each stage must pass before the next starts.
+The browser stage uses CI's flaky-test failure policy and starts its own server
+on port 3100; stop any existing server on that port first.
+
+Do not run another unit or browser suite alongside this command. It serializes
+its own stages, but does not lock other terminals or worktrees. It does not
+create/reset the database, apply migrations, install browser binaries, run the
+phone suite, run the separate low-row-cap gate, or deploy anything. Hosted CI
+and the release checklist remain required.
+
 The checked-in config uses project ID `caat-test`, selects API/database/mail ports 55431/55432/55434, disables Studio and external edge/analytics/image/pooler services, and leaves migrations/seeds disabled. **The Docker network below supplies the loopback binding; the TOML port settings alone do not.** Use Supabase CLI 2.90.0, a disposable Docker context, Node 20+, and `psql`. From `caat-frontend`:
 
 ```sh

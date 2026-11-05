@@ -45,8 +45,8 @@ test("public duplicate scholarship links preserve the chosen listing", { tag: "@
   await expect(page.getByRole("heading", { name: "Choose a scholarship", exact: true })).toBeVisible();
   const north = page.getByRole("listitem").filter({ hasText: "E2E North Foundation" });
   const south = page.getByRole("listitem").filter({ hasText: "E2E South Foundation" });
-  await expect(north.getByRole("link", { name: "E2E Shared Award", exact: true })).toHaveAttribute("href", `${path}?award=e2000000-0000-4000-8000-000000000238`);
-  const selected = south.getByRole("link", { name: "E2E Shared Award", exact: true });
+  await expect(north.getByRole("link", { name: "E2E Shared Award — E2E North Foundation, A$5,000, recorded deadline 1 June 2027, listing 1 of 2", exact: true })).toHaveAttribute("href", `${path}?award=e2000000-0000-4000-8000-000000000238`);
+  const selected = south.getByRole("link", { name: "E2E Shared Award — E2E South Foundation, A$9,000, recorded deadline 1 July 2027, listing 2 of 2", exact: true });
   await expect(selected).toHaveAttribute("href", `${path}?award=${chosen}`);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("scholarship-choices.png"), fullPage: true });
@@ -72,6 +72,51 @@ test("public duplicate scholarship links preserve the chosen listing", { tag: "@
   await page.goto("/scholarship/e2e-test-scholarship");
   await expect(page.getByRole("heading", { name: "E2E Test Scholarship", level: 1, exact: true })).toBeVisible();
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", /\/scholarship\/e2e-test-scholarship$/);
+});
+
+test("scholarship comparison retains choices across filters and restores keyboard focus", { tag: "@phone" }, async ({ page }, testInfo) => {
+  await signInToIsolatedStudent(page);
+  const bookmarkWrites: string[] = [];
+  page.on("request", request => {
+    if (request.url().includes("/rest/v1/user_bookmarked_scholarships") && ["POST", "PATCH", "DELETE"].includes(request.method())) bookmarkWrites.push(request.method());
+  });
+  await page.goto("/scholarships?q=E2E");
+  const north = page.getByRole("button", { name: /^Compare E2E Shared Award at E2E North Foundation/ });
+  const south = page.getByRole("button", { name: /^Compare E2E Shared Award at E2E South Foundation/ });
+  await north.click(); await south.click();
+  await expect(north).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("region", { name: "Scholarship comparison selection", exact: true }).getByText("2 of 3 scholarships selected", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Search scholarships", exact: true }).fill("E2E Test Scholarship");
+  await expect(north).toHaveCount(0);
+  const trigger = page.getByRole("button", { name: "Compare selected scholarships", exact: true });
+  await trigger.focus(); await trigger.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Compare scholarships", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("columnheader")).toHaveCount(3);
+  await expect(dialog.locator('a[href="/scholarships/e2000000-0000-4000-8000-000000000238"]')).toBeVisible();
+  await expect(dialog.locator('a[href="/scholarships/e2000000-0000-4000-8000-000000000239"]')).toHaveCount(1);
+  await expect(dialog.getByText("Importing is not a new verification.", { exact: false })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  const region = dialog.getByRole("region", { name: "Scroll scholarship comparison" });
+  await region.focus(); await expect(region).toBeFocused();
+  const dialogBounds = await dialog.boundingBox();
+  const closeBounds = await dialog.getByRole("button", { name: "Close scholarship comparison" }).boundingBox();
+  expect(closeBounds!.y).toBeGreaterThanOrEqual(dialogBounds!.y);
+  await dialog.getByRole("rowheader", { name: "Source and verification", exact: true }).scrollIntoViewIfNeeded();
+  const headerBounds = await dialog.locator("thead").boundingBox();
+  const bottomCloseBounds = await dialog.getByRole("button", { name: "Close scholarship comparison" }).boundingBox();
+  expect(headerBounds!.y).toBeGreaterThanOrEqual(bottomCloseBounds!.y + bottomCloseBounds!.height);
+  expect(headerBounds!.y + headerBounds!.height).toBeLessThanOrEqual(dialogBounds!.y + dialogBounds!.height);
+  await page.screenshot({ path: testInfo.outputPath("scholarship-comparison.png") });
+  await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0); await expect(trigger).toBeFocused();
+  await page.getByRole("button", { name: "Remove E2E Shared Award, listing 1 from comparison", exact: true }).click();
+  await expect(trigger).toBeDisabled();
+  await page.getByRole("button", { name: "Clear scholarship comparison", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Scholarship comparison selection", exact: true }).getByText("0 of 3 scholarships selected", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Compare E2E Test Scholarship at/ }).click();
+  await expect(page.getByRole("region", { name: "Scholarship comparison selection", exact: true }).getByText("1 of 3 scholarships selected", { exact: true })).toBeVisible();
+  await page.reload(); await expect(page.getByRole("region", { name: "Scholarship comparison selection", exact: true }).getByText("0 of 3 scholarships selected", { exact: true })).toBeVisible();
+  expect(bookmarkWrites).toEqual([]);
 });
 
 async function signInToIsolatedStudent(page: Page) {
@@ -3117,7 +3162,8 @@ test('workspace search opens exact owned files and writing and recovers missing 
     return { id: data.user.id as string, headers: { apikey: key, Authorization: `Bearer ${data.access_token}`, Prefer: 'return=representation' } };
   }
   const student = await session(STUDENT_EMAIL), peer = await session('e2e.peer@caat.local.test');
-  const title = marker(`Search-${testInfo.project.name}`);
+  // Keep every printed filename on two lines even when the random suffix uses narrow glyphs.
+  const title = marker(`Search-${testInfo.project.name}-layout-fixture`);
   const promptIds = Array.from({ length: 51 }, () => crypto.randomUUID()), promptId = promptIds[50];
   const docIds = Array.from({ length: 51 }, () => crypto.randomUUID()).sort();
   const draftIds = [crypto.randomUUID(), crypto.randomUUID()], resumeIds = Array.from({ length: 51 }, () => crypto.randomUUID()), peerResume = crypto.randomUUID();
@@ -3213,9 +3259,9 @@ test('workspace search opens exact owned files and writing and recovers missing 
       await expect(page.locator('[data-print-application]')).toBeVisible();
       await expect(main).toBeHidden();
       const pdf = await page.pdf({ format: 'A4', preferCSSPageSize: true, printBackground: true });
+      await testInfo.attach('application-planning-brief-pdf', { body: pdf, contentType: 'application/pdf' });
       expect(pdfPageCount(pdf)).toBeGreaterThan(1);
       expect(pdfPageCount(pdf)).toBe(4); // 51 rows fit without a footer-only fifth page.
-      await testInfo.attach('application-planning-brief-pdf', { body: pdf, contentType: 'application/pdf' });
       await page.emulateMedia({ media: 'screen' });
     }
     await page.route('**/rest/v1/documents?*', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'brief source outage' }) }));
