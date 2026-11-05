@@ -342,7 +342,10 @@ test("a new student completes onboarding, saves a first scholarship and sees it 
     await page.getByRole("checkbox", { name: "Engineering", exact: true }).click();
     await page.getByRole("button", { name: /Continue/ }).click();
 
-    // Leaving midway keeps progress: a reload resumes at the last question.
+    // Continue awaits the profile write before showing the next question.
+    // Wait for that acknowledgement; click() alone does not await an async handler.
+    await expect(page.getByText("Step 5 of 5", { exact: false })).toBeVisible({ timeout: 15_000 });
+    // Leaving midway keeps saved progress: a reload resumes at the last question.
     await page.reload();
     await expect(page.getByText("Step 5 of 5", { exact: false })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("radio", { name: /Preparing applications/ }).click();
