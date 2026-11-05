@@ -2991,7 +2991,7 @@ test('Applications board preserves drafts across views and recovers status moves
   await page.getByLabel('Sort applications',{exact:true}).selectOption('deadline');
   await card.getByRole('button',{name:'Notes',exact:true}).click();
   // Freeze just the debounce window, so the view switch certainly precedes save.
-  await page.clock.install();await page.clock.pauseAt(new Date());
+  await page.clock.install();await page.clock.pauseAt(await page.evaluate(() => Date.now()));
   await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(note);
   await page.getByRole('button',{name:'List view',exact:true}).click();
   await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(note);
@@ -3014,12 +3014,21 @@ test('Applications board preserves drafts across views and recovers status moves
   const failedNote=`${note} after outage`;
   await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(failedNote);
   await expect(card.getByText('Not saved',{exact:true})).toBeVisible();
+  // PROD-273: hold expiry through setup, then keep the notification hovered during keyboard retry.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
   await page.getByRole('button',{name:'Outcome',exact:true}).click();
   await page.getByRole('button',{name:'All',exact:true}).click();
   await expect(card.getByLabel('Application notes for E2E Test University',{exact:true})).toHaveValue(failedNote);
   await expect(card.getByText('Not saved',{exact:true})).toBeVisible();
-  await page.unroute(APPLICATION_WRITES);await card.getByRole('button',{name:'Save',exact:true}).click();
+  await page.unroute(APPLICATION_WRITES);
+  const noteError = page.locator('[data-sonner-toast]').filter({hasText:'Failed to update notes.'});
+  await noteError.hover();
+  await expect(noteError).toHaveAttribute('data-expanded','true');
+  await card.getByRole('button',{name:'Save',exact:true}).focus();
+  await page.keyboard.press('Enter');
   await expect(card.getByText('Saved',{exact:true})).toBeVisible();
+  // Resume animation frames; hover continues to pause ordinary auto-dismissal.
+  await page.clock.resume();
   await expect(page.getByText('Failed to update notes.',{exact:true})).toHaveCount(0,{timeout:10_000});
   await testInfo.attach('applications-board',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
@@ -3030,7 +3039,7 @@ test('Applications board preserves drafts across views and recovers status moves
   await expect(status()).toContainText('Applying');
   // Leave before the 800ms debounce: ordinary workspace navigation still saves.
   const navigationNote=`${note} before navigation`;
-  await page.clock.pauseAt(new Date());
+  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
   await card.getByLabel('Application notes for E2E Test University',{exact:true}).fill(navigationNote);
   await page.getByRole('link',{name:'Plan today',exact:true}).click();
   await page.waitForURL(/\/today(?:$|\?)/);await page.clock.resume();
