@@ -56,6 +56,70 @@ it('clears recipient data on an unsuccessful refresh rather than retaining stale
 it('clears the snapshot at expiry without waiting for a poll',async()=>{
  vi.useFakeTimers();api.readSharedShortlist.mockResolvedValue({...snapshot,expires_at:new Date(Date.now()+1000).toISOString()});await mountComponent(<SharedShortlist/>);expect(document.body.textContent).toContain('Engineering');await act(async()=>vi.advanceTimersByTimeAsync(1001));expect(document.body.textContent).not.toContain('Engineering');expect(document.body.textContent).toContain('Link unavailable');
 });
+it('expires an owner link and removes active controls without a reload or history poll',async()=>{
+ vi.useFakeTimers();
+ api.loadShares.mockResolvedValue([{...record,expires_at:new Date(Date.now()+1000).toISOString()}]);
+ await mountComponent(<ShareManager/>);
+ expect(document.body.textContent).toContain('Active until');
+ expect(button('Replace link').disabled).toBe(false);
+ await act(async()=>vi.advanceTimersByTimeAsync(1000));
+ expect(document.body.textContent).toContain('Expired');
+ expect(document.body.textContent).not.toContain('Active until');
+ expect([...document.querySelectorAll('button')].some(b=>b.textContent==='Replace link'||b.textContent==='Revoke link')).toBe(false);
+ expect(api.loadShares).toHaveBeenCalledTimes(1);
+});
+it('dismisses an open replacement confirmation when its link expires',async()=>{
+ vi.useFakeTimers();
+ api.loadShares.mockResolvedValue([{...record,expires_at:new Date(Date.now()+1000).toISOString()}]);
+ await mountComponent(<ShareManager/>);await click(button('Replace link'));
+ expect(button('Confirm replacement')).toBeTruthy();
+ await act(async()=>vi.advanceTimersByTimeAsync(1000));
+ expect([...document.querySelectorAll('button')].some(b=>b.textContent==='Confirm replacement')).toBe(false);
+ expect(api.replaceShare).not.toHaveBeenCalled();
+});
+it('removes the copy control for a newly created link once it expires',async()=>{
+ vi.useFakeTimers();
+ api.createShare.mockResolvedValue({...record,expires_at:new Date(Date.now()+1000).toISOString()});
+ await mountComponent(<ShareManager/>);await preview();await click(button('Create shared link'));
+ expect(document.querySelector('[aria-label="Shared link"]')).not.toBeNull();
+ await act(async()=>vi.advanceTimersByTimeAsync(1000));
+ expect(document.querySelector('[aria-label="Shared link"]')).toBeNull();
+ expect(document.body.textContent).toContain('Expired');
+});
+it('refreshes owner expiry after browser sleep on focus and visibility change',async()=>{
+ vi.useFakeTimers();const now=Date.now();
+ api.loadShares.mockResolvedValue([{...record,expires_at:new Date(now+1000).toISOString()}, {...record,id:'later',expires_at:new Date(now+2000).toISOString()}]);
+ await mountComponent(<ShareManager/>);
+ await act(async()=>{vi.setSystemTime(now+1001);window.dispatchEvent(new Event('focus'));});
+ expect(document.querySelectorAll('li')[0].textContent).toContain('Expired');
+ expect(document.querySelectorAll('li')[1].textContent).toContain('Active until');
+ await act(async()=>{vi.setSystemTime(now+2001);document.dispatchEvent(new Event('visibilitychange'));});
+ expect(document.body.textContent).not.toContain('Active until');
+ expect(api.loadShares).toHaveBeenCalledTimes(1);
+});
+it('reschedules changed deadlines and cleans up a StrictMode timer on unmount',async()=>{
+ vi.useFakeTimers();const now=Date.now();
+ api.loadShares.mockResolvedValue([{...record,expires_at:new Date(now+1000).toISOString()}]);
+ await mountComponent(<React.StrictMode><ShareManager/></React.StrictMode>);
+ api.loadShares.mockResolvedValue([{...record,expires_at:new Date(now+3000).toISOString()}]);
+ await click(button('Refresh links'));
+ await act(async()=>vi.advanceTimersByTimeAsync(1001));
+ expect(document.body.textContent).toContain('Active until');
+ await act(async()=>vi.advanceTimersByTimeAsync(1999));
+ expect(document.body.textContent).toContain('Expired');
+ unmountAll();expect(vi.getTimerCount()).toBe(0);
+});
+it('handles thirty-day timers without early expiry and retains revoked labels',async()=>{
+ vi.useFakeTimers();const now=Date.now();const lifetime=30*86400000;
+ api.loadShares.mockResolvedValue([{...record,expires_at:new Date(now+lifetime).toISOString()}, {...record,id:'revoked',expires_at:new Date(now-1).toISOString(),revoked_at:new Date(now-100).toISOString()}]);
+ await mountComponent(<ShareManager/>);
+ await act(async()=>vi.advanceTimersByTimeAsync(2147483647));
+ expect(document.querySelectorAll('li')[0].textContent).toContain('Active until');
+ await act(async()=>vi.advanceTimersByTimeAsync(lifetime-2147483647));
+ expect(document.querySelectorAll('li')[0].textContent).toContain('Expired');
+ expect(document.querySelectorAll('li')[1].textContent).toContain('Revoked');
+ expect(api.loadShares).toHaveBeenCalledTimes(1);
+});
 it('ignores a refresh result from history started before revocation',async()=>{
  api.loadShares.mockResolvedValue([record]);api.revokeShare.mockResolvedValue({...record,revoked_at:new Date().toISOString()});await mountComponent(<ShareManager/>);const stale=deferred<typeof record[]>();api.loadShares.mockReturnValue(stale.promise);await click(button('Refresh links'));await click(button('Revoke link'));await act(async()=>stale.resolve([record]));expect(document.body.textContent).toContain('Revoked');expect(document.body.textContent).not.toContain('Active until');
 });
