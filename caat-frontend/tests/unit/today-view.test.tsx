@@ -50,6 +50,13 @@ afterEach(() => unmountAll());
 beforeEach(() => window.history.replaceState(null, "", "/today"));
 
 describe("Today", () => {
+  it('links a personal task to its application without nesting navigation in its checkbox label',async()=>{
+    await mountComponent(<TodayView {...props({todos:[{id:'linked',text:'Call admissions',dueDate:null,priority:2,application:{id:'app-1',name:'Example University'}}]})}/>);
+    const target=link('Application: Example University');
+    expect(target.getAttribute('href')).toBe('/applications/app-1#personal-tasks');
+    expect(target.closest('label')).toBeNull();
+    await click(target);expect(io.toggleTodo).not.toHaveBeenCalled();
+  });
   it.each([
     ["2026-12-29", "Monday 4 January 2027"],
     ["2028-02-27", "Saturday 4 March 2028"],

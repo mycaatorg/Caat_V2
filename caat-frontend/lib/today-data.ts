@@ -49,6 +49,7 @@ export interface TodayTodo {
   text: string;
   dueDate: string | null;
   priority: number;
+  application?: {id:string;name:string};
 }
 
 export interface SavedPreview {
@@ -87,7 +88,7 @@ export async function loadToday(
   timeZone: string = DEFAULT_TIME_ZONE,
 ): Promise<TodayData> {
   const todayISO = zonedTodayISO(timeZone, now);
-  const [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, savedCourseRes, todos, resumesRes, promptsRes, customRes, deadlines] =
+  const [profileRes, appsRes, draftsRes, docsRes, savedSchRes, savedSchoolRes, savedMajorRes, savedCourseRes, todos, resumesRes, promptsRes, customRes, deadlines, taskLinks] =
     await Promise.all([
       supabase
         .from("profiles")
@@ -123,6 +124,7 @@ export async function loadToday(
       todayRows((from, to) => supabase.from("custom_essay_prompts").select("id, title")
         .eq("user_id", userId).order("id").range(from, to)).catch(() => ({ data: [], error: null })),
       fetchUnifiedDeadlines(supabase, userId, todayISO),
+      todayRows((from,to)=>supabase.from('application_task_links').select('task_id, application_id').eq('user_id',userId).order('task_id').range(from,to)),
     ]);
 
   // A failed read must not look like an empty account (that would tell a
@@ -216,6 +218,8 @@ export async function loadToday(
     }),
   ].slice(0, 3);
 
+  const taskApplications=new Map((taskLinks.data as {task_id:string;application_id:string}[]).map(link=>[link.task_id,link.application_id]));
+  const applicationsById=new Map(applications.map(application=>[application.id,application]));
   return {
     firstName: (profile?.first_name as string | null) ?? null,
     input: {
@@ -246,12 +250,16 @@ export async function loadToday(
       scholarshipStatuses: Object.fromEntries(savedSch.map((r) => [r.scholarship_id as string, (r.status as string | null) ?? "interested"])),
     },
     recent,
-    todos: todos.map((t) => ({
+    todos: todos.map((t) => {
+      const applicationId=taskApplications.get(t.id as string);
+      const application=typeof applicationId==='string'?applicationsById.get(applicationId):undefined;
+      return {
       id: t.id as string,
       text: t.text as string,
       dueDate: (t.due_date as string | null) ?? null,
       priority: (t.priority as number | null) ?? 2,
-    })),
+      ...(application?{application:{id:application.id,name:application.schoolName}}:{}),
+    };}),
     savedPreview,
   };
 }
