@@ -154,6 +154,11 @@ jobs:
             npm install --no-fund --no-audit
           fi
 
+      - name: Audit production dependencies
+        # High/critical advisories and registry failures block integration.
+        if: ${{ matrix.project.path == 'caat-frontend' }}
+        run: npm run audit:production
+
       - name: Typecheck
         # Only run type checking when a dedicated "typecheck" script exists.
         # For the Next.js apps in this repo, this will use "tsc --noEmit".

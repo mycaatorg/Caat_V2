@@ -24,6 +24,7 @@ function WorkDialog({check,onClose,returnFocusRef}:{check:PreparationCheck;onClo
   finally{if(request===generation.current)setLoading(false);}
  },[check.application_id,check.id]);
  const cancelPending=useCallback(()=>{generation.current++;},[]);
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
  useEffect(()=>{void load();const refresh=()=>{if(!writing.current)void load();};window.addEventListener('focus',refresh);window.addEventListener(REQUIREMENT_WORK_CHANGED,refresh);return()=>{cancelPending();window.removeEventListener('focus',refresh);window.removeEventListener(REQUIREMENT_WORK_CHANGED,refresh);};},[load,cancelPending]);
  const run=async(action:()=>Promise<void>)=>{if(writing.current)return;writing.current=true;setBusy(true);setError(null);try{await action();setSelected('');await load();}catch(e){setError(e instanceof Error?e.message:'Could not save. Refresh to try again.');}finally{writing.current=false;setBusy(false);}};
  const linked=(s:WorkSource)=>!!data?.links.some(l=>matches(l,s));

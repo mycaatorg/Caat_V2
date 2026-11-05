@@ -8,6 +8,7 @@ export function CoursePreparationReview(){
  const [data,setData]=useState<CoursePreparation|null>(null),[error,setError]=useState(false),[loading,setLoading]=useState(true);const generation=useRef(0);
  const load=useCallback(async()=>{const request=++generation.current;setLoading(true);try{const next=await fetchCoursePreparation();if(request===generation.current){setData(next);setError(false);}}catch{if(request===generation.current){setData(null);setError(true);}}finally{if(request===generation.current)setLoading(false);}},[]);
  const cancelPending=useCallback(()=>{generation.current++;},[]);
+ // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
  useEffect(()=>{void load();const refresh=()=>void load();window.addEventListener('focus',refresh);return()=>{cancelPending();window.removeEventListener('focus',refresh);};},[load,cancelPending]);
  const changed=data?.checks.filter(check=>{const course=data.courses.find(c=>c.id===check.course_id);return !course||!course.active||course.school_id!==check.school_id||preparationNeedsReview(check,course);})??[];
  if(!error&&!changed.length)return null;

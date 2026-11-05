@@ -121,6 +121,7 @@ export function AppSidebar({
   // still resolved without a network call (from AuthContext), so this only
   // defers the footer avatar by one frame, exactly as before Phase 3.
   const [mounted, setMounted] = React.useState(false)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
   React.useEffect(() => setMounted(true), [])
 
   const user = authUser

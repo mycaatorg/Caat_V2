@@ -13,6 +13,7 @@ export function ResumeSharePicker({resumeId,onChange,anonymous,disabled=false}:{
  useEffect(()=>{
   const requests=generation;requests.current++;
   // Selection invalidates both the displayed copy and its consent.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
   setPreview(null);setConfirmed(false);setError(null);setBusy(false);onChange(null);
   return ()=>{requests.current++;};
  },[resumeId,onChange,anonymous]);

@@ -159,6 +159,7 @@ export default function ApplicationsClient() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
     loadApplications();
     fetchUnimportedBookmarkCount()
       .then(setUnimportedCount)

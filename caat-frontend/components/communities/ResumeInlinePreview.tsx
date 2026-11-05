@@ -16,6 +16,7 @@ export function ResumeInlinePreview({postId,isOwner,management=false}:{postId:st
  const generation=useRef(0),identity=useRef(postId);
  const {ref,inView}=useInView({threshold:0.05});
  useEffect(()=>{
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
   identity.current=postId;setBusy(false);
   setSnapshot(null);setError(null);setRemoved(false);setOpen(false);setConfirm(false);setRemoveError(null);
   return ()=>{identity.current="";};

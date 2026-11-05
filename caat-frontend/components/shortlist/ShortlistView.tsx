@@ -158,6 +158,7 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
   useEffect(() => {
     const restore = () => setView(readViewState(window.location.search));
     const initialView = readViewState(window.location.search);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
     setView(initialView);
     writeViewState(initialView);
     window.addEventListener("popstate", restore);
@@ -175,6 +176,7 @@ export function ShortlistView({ initial, initialQuery = "" }: { initial: Shortli
           ? list.courses.filter(c => `${c.name} ${c.institutionName} ${c.campus ?? ""}`.toLowerCase().includes(term)).length
           : list.majors.filter((m) => `${m.name} ${m.category ?? ""}`.toLowerCase().includes(term)).length;
     const page = Math.min(view.page, Math.max(1, Math.ceil(count / PAGE_SIZE)));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- PROD-248: preserve existing load/reset timing during the security upgrade; refactor with journey coverage.
     if (page !== view.page) updateView({ ...view, page });
   }, [list, view]);
 
