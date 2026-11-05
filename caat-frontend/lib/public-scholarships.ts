@@ -157,26 +157,28 @@ export const getRelatedScholarships = unstable_cache(
 );
 
 /**
- * All indexable scholarship slugs (+ updated_at) for the sitemap. Active rows
- * with a slug only. 4,224 rows is well under the 50k-URL sitemap limit, so this
- * is returned in one list.
+ * All indexable scholarship slugs for the sitemap. Count aliases across the
+ * same public population as detail pages, including inactive siblings, then
+ * emit active records only. The catalogue fits within one sitemap.
  */
 export const getPublicScholarshipSlugs = unstable_cache(
-  async (): Promise<{ id: string; slug: string; updated_at: string }[]> => {
+  async (): Promise<{ id: string; slug: string; updated_at: string; hasSharedSlug: boolean }[]> => {
     const sb = createPublicClient();
-    const rows = await evidencePages<{ id: string; slug: string | null; updated_at: string }>(
+    const rows = await evidencePages<{ id: string; slug: string | null; updated_at: string; is_active: boolean }>(
       (from, to) => sb
         .from("scholarships")
-        .select("id, slug, updated_at")
-        .eq("is_active", true)
+        .select("id, slug, updated_at, is_active")
         .not("slug", "is", null)
         .order("updated_at", { ascending: false })
         .order("id", { ascending: true })
         .range(from, to),
       "Could not load the complete public scholarship sitemap.",
     );
-    return rows.flatMap(({ id, slug, updated_at }) => slug ? [{ id, slug, updated_at }] : []);
+    const counts = new Map<string, number>();
+    for (const { slug } of rows) if (slug) counts.set(slug, (counts.get(slug) ?? 0) + 1);
+    return rows.flatMap(({ id, slug, updated_at, is_active }) => slug && is_active
+      ? [{ id, slug, updated_at, hasSharedSlug: counts.get(slug)! > 1 }] : []);
   },
-  ["public-scholarship-slugs-with-identity-v1"],
+  ["public-scholarship-slugs-with-identity-v2"],
   { revalidate: 3600, tags: ["scholarship-catalog"] },
 );

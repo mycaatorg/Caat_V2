@@ -7,7 +7,7 @@ vi.mock('next/cache', () => ({ unstable_cache: <T>(fn: T) => fn }));
 import { getPublicScholarshipBySlug } from '@/lib/public-scholarships';
 import sitemap from '@/app/sitemap';
 
-const first = { id: '11111111-1111-4111-8111-111111111111', slug: 'shared-award', title: 'First award', provider_name: 'First university', updated_at: '2026-11-01T12:00:00Z' };
+const first = { id: '11111111-1111-4111-8111-111111111111', slug: 'shared-award', title: 'First award', provider_name: 'First university', is_active: true, updated_at: '2026-11-01T12:00:00Z' };
 const second = { ...first, id: '22222222-2222-4222-8222-222222222222', title: 'Second award', provider_name: 'Second university' };
 function fixture(rows: typeof first[], failAfterFirst = false) {
   const sb = createMockSupabase({ resolver: (query: QueryContext) => {
@@ -17,6 +17,7 @@ function fixture(rows: typeof first[], failAfterFirst = false) {
     for (const call of query.calls.filter((call) => call.method === 'eq')) {
       if (call.args[0] === 'slug') selected = selected.filter((r) => r.slug === call.args[1]);
       if (call.args[0] === 'id') selected = selected.filter((r) => r.id === call.args[1]);
+      if (call.args[0] === 'is_active') selected = selected.filter((r) => r.is_active === call.args[1]);
     }
     if (query.calls.some((call) => call.method === 'maybeSingle')) {
       return selected.length > 1 ? { data: null, error: { message: 'Multiple rows returned' } } : { data: selected[0] ?? null, error: null };
@@ -52,6 +53,14 @@ describe('public scholarship record identity', () => {
   it('does not publish a partial choice when a later alias page fails', async () => {
     fixture([first, second], true);
     await expect(getPublicScholarshipBySlug('shared-award', first.id)).rejects.toThrow('Could not load the scholarship listings.');
+  });
+
+  it('links directly to active records when an inactive record shares the alias', async () => {
+    fixture([first, { ...second, is_active: false }, { ...second, slug: 'inactive-only', is_active: false }]);
+    const paths = (await sitemap()).map((entry) => new URL(entry.url)).filter((url) => url.pathname.startsWith('/scholarship/')).map((url) => url.pathname + url.search);
+    expect(paths).toEqual([`/scholarship/shared-award?award=${first.id}`]);
+    expect(await getPublicScholarshipBySlug('shared-award')).toBeNull();
+    expect(await getPublicScholarshipBySlug('shared-award', first.id)).toMatchObject({ id: first.id });
   });
 
   it('gives duplicate sitemap slugs distinct record URLs and preserves unique bare URLs', async () => {

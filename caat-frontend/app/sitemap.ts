@@ -38,10 +38,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let scholarshipEntries: MetadataRoute.Sitemap = [];
   try {
     const slugs = await getPublicScholarshipSlugs();
-    const counts = new Map<string, number>();
-    for (const { slug } of slugs) counts.set(slug, (counts.get(slug) ?? 0) + 1);
-    scholarshipEntries = slugs.map(({ id, slug, updated_at }) => ({
-      url: new URL(publicScholarshipPath(slug, counts.get(slug)! > 1 ? id : undefined), siteUrl).toString(),
+    scholarshipEntries = slugs.map(({ id, slug, updated_at, hasSharedSlug }) => ({
+      url: new URL(publicScholarshipPath(slug, hasSharedSlug ? id : undefined), siteUrl).toString(),
       lastModified: updated_at ? new Date(updated_at) : now,
       changeFrequency: "weekly",
       priority: 0.7,
