@@ -3896,3 +3896,79 @@ test('application personal tasks stay shared with Today and complete beyond row 
     async()=>expect((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${app}`,{headers})).ok()).toBe(true),
   ]);});
 });
+
+test('application brief includes complete optional course preparation and personal tasks (PROD-266)',{tag:'@phone'},async({page,request},testInfo)=>{
+ test.setTimeout(120_000);
+ const api=assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL,'NEXT_PUBLIC_SUPABASE_URL').origin,key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+ const auth=await request.post(`${api}/auth/v1/token?grant_type=password`,{headers:{apikey:key},data:{email:STUDENT_EMAIL,password:process.env.E2E_TEST_PASSWORD}});expect(auth.ok()).toBe(true);
+ const session=await auth.json(),own=`user_id=eq.${session.user.id}`,headers={apikey:key,Authorization:`Bearer ${session.access_token}`,Prefer:'return=representation'};
+ const app=crypto.randomUUID(),taskIds=Array.from({length:55},()=>crypto.randomUUID()).sort(),courseIds=Array.from({length:18},(_,i)=>`e2e-brief-course-${String(i).padStart(3,'0')}`),tail=courseIds[17];
+ const title=marker(`BriefTasks-${testInfo.project.name}`);let bookmarkWriteAttempted=false;
+ const read=async(table:string,query:string)=>{const r=await request.get(`${api}/rest/v1/${table}?${query}`,{headers});expect(r.ok()).toBe(true);return r.json();};
+ const insert=async(table:string,data:unknown)=>{const r=await request.post(`${api}/rest/v1/${table}`,{headers,data});expect(r.ok(),`Insert ${table}: ${r.ok()?'ok':await r.text()}`).toBe(true);};
+ const snapshot=(course:Record<string,unknown>,key:string)=>({name:course.name,program_code:course.program_code,campus:course.campus,school_id:course.school_id,active:course.active,text:course[key],url:key==='prerequisites'?course.prerequisites_url:key==='application_route'?course.application_url:null,source_url:course.source_url,source_year:course.source_year,verified_at:course.verified_at});
+ await withScopedCleanup(async()=>{
+  // These fixture bookmarks must be absent before attempting any writes.
+  expect(await read('user_course_bookmarks',`${own}&course_id=in.(${courseIds.join(',')})`)).toEqual([]);
+  await insert('user_school_applications',{id:app,user_id:session.user.id,school_id:900266});
+  bookmarkWriteAttempted=true;await insert('user_course_bookmarks',courseIds.map(id=>({course_id:id,user_id:session.user.id})));
+  await insert('user_todos',taskIds.map((id,i)=>({id,user_id:session.user.id,text:`${title}-${String(i).padStart(3,'0')}`,due_date:i===54?null:'2099-12-01',done:i===54})));
+  await insert('application_task_links',taskIds.map(id=>({task_id:id,application_id:app,user_id:session.user.id})));
+  const courses=await read('course_offerings',`id=in.(${courseIds.join(',')})&order=id`);expect(courses).toHaveLength(18);
+  for(const course of courses){
+   for(const key of ['prerequisites','assumed_knowledge','application_route']){
+    const payload={p_application_id:app,p_course_id:course.id,p_item_key:key,p_action:'start',p_expected_revision:null,p_expected_snapshot:snapshot(course,key)};
+    const response=await request.post(`${api}/rest/v1/rpc/save_course_preparation`,{headers,data:payload});expect(response.ok()).toBe(true);
+    if(course.id===tail&&key==='prerequisites'){
+     const saved=(await response.json())[0];expect((await request.post(`${api}/rest/v1/rpc/save_course_preparation`,{headers,data:{...payload,p_action:'reviewed',p_expected_revision:saved.revision}})).ok()).toBe(true);
+    }
+   }
+  }
+  if(process.env.CAAT_EXPORT_TEST_ROW_CAP){
+   for(const table of ['course_preparation_checks','application_task_links'])expect((await read(table,`${own}&application_id=eq.${app}&limit=200`)).length).toBe(50);
+   console.log('Verified actual optional-brief preparation and personal-task row caps: 50');
+  }
+  await signInToIsolatedStudent(page);await page.goto(`/applications/${app}/brief`);
+  const preview=page.locator('[data-application-brief-preview]'),courseChoice=page.getByRole('checkbox',{name:'Include course preparation',exact:true}),taskChoice=page.getByRole('checkbox',{name:'Include my personal application tasks',exact:true}),print=page.getByRole('button',{name:'Print / Save PDF',exact:true});
+  await expect(courseChoice).not.toBeChecked();await expect(taskChoice).not.toBeChecked();await expect(preview).not.toContainText(title);
+  // Replay a changed catalogue response only in this isolated browser. Saved
+  // checks and their original snapshots remain real persisted database rows.
+  const changed='Updated provider prerequisite. '+Array.from({length:24},(_,i)=>`Preparation detail ${i+1}: check the recorded provider instructions.`).join(' ')+' END-COURSE-DETAIL';
+  await page.route('**/rest/v1/course_offerings?*',async route=>{
+   const response=await route.fetch(),rows=await response.json();
+   await route.fulfill({response,json:Array.isArray(rows)?rows.map((row:{id:string})=>row.id===tail?{...row,prerequisites:changed,verified_at:'2026-11-01T00:00:00Z'}:row):rows});
+  });
+  await courseChoice.check();await taskChoice.check();await expect(print).toBeEnabled();
+  const courseSection=preview.getByRole('region',{name:'Course preparation in this brief',exact:true}),taskSection=preview.getByRole('region',{name:'Personal application tasks in this brief',exact:true});
+  await expect(courseSection.locator('tbody tr')).toHaveCount(54);await expect(taskSection.locator('tbody tr')).toHaveCount(55);
+  const tailRow=courseSection.getByRole('table',{name:'Preparation for E2E Brief Course 017',exact:true}).locator('tbody tr').filter({hasText:'Review prerequisites'});
+  await expect(tailRow).toContainText('Source checked 1 October 2026.');await expect(tailRow).toContainText('Source checked 1 November 2026.');await expect(tailRow).not.toContainText('Source checked Not recorded');await expect(tailRow).toContainText('Needs review');await expect(tailRow).toContainText('Previously saved information');await expect(tailRow).toContainText('Recorded Mathematics');await expect(tailRow).toContainText('END-COURSE-DETAIL');
+  await expect(taskSection.locator('tr').filter({hasText:`${title}-054`})).toContainText('Completed');
+  await expect(taskSection.locator('tr').filter({hasText:`${title}-054`})).toContainText('No due date');
+  expect(await page.locator('[data-print-application]').textContent()).toBe(await preview.textContent());
+  await page.evaluate(()=>{(window as Window & {__printedBrief?:string}).print=()=>{(window as Window & {__printedBrief?:string}).__printedBrief=document.querySelector('[data-print-application]')?.textContent??'';};});
+  await print.click();expect(await page.evaluate(()=>(window as Window & {__printedBrief?:string}).__printedBrief)).toBe(await preview.textContent());
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await tailRow.scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('brief-course-review.png')});
+  if(testInfo.project.name==='staging'){
+   const pdf=await page.pdf({path:testInfo.outputPath('complete-application-brief.pdf'),format:'A4',preferCSSPageSize:true,printBackground:true});
+   expect(pdfPageCount(pdf)).toBeGreaterThan(4);expect(pdfPageCount(pdf)).toBeLessThan(80);
+  }
+  for(const table of ['course_preparation_checks','application_task_links']){
+   const pattern=`**/rest/v1/${table}?*`;
+   await page.route(pattern,route=>Number(new URL(route.request().url()).searchParams.get('offset')??0)>0?route.fulfill({status:503,contentType:'application/json',body:'{"message":"late optional source outage"}'}):route.continue());
+   await page.getByRole('button',{name:'Refresh brief',exact:true}).click();
+   await expect(page.getByRole('main').getByRole('alert')).toContainText(table==='course_preparation_checks'?'Could not load course preparation completely':'Could not load personal tasks completely');
+   await expect(print).toBeDisabled();await expect(page.locator('[data-print-application]')).toHaveCount(0);
+   const choice=table==='course_preparation_checks'?courseChoice:taskChoice;await choice.uncheck();await expect(print).toBeEnabled();
+   await page.unroute(pattern);await choice.check();await expect(print).toBeEnabled();
+  }
+  await taskChoice.uncheck();await expect(preview).not.toContainText(title);await expect(courseSection.locator('tbody tr')).toHaveCount(54);
+  await page.unroute('**/rest/v1/course_offerings?*');
+ },async()=>{await runScopedCleanup([
+  async()=>{if(!page.isClosed())await page.close();},
+  async()=>expect((await request.delete(`${api}/rest/v1/user_todos?${own}&id=in.(${taskIds.join(',')})`,{headers})).ok()).toBe(true),
+  async()=>expect((await request.delete(`${api}/rest/v1/user_school_applications?${own}&id=eq.${app}`,{headers})).ok()).toBe(true),
+  async()=>{if(bookmarkWriteAttempted)expect((await request.delete(`${api}/rest/v1/user_course_bookmarks?${own}&course_id=in.(${courseIds.join(',')})`,{headers})).ok()).toBe(true);},
+ ]);});
+});
