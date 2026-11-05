@@ -14,6 +14,7 @@ import {
   type PublicSearchParams,
 } from "@/lib/public-scholarships";
 import { PublicHeader, PublicFooter } from "@/components/public/PublicChrome";
+import { publicScholarshipPath } from "@/lib/public-scholarship-identity";
 
 const description =
   "Browse thousands of scholarships for Australian university students. Filter by study level, funding type, and location, then track deadlines and eligibility with a free CAAT account.";
@@ -53,7 +54,7 @@ function ScholarshipCard({ s }: { s: ScholarshipRow }) {
 
   return (
     <Link
-      href={`/scholarship/${s.slug}`}
+      href={publicScholarshipPath(s.slug!, s.id)}
       className="flex flex-col border border-black rounded-md bg-white p-5 hover:shadow-[4px_4px_0_0_#9a1a27] hover:-translate-y-0.5 transition-all duration-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-[#9a1a27] focus-visible:outline-offset-2"
     >
       <span className="text-[11px] font-semibold uppercase tracking-wide text-[#9a1a27] mb-1.5">

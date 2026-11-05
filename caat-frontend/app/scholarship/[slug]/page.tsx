@@ -20,11 +20,13 @@ import {
 import { safeHref } from "@/lib/safe-href";
 import { TAG_COLORS } from "@/constants/scholarships";
 import {
-  getPublicScholarshipBySlug,
+  getPublicScholarshipsBySlug,
   getRelatedScholarships,
 } from "@/lib/public-scholarships";
 import { PublicHeader, PublicFooter } from "@/components/public/PublicChrome";
 import { TrackScholarshipCta } from "@/components/public/TrackScholarshipCta";
+import { ScholarshipChoices } from "@/components/public/ScholarshipChoices";
+import { publicScholarshipPath, selectPublicScholarship } from "@/lib/public-scholarship-identity";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.mycaat.com";
 
@@ -74,16 +76,23 @@ function buildDescription(s: ScholarshipRow): string {
   return `${s.title}. ${sentences.join(". ")}.`.slice(0, 300);
 }
 
-type Props = { params: Promise<{ slug: string }> };
+type Props = { params: Promise<{ slug: string }>; searchParams?: Promise<{ award?: string | string[] }> };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const s = await getPublicScholarshipBySlug(slug);
+  const award = (await searchParams)?.award;
+  const rows = await getPublicScholarshipsBySlug(slug);
+  if (award === undefined && rows.length > 1) return {
+    title: "Choose a scholarship",
+    description: "Choose the scholarship listing you want to view and check its official source.",
+    alternates: { canonical: publicScholarshipPath(slug) },
+  };
+  const s = selectPublicScholarship(rows, award);
   if (!s) {
-    return { title: "Scholarship not found" };
+    return { title: "Scholarship not found", robots: { index: false } };
   }
   const description = buildDescription(s);
-  const canonical = `/scholarship/${slug}`;
+  const canonical = publicScholarshipPath(slug, rows.length > 1 ? s.id : undefined);
   return {
     title: s.title,
     description,
@@ -123,8 +132,8 @@ function DetailRow({
 
 // schema.org structured data. A scholarship is modelled as a MonetaryGrant,
 // with a BreadcrumbList for the directory trail.
-function JsonLd({ s, slug }: { s: ScholarshipRow; slug: string }) {
-  const url = `${siteUrl}/scholarship/${slug}`;
+function JsonLd({ s, canonical }: { s: ScholarshipRow; canonical: string }) {
+  const url = new URL(canonical, siteUrl).toString();
   const grant: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "MonetaryGrant",
@@ -172,10 +181,16 @@ function JsonLd({ s, slug }: { s: ScholarshipRow; slug: string }) {
   );
 }
 
-export default async function PublicScholarshipPage({ params }: Props) {
+export default async function PublicScholarshipPage({ params, searchParams }: Props) {
   const { slug } = await params;
-  const s = await getPublicScholarshipBySlug(slug);
+  const award = (await searchParams)?.award;
+  const rows = await getPublicScholarshipsBySlug(slug);
+  if (award === undefined && rows.length > 1) return <div className="min-h-screen flex flex-col bg-white text-black">
+    <PublicHeader /><ScholarshipChoices scholarships={rows} /><PublicFooter />
+  </div>;
+  const s = selectPublicScholarship(rows, award);
   if (!s) notFound();
+  const canonical = publicScholarshipPath(slug, rows.length > 1 ? s.id : undefined);
 
   const displayTags = deriveDisplayTags(s);
   const amountDisplay = formatAmountDisplay(s);
@@ -187,7 +202,7 @@ export default async function PublicScholarshipPage({ params }: Props) {
   return (
     <div className="min-h-screen flex flex-col bg-white text-black">
       <PublicHeader />
-      <JsonLd s={s} slug={slug} />
+      <JsonLd s={s} canonical={canonical} />
 
       <main className="flex-1">
         <div className="max-w-3xl mx-auto px-6 lg:px-8 py-10">
@@ -226,7 +241,7 @@ export default async function PublicScholarshipPage({ params }: Props) {
           )}
 
           <div className="flex flex-wrap items-center gap-3 mb-10">
-            <TrackScholarshipCta slug={slug} scholarshipId={s.id} />
+            <TrackScholarshipCta key={`${s.id}:${slug}`} slug={slug} scholarshipId={s.id} />
             {officialUrl && (
               <a
                 href={officialUrl}
@@ -312,7 +327,7 @@ export default async function PublicScholarshipPage({ params }: Props) {
               deadline against your UAC timeline, and match it to your ATAR and
               study goals alongside thousands of other Australian scholarships.
             </p>
-            <TrackScholarshipCta slug={slug} scholarshipId={s.id} />
+            <TrackScholarshipCta key={`${s.id}:${slug}`} slug={slug} scholarshipId={s.id} />
           </section>
 
           {related.length > 0 && (
@@ -324,7 +339,7 @@ export default async function PublicScholarshipPage({ params }: Props) {
                 {related.map((r) => (
                   <li key={r.id}>
                     <Link
-                      href={`/scholarship/${r.slug}`}
+                      href={publicScholarshipPath(r.slug!, r.id)}
                       className="flex flex-col border border-[#E5E5E5] rounded-md p-4 hover:border-black transition-colors duration-100 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-[#9a1a27] focus-visible:outline-offset-2"
                     >
                       <span className="text-[11px] font-semibold uppercase tracking-wide text-[#9a1a27] mb-1">

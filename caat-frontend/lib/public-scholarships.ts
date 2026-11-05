@@ -1,6 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { createPublicClient } from "@/lib/supabase/public";
 import { evidencePages } from "@/lib/evidence-pagination";
+import { selectPublicScholarship } from "@/lib/public-scholarship-identity";
 import type { ScholarshipRow } from "@/types/scholarships";
 
 // Catalog-only columns exposed on the public directory. Deliberately explicit
@@ -83,24 +84,29 @@ export const getPublicScholarshipsPage = unstable_cache(
 );
 
 /**
- * A single public scholarship by its slug, or null if it does not exist.
- * Cached per-slug so repeated crawler/social hits are near-free.
+ * All public records behind a readable alias. Slugs are not unique in the
+ * imported catalogue; a bare ambiguous link must let the visitor choose.
  */
-export const getPublicScholarshipBySlug = unstable_cache(
-  async (slug: string): Promise<ScholarshipRow | null> => {
+export const getPublicScholarshipsBySlug = unstable_cache(
+  async (slug: string): Promise<ScholarshipRow[]> => {
     const sb = createPublicClient();
-    const { data, error } = await sb
-      .from("scholarships")
-      .select(PUBLIC_SCHOLARSHIP_COLUMNS)
-      .eq("slug", slug)
-      .maybeSingle();
-
-    if (error) throw new Error(error.message);
-    return (data as unknown as ScholarshipRow | null) ?? null;
+    return evidencePages<ScholarshipRow>(async (from, to) => {
+      const { data, error } = await sb.from("scholarships")
+        .select(PUBLIC_SCHOLARSHIP_COLUMNS).eq("slug", slug)
+        .order("is_active", { ascending: false })
+        .order("updated_at", { ascending: false })
+        .order("id", { ascending: true }).range(from, to);
+      return { data: data as unknown as ScholarshipRow[] | null, error };
+    }, "Could not load the scholarship listings.");
   },
-  ["public-scholarship-by-slug"],
+  ["public-scholarship-candidates-v1"],
   { revalidate: 3600, tags: ["scholarship-catalog"] },
 );
+
+/** Ambiguous bare aliases have no single award (including their social image). */
+export async function getPublicScholarshipBySlug(slug: string, awardId?: string): Promise<ScholarshipRow | null> {
+  return selectPublicScholarship(await getPublicScholarshipsBySlug(slug), awardId);
+}
 
 /**
  * Related scholarships for internal linking / crawl discovery: same school
@@ -151,26 +157,28 @@ export const getRelatedScholarships = unstable_cache(
 );
 
 /**
- * All indexable scholarship slugs (+ updated_at) for the sitemap. Active rows
- * with a slug only. 4,224 rows is well under the 50k-URL sitemap limit, so this
- * is returned in one list.
+ * All indexable scholarship slugs for the sitemap. Count aliases across the
+ * same public population as detail pages, including inactive siblings, then
+ * emit active records only. The catalogue fits within one sitemap.
  */
 export const getPublicScholarshipSlugs = unstable_cache(
-  async (): Promise<{ slug: string; updated_at: string }[]> => {
+  async (): Promise<{ id: string; slug: string; updated_at: string; hasSharedSlug: boolean }[]> => {
     const sb = createPublicClient();
-    const rows = await evidencePages<{ slug: string | null; updated_at: string }>(
+    const rows = await evidencePages<{ id: string; slug: string | null; updated_at: string; is_active: boolean }>(
       (from, to) => sb
         .from("scholarships")
-        .select("slug, updated_at")
-        .eq("is_active", true)
+        .select("id, slug, updated_at, is_active")
         .not("slug", "is", null)
         .order("updated_at", { ascending: false })
         .order("id", { ascending: true })
         .range(from, to),
       "Could not load the complete public scholarship sitemap.",
     );
-    return rows.flatMap(({ slug, updated_at }) => slug ? [{ slug, updated_at }] : []);
+    const counts = new Map<string, number>();
+    for (const { slug } of rows) if (slug) counts.set(slug, (counts.get(slug) ?? 0) + 1);
+    return rows.flatMap(({ id, slug, updated_at, is_active }) => slug && is_active
+      ? [{ id, slug, updated_at, hasSharedSlug: counts.get(slug)! > 1 }] : []);
   },
-  ["public-scholarship-slugs"],
+  ["public-scholarship-slugs-with-identity-v2"],
   { revalidate: 3600, tags: ["scholarship-catalog"] },
 );

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getPublicScholarshipSlugs } from "@/lib/public-scholarships";
+import { publicScholarshipPath } from "@/lib/public-scholarship-identity";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.mycaat.com";
 
@@ -37,8 +38,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let scholarshipEntries: MetadataRoute.Sitemap = [];
   try {
     const slugs = await getPublicScholarshipSlugs();
-    scholarshipEntries = slugs.map(({ slug, updated_at }) => ({
-      url: new URL(`/scholarship/${slug}`, siteUrl).toString(),
+    scholarshipEntries = slugs.map(({ id, slug, updated_at, hasSharedSlug }) => ({
+      url: new URL(publicScholarshipPath(slug, hasSharedSlug ? id : undefined), siteUrl).toString(),
       lastModified: updated_at ? new Date(updated_at) : now,
       changeFrequency: "weekly",
       priority: 0.7,
