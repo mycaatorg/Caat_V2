@@ -249,16 +249,45 @@ describe("fetchCommunityProfileAction (A1 privacy gating)", () => {
     } finally { log.mockRestore(); }
   });
 
-  it("does not render partial profile data when related reads fail", async () => {
-    for (const table of ["community_profile_settings", "community_follows"]) {
-      serverState.client = createMockSupabase({
-        user: { id: "viewer" }, rpc: () => ({ data: [profile], error: null }),
-        resolver: ctx => ctx.table === table ? { data: null, error: { message: "private details", code: "XX000" } } : { data: null, error: null, count: 0 },
-      });
-      const res = await fetchCommunityProfileAction("target");
-      expect(res.profile).toBeNull();
-      expect(res.error).toBe("Could not load this community profile. Please try again.");
+  it.each(["privacy", "followers", "following", "follow-state"] as const)(
+    "does not render partial profile data when only %s fails", async (stage) => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const failedReads: string[] = [];
+      try {
+        serverState.client = createMockSupabase({
+          user: { id: "viewer" }, rpc: () => ({ data: [profile], error: null }),
+          resolver: ctx => {
+            const read = ctx.table === "community_profile_settings" ? "privacy"
+              : ctx.calls.some(call => call.method === "maybeSingle") ? "follow-state"
+              : ctx.calls.some(call => call.method === "eq" && call.args[0] === "followee_id") ? "followers"
+              : "following";
+            if (read === stage) {
+              failedReads.push(read);
+              return { data: null, error: { message: "private details", code: "XX000" } };
+            }
+            return { data: null, error: null, count: 0 };
+          },
+        });
+        const res = await fetchCommunityProfileAction("target");
+        expect(res.profile).toBeNull();
+        expect(res.error).toBe("Could not load this community profile. Please try again.");
+        expect(failedReads).toEqual([stage]);
+        expect(log).toHaveBeenCalledExactlyOnceWith("[community-profile] load failed", { stage, code: "XX000" });
+      } finally { log.mockRestore(); }
     }
+  );
+
+  it("stops all profile queries for a returned auth error even when a user is supplied", async () => {
+    const client = createMockSupabase({ user: { id: "viewer" }, rpc: () => ({ data: [profile], error: null }) });
+    serverState.client = { ...client, auth: { ...client.auth, getUser: vi.fn(async () => ({ data: { user: { id: "viewer" } }, error: { code: "AUTH_ERROR", message: "private auth details" } })) } };
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await fetchCommunityProfileAction("target");
+      expect(res).toEqual({ profile: null, error: "Could not load this community profile. Please try again." });
+      expect(client.rpc).not.toHaveBeenCalled();
+      expect(client.from).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledExactlyOnceWith("[community-profile] load failed", { stage: "auth", code: "AUTH_ERROR" });
+    } finally { log.mockRestore(); }
   });
 
   it("stops before profile queries when the caller is unauthenticated", async () => {
@@ -268,6 +297,7 @@ describe("fetchCommunityProfileAction (A1 privacy gating)", () => {
     expect(res.profile).toBeNull();
     expect(res.error).toBe("Could not load this community profile. Please try again.");
     expect(client.rpc).not.toHaveBeenCalled();
+    expect(client.from).not.toHaveBeenCalled();
   });
 
   it("returns not-found when the profile RPC yields no rows", async () => {

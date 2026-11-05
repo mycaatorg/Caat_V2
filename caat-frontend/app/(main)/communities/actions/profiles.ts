@@ -81,14 +81,12 @@ export async function fetchCommunityProfileAction(
       .from("community_follows")
       .select("followee_id", { count: "exact", head: true })
       .eq("follower_id", targetUserId),
-    user
-      ? supabase
-          .from("community_follows")
-          .select("followee_id")
-          .eq("follower_id", user.id)
-          .eq("followee_id", targetUserId)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
+    supabase
+      .from("community_follows")
+      .select("followee_id")
+      .eq("follower_id", user.id)
+      .eq("followee_id", targetUserId)
+      .maybeSingle(),
   ]);
 
   const reads = [
@@ -134,7 +132,7 @@ export async function fetchCommunityProfileAction(
       follower_count: followerResult.count ?? 0,
       following_count: followingResult.count ?? 0,
       is_following: !!isFollowingResult.data,
-      is_own_profile: user?.id === targetUserId,
+      is_own_profile: user.id === targetUserId,
       privacy: {
         show_graduation_year: s.show_graduation_year,
         show_school_name: s.show_school_name,
