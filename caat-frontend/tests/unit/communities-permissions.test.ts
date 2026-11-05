@@ -231,11 +231,50 @@ describe("fetchCommunityProfileAction (A1 privacy gating)", () => {
     target_majors: ["CS"],
   };
 
+  it("reports a failed profile read instead of claiming the person is missing", async () => {
+    serverState.client = createMockSupabase({ rpc: () => ({ data: null, error: { message: "internal database details", code: "PGRST000" } }), user: { id: "viewer" } });
+    const res = await fetchCommunityProfileAction("target");
+    expect(res.profile).toBeNull();
+    expect(res.error).toBe("Could not load this community profile. Please try again.");
+  });
+
+  it("logs only a fixed stage and safe code, never backend message details", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      serverState.client = createMockSupabase({ user: { id: "viewer" }, rpc: () => ({ data: [profile], error: { message: "private token and query", code: "unsafe/code?secret" } }) });
+      const res = await fetchCommunityProfileAction("target");
+      expect(res.profile).toBeNull();
+      expect(res.error).toBe("Could not load this community profile. Please try again.");
+      expect(log).toHaveBeenCalledExactlyOnceWith("[community-profile] load failed", { stage: "profile", code: "unknown" });
+    } finally { log.mockRestore(); }
+  });
+
+  it("does not render partial profile data when related reads fail", async () => {
+    for (const table of ["community_profile_settings", "community_follows"]) {
+      serverState.client = createMockSupabase({
+        user: { id: "viewer" }, rpc: () => ({ data: [profile], error: null }),
+        resolver: ctx => ctx.table === table ? { data: null, error: { message: "private details", code: "XX000" } } : { data: null, error: null, count: 0 },
+      });
+      const res = await fetchCommunityProfileAction("target");
+      expect(res.profile).toBeNull();
+      expect(res.error).toBe("Could not load this community profile. Please try again.");
+    }
+  });
+
+  it("stops before profile queries when the caller is unauthenticated", async () => {
+    const client = createMockSupabase({ rpc: () => ({ data: [profile], error: null }) });
+    serverState.client = client;
+    const res = await fetchCommunityProfileAction("target");
+    expect(res.profile).toBeNull();
+    expect(res.error).toBe("Could not load this community profile. Please try again.");
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
   it("returns not-found when the profile RPC yields no rows", async () => {
     serverState.client = createMockSupabase({ rpc: () => ({ data: [], error: null }), user: { id: "viewer" } });
     const res = await fetchCommunityProfileAction("target");
     expect(res.profile).toBeNull();
-    expect(res.error).toBe("User not found");
+    expect(res.error).toBeNull();
   });
 
   it("hides fields whose show_* flag is false and reveals those that are true", async () => {

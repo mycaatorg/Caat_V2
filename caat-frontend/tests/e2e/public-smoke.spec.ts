@@ -10,6 +10,44 @@ const PUBLIC_NOT_FOUND = routeCoverage.routes.find(
 );
 const PUBLIC_DETAIL = routeCoverage.routes.find((entry) => entry.coverage === "public-detail");
 
+test("public sitemap contains unique scholarship URLs and matches an explicit release count", async ({ page }, testInfo) => {
+  const configuredCount = process.env.CAAT_EXPECTED_SITEMAP_AWARDS;
+  let expectedCount: number | undefined;
+  if (configuredCount !== undefined) {
+    expect(configuredCount, "Expected sitemap count must be a positive integer").toMatch(/^[1-9]\d*$/);
+    expectedCount = Number(configuredCount);
+    expect(Number.isSafeInteger(expectedCount), "Expected sitemap count must be a safe integer").toBe(true);
+  }
+
+  const response = await page.goto("/sitemap.xml");
+  expect(response?.status(), "Sitemap must be available").toBe(200);
+  expect(response?.headers()["content-type"]).toMatch(/(?:application|text)\/xml\b/);
+  const parsed = await page.evaluate(source => {
+    const document = new DOMParser().parseFromString(source, "application/xml");
+    return {
+      malformed: document.getElementsByTagName("parsererror").length > 0,
+      root: document.documentElement.localName,
+      namespace: document.documentElement.namespaceURI,
+      urls: Array.from(document.getElementsByTagNameNS("http://www.sitemaps.org/schemas/sitemap/0.9", "loc"), node => node.textContent?.trim() ?? ""),
+    };
+  }, await response!.text());
+  expect(parsed.malformed, "Sitemap XML must parse successfully").toBe(false);
+  expect(parsed.root).toBe("urlset");
+  expect(parsed.namespace).toBe("http://www.sitemaps.org/schemas/sitemap/0.9");
+  const urls = parsed.urls.map(value => new URL(value));
+  for (const url of urls) expect(["http:", "https:"]).toContain(url.protocol);
+  // Preserve award query IDs: multiple valid records can share a readable slug.
+  const awards = urls.filter(url => /^\/scholarship\/[^/]+\/?$/.test(url.pathname)).map(url => url.href);
+  expect(awards.length, "A static-only sitemap hides the scholarship catalogue").toBeGreaterThan(0);
+  expect(new Set(awards).size, "Scholarship sitemap URLs must be unique").toBe(awards.length);
+  // Without this explicit count, this checks structure, not database parity.
+  if (expectedCount !== undefined) expect(awards.length).toBe(expectedCount);
+  await testInfo.attach("sitemap-coverage", {
+    body: Buffer.from(JSON.stringify({ total: urls.length, awards: awards.length, expectedCount: expectedCount ?? null })),
+    contentType: "application/json",
+  });
+});
+
 for (const { route, expected } of PUBLIC_PAGES) {
   test(`public page ${route} renders its expected heading`, async ({ page }) => {
     expect(expected, `${route} needs an expected heading in route-coverage.json`).toBeTruthy();

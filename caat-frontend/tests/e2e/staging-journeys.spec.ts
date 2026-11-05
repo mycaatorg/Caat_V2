@@ -3649,3 +3649,57 @@ test('planning timeline searches complete owned dates and opens the exact task p
     async()=>expect((await request.delete(`${api}/rest/v1/user_todos?user_id=eq.${peer.id}&id=eq.${privateTask}`,{headers:peer.headers})).ok()).toBe(true),
   ]);});
 });
+
+
+test("application university search ignores old responses and adds the current choice (PROD-255)", { tag: "@phone" }, async ({ page }, testInfo) => {
+  await signInToIsolatedStudent(page);
+  await removeSeededApplication(page);
+  const pattern = "**/rest/v1/schools?**";
+  let releaseOld = () => {};
+  let markHeld = () => {};
+  let markDelivered = () => {};
+  const oldHeld = new Promise<void>(resolve => { markHeld = resolve; });
+  const oldReleased = new Promise<void>(resolve => { releaseOld = resolve; });
+  const oldDelivered = new Promise<void>(resolve => { markDelivered = resolve; });
+  let held = false;
+  await page.route(pattern, async route => {
+    const url = new URL(route.request().url());
+    if (!held && url.searchParams.get("name") === "ilike.%E2E%") {
+      held = true;
+      const response = await route.fetch();
+      markHeld();
+      await oldReleased;
+      await route.fulfill({ response });
+      markDelivered();
+    } else await route.continue();
+  });
+  try {
+    await page.getByRole("button", { name: "Add university", exact: true }).click();
+    const input = page.getByPlaceholder("Search for a university by name...");
+    await input.fill("E2E");
+    await oldHeld;
+    await input.fill("no-such-university-prod255");
+    await expect(page.getByText("No universities found.", { exact: true })).toBeVisible();
+    releaseOld();
+    await oldDelivered;
+    await page.waitForLoadState("networkidle");
+    // Let the delivered response settle before asserting the old choice is absent.
+    await expect(page.getByRole("button", { name: /E2E Test University/ })).toHaveCount(0);
+    await input.fill("");
+    await expect(page.getByText("Searching…", { exact: true })).toHaveCount(0);
+    await page.unroute(pattern);
+    await input.fill("E2E Test University");
+    const result = page.getByRole("button", { name: /E2E Test University/ });
+    await expect(result).toBeVisible();
+    await result.click();
+    await expect(input).toHaveCount(0);
+    await expect(seededApplicationCard(page).schoolLink).toBeVisible();
+    await page.reload();
+    await expect(seededApplicationCard(page).schoolLink).toBeVisible();
+    await testInfo.attach("application-search", { body: await page.screenshot(), contentType: "image/png" });
+  } finally {
+    releaseOld();
+    await page.unroute(pattern);
+    await removeSeededApplication(page);
+  }
+});
