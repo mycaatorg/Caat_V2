@@ -739,8 +739,10 @@ test("an already-saved scholarship moves from Interested to Applied and stays Ap
   }
 });
 
-test("school notes and application status/checklist persist across list and detail reloads", { tag: "@phone" }, async ({ page }) => {
+test("school notes and application status/checklist persist across list and detail reloads (PROD-270)", { tag: "@phone" }, async ({ page }) => {
+  page.setDefaultTimeout(10_000);
   await signInToIsolatedStudent(page);
+  await removeSeededApplication(page);
   const schoolNote = marker("School note");
   const applicationNote = marker("Application note");
   try {
@@ -755,6 +757,44 @@ test("school notes and application status/checklist persist across list and deta
     const reloadedSchoolNotes = page.locator('textarea[placeholder*="Jot down anything you want to remember about this school"]:visible');
     await expect(reloadedSchoolNotes).toHaveCount(1);
     await expect(reloadedSchoolNotes).toHaveValue(schoolNote, { timeout: 15_000 });
+
+    // Hold the actual server-action request so reverting to the persisted text
+    // happens while an older edit is still pending. Releasing it must not leave
+    // that older edit stored or falsely show the revert as already saved.
+    const temporaryNote = marker("Pending school note");
+    let held = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/schools/**", async (route) => {
+      const request = route.request();
+      if (!held && request.method() === "POST" && request.headers()["next-action"] && request.postData()?.includes(temporaryNote)) {
+        held = true;
+        await gate;
+      }
+      await route.continue();
+    });
+    try {
+      await reloadedSchoolNotes.fill(temporaryNote);
+      await expect.poll(() => held).toBe(true);
+      await reloadedSchoolNotes.fill(schoolNote);
+      // Cross the real 1.5s debounce while the first server action is held.
+      await page.waitForTimeout(1_650);
+    } finally {
+      release();
+    }
+    await expect(page.getByText(/last saved/i).last()).toBeVisible({ timeout: 10_000 });
+    await page.unroute("**/schools/**");
+    await page.reload();
+    await expect(schoolNotes).toHaveValue(schoolNote, { timeout: 15_000 });
+
+    const navigationNote = marker("School note before navigation");
+    await schoolNotes.fill(navigationNote);
+    const flushed = page.waitForResponse((response) => response.request().method() === "POST"
+      && !!response.request().headers()["next-action"] && !!response.request().postData()?.includes(navigationNote));
+    await page.getByRole("link", { name: "Back to Schools", exact: true }).click();
+    expect((await flushed).ok()).toBe(true);
+    await page.goto(`/schools/${SCHOOL_ID}`);
+    await expect(schoolNotes).toHaveValue(navigationNote, { timeout: 15_000 });
 
     await page.getByRole("button", { name: "Track Application" }).click();
     await expect(page.getByRole("link", { name: "Researching" })).toBeVisible({ timeout: 15_000 });
@@ -798,14 +838,9 @@ test("school notes and application status/checklist persist across list and deta
     await expect(seededScholarship.getByRole("link")).toHaveAttribute("href", "/scholarships/e2000000-0000-4000-8000-000000000002");
     await expect(seededScholarship).toContainText("No closing date listed");
   } finally {
-    await page.goto("/applications").catch(() => {});
-    const schoolLink = page.getByRole("link", { name: /E2E Test University/ }).first();
-    await schoolLink.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
-    if (await schoolLink.count()) {
-      const card = page.locator("div.rounded-lg.border.p-4").filter({ has: schoolLink }).first();
-      await card.getByRole("button", { name: "Remove application" }).click().catch(() => {});
-      await card.getByRole("button", { name: "Confirm", exact: true }).click().catch(() => {});
-    }
+    // Wait for the persisted removal before leaving; clicking Confirm alone
+    // can abort its request and strand the next phone project's fixture.
+    await removeSeededApplication(page);
     await page.goto(`/schools/${SCHOOL_ID}`).catch(() => {});
     const notesField = page.locator('textarea[placeholder*="Jot down anything you want to remember about this school"]:visible');
     if (await notesField.count()) {

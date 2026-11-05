@@ -41,7 +41,7 @@ export default async function SchoolDetailPage({
   // it is simply absent at runtime. Widen the type so the guard type-checks.
   const school = schoolRow as typeof schoolRow & { description?: string | null };
 
-  const { note } = await fetchSchoolNoteAction(school.id);
+  const { note, ownerId } = await fetchSchoolNoteAction(school.id);
 
   return (
     <>
@@ -112,11 +112,12 @@ export default async function SchoolDetailPage({
           </section>
         )}
 
-        <SchoolNotesPanel
+        {ownerId && <SchoolNotesPanel
+          ownerId={ownerId}
           schoolId={school.id}
           initialNotes={note.notes}
           initialUpdatedAt={note.updated_at}
-        />
+        />}
 
         <SchoolScholarshipsSection
           schoolId={school.id}

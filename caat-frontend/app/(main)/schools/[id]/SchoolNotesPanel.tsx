@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { NotebookPen, Lock, AlertCircle, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,15 +16,18 @@ type SaveState =
   | { kind: "saved"; at: Date }
   | { kind: "error"; message: string };
 
-export function SchoolNotesPanel({
-  schoolId,
-  initialNotes,
-  initialUpdatedAt,
-}: {
+type SchoolNotesProps = {
+  ownerId: string;
   schoolId: number;
   initialNotes: string;
   initialUpdatedAt: string | null;
-}) {
+};
+
+export function SchoolNotesPanel(props: SchoolNotesProps) {
+  return <SchoolNotesEditor key={`${props.ownerId}:${props.schoolId}`} {...props} />;
+}
+
+function SchoolNotesEditor({ ownerId, schoolId, initialNotes, initialUpdatedAt }: SchoolNotesProps) {
   const [value, setValue] = useState(initialNotes);
   const [lastSaved, setLastSaved] = useState(initialNotes);
   const [state, setState] = useState<SaveState>(() => {
@@ -33,17 +36,51 @@ export function SchoolNotesPanel({
     }
     return { kind: "idle" };
   });
-  const [, startTransition] = useTransition();
-
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Mirror the latest value / last-saved snapshot into refs so the unload
-  // flush effect can read them without depending on them (see below).
-  const valueRef = useRef(value);
-  const lastSavedRef = useRef(lastSaved);
-  // eslint-disable-next-line react-hooks/refs -- PROD-248: preserve outgoing draft flush semantics; move ref synchronization with concurrency regression coverage.
-  valueRef.current = value;
-  // eslint-disable-next-line react-hooks/refs -- PROD-248: preserve outgoing draft flush semantics; move ref synchronization with concurrency regression coverage.
-  lastSavedRef.current = lastSaved;
+  // These snapshots belong to input events and save settlements, never render.
+  const valueRef = useRef(initialNotes);
+  const lastSavedRef = useRef(initialNotes);
+  const writing = useRef(false);
+  const requested = useRef(false);
+  const mounted = useRef(true);
+
+  const requestSave = useCallback(() => {
+    requested.current = true;
+    if (writing.current) return;
+    writing.current = true;
+    void (async () => {
+      try {
+        while (requested.current) {
+          requested.current = false;
+          const next = valueRef.current;
+          if (next === lastSavedRef.current) continue;
+          if (mounted.current) setState({ kind: "saving" });
+          const failed = (message: string) => {
+            if (mounted.current) setState({ kind: "error", message });
+            // A later distinct edit may still be queued, but a duplicate flush
+            // must not automatically retry the same failed request forever.
+            if (valueRef.current === next) requested.current = false;
+          };
+          try {
+            const { updated_at, error } = await saveSchoolNoteAction(schoolId, next, ownerId);
+            if (error) {
+              failed(error);
+              continue;
+            }
+            lastSavedRef.current = next;
+            if (mounted.current) {
+              setLastSaved(next);
+              setState({ kind: "saved", at: updated_at ? new Date(updated_at) : new Date() });
+            }
+          } catch {
+            failed("Could not save note. Please try again.");
+          }
+        }
+      } finally {
+        writing.current = false;
+      }
+    })();
+  }, [schoolId, ownerId]);
 
   // Re-render once a minute so the "Saved 2 mins ago" label stays fresh.
   const [, forceTick] = useState(0);
@@ -52,34 +89,19 @@ export function SchoolNotesPanel({
     return () => window.clearInterval(id);
   }, []);
 
-  function runSave(next: string) {
-    if (next === lastSaved) return;
-    setState({ kind: "saving" });
-    startTransition(async () => {
-      const { updated_at, error } = await saveSchoolNoteAction(schoolId, next);
-      if (error) {
-        setState({ kind: "error", message: error });
-        return;
-      }
-      setLastSaved(next);
-      setState({
-        kind: "saved",
-        at: updated_at ? new Date(updated_at) : new Date(),
-      });
-    });
-  }
-
-  function scheduleAutoSave(next: string) {
+  function scheduleAutoSave() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      runSave(next);
+      debounceRef.current = null;
+      requestSave();
     }, AUTOSAVE_DEBOUNCE_MS);
   }
 
   function handleChange(next: string) {
     if (next.length > MAX_LENGTH) return;
+    valueRef.current = next;
     setValue(next);
-    scheduleAutoSave(next);
+    scheduleAutoSave();
   }
 
   function handleManualSave() {
@@ -87,35 +109,27 @@ export function SchoolNotesPanel({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    runSave(value);
+    requestSave();
   }
 
-  // Flush any pending debounced save when the user navigates away so the last
-  // few keystrokes aren't lost. This effect must register EXACTLY ONCE (empty
-  // deps): previously it depended on [value, lastSaved, schoolId], so its
-  // cleanup ran on every keystroke, clearing the just-scheduled debounce (the
-  // debounced save then never ran) and firing a raw save with the *previous*
-  // value, which could land after and clobber a newer one. Reading the current
-  // value/dirty state from refs keeps the debounce intact between keystrokes.
+  // Client navigation uses the same queue, so its final edit cannot race an
+  // older in-flight request. Browser shutdown remains best-effort delivery.
   useEffect(() => {
+    mounted.current = true;
     function flush() {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
         debounceRef.current = null;
       }
-      if (valueRef.current !== lastSavedRef.current) {
-        void saveSchoolNoteAction(schoolId, valueRef.current);
-      }
+      requestSave();
     }
     window.addEventListener("beforeunload", flush);
     return () => {
+      mounted.current = false;
       window.removeEventListener("beforeunload", flush);
-      // Component unmount (client-side navigation away): JS keeps running, so
-      // the server action still completes and the final edits persist.
       flush();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [requestSave]);
 
   const isDirty = value !== lastSaved;
   const isSaving = state.kind === "saving";
