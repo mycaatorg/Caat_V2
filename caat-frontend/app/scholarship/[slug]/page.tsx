@@ -173,11 +173,11 @@ function JsonLd({ s, canonical }: { s: ScholarshipRow; canonical: string }) {
     <>
       {s.is_active && <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(grant) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(grant).replace(/</g, '\\u003c') }}
       />}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbs) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbs).replace(/</g, '\\u003c') }}
       />
     </>
   );

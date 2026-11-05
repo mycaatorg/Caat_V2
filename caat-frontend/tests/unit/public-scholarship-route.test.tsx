@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -112,6 +113,25 @@ describe('public scholarship choice and selected detail', () => {
     expect(metadata.robots).toBeUndefined();
     expect(metadata.description).toContain('official provider');
     expect(metadata.description).not.toContain('apply through CAAT');
+  });
+
+  it.each([true, false])('keeps imported text inside structured-data scripts (active: %s)', async (active) => {
+    const text = '</script><script data-caat-regression="injected">"unsafe"</script><div data-caat-regression="element">& text</div>';
+    const row = { ...first, is_active: active, title: text, provider_name: text, description: text };
+    state.rows = [row];
+    const document = new DOMParser().parseFromString(renderToStaticMarkup(await PublicScholarshipPage(props())), 'text/html');
+    expect(document.querySelectorAll('[data-caat-regression]')).toHaveLength(0);
+    expect(document.querySelectorAll('script')).toHaveLength(active ? 2 : 1);
+    const data = [...document.querySelectorAll('script[type="application/ld+json"]')].map(script => JSON.parse(script.textContent!));
+    const breadcrumbs = data.find(item => item['@type'] === 'BreadcrumbList');
+    expect(breadcrumbs.itemListElement[1].name).toBe(text);
+    if (active) {
+      const grant = data.find(item => item['@type'] === 'MonetaryGrant');
+      expect(grant.name).toBe(text);
+      expect(grant.funder.name).toBe(text);
+      expect(grant.description).toBe(text);
+    }
+    expect(document.querySelector('h1')?.textContent).toBe(text);
   });
 
   it('retains record identity through the logged-out tracking link', () => {
