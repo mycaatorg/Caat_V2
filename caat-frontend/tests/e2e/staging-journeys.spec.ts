@@ -3,7 +3,8 @@
  * This spec is intentionally excluded from the default Playwright project.
  */
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
-import { localDatabaseUrl, checkLocalPsql, runLocalPsql } from "../staging/local-db.mjs";
+import { checkLocalPsql, runLocalPsql } from "../staging/local-db.mjs";
+import { schoolNoteFaultDatabase } from "../staging/school-note-fault-env.mjs";
 import routeCoverage from "./route-coverage.json";
 import { runScopedCleanup, withScopedCleanup } from "./scoped-cleanup";
 
@@ -761,7 +762,7 @@ test("school notes and application status/checklist persist across list and deta
 
     // PROD-274: deny the actual server read only in the disposable loopback DB.
     // This suite is sequential; always restore the existing SELECT privilege.
-    const db = localDatabaseUrl();
+    const db = schoolNoteFaultDatabase();
     expect(checkLocalPsql(db, ["-At", "-c", "select has_table_privilege('authenticated', 'public.user_school_notes', 'select')"])).toBe("t");
     try {
       runLocalPsql(db, ["-v", "ON_ERROR_STOP=1", "-c", "revoke select on public.user_school_notes from authenticated"]);
