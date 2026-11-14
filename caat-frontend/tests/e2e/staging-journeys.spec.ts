@@ -3044,6 +3044,10 @@ test('Applications board preserves drafts across views and recovers status moves
   await expect(card.getByText('Not saved',{exact:true})).toBeVisible();
   await page.unroute(APPLICATION_WRITES);
   const noteError = page.locator('[data-sonner-toast]').filter({hasText:'Failed to update notes.'});
+  // Sonner queues insertion with setTimeout(0), after the async save failure.
+  // Flush that callback while keeping the four-second expiry frozen.
+  await page.clock.runFor(1);
+  await expect(noteError).toBeVisible();
   await noteError.hover();
   await expect(noteError).toHaveAttribute('data-expanded','true');
   await card.getByRole('button',{name:'Save',exact:true}).focus();
