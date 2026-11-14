@@ -3786,6 +3786,8 @@ test('application hub keeps tail scholarship attachments and ticks complete (PRO
   const tail = ids[50];
   const added: string[] = [];
   let addedApplication: string | null = null;
+  let releaseBriefPrefetch!: () => void;
+  const briefPrefetchGate = new Promise<void>(resolve => { releaseBriefPrefetch = resolve; });
   async function read(table: string, query: string) {
     const r = await request.get(`${api}/rest/v1/${table}?${query}`, { headers }); expect(r.ok()).toBe(true); return r.json();
   }
@@ -3810,7 +3812,18 @@ test('application hub keeps tail scholarship attachments and ticks complete (PRO
       }
       console.log('Verified real scholarship attachment and preparation tick row cap: 50');
     }
-    await signInToIsolatedStudent(page); await page.goto(`/applications/${app.id}`);
+    await signInToIsolatedStudent(page);
+    await page.route(url => url.pathname === `/applications/${app.id}/brief`, async route => {
+      // Next 16.4.5 loading-boundary prefetch headers. On framework upgrades,
+      // recheck RED with the Link's prefetch={false} removed before trusting this gate.
+      if (route.request().headers()['next-router-prefetch'] === '1' && !route.request().headers()['next-router-segment-prefetch']) {
+        // PROD-276: an unfinished speculative fetch must not park a real click.
+        // Leave navigation requests untouched; release this gate during cleanup.
+        await briefPrefetchGate;
+      }
+      await route.continue();
+    });
+    await page.goto(`/applications/${app.id}`);
     const main = page.getByRole('main');
     const card = main.locator(`[data-attached-scholarship="${tail}"]`);
     const tick = card.locator('[data-checklist-item="deadline"] input[type="checkbox"]');
@@ -3837,6 +3850,7 @@ test('application hub keeps tail scholarship attachments and ticks complete (PRO
     await testInfo.attach('complete-scholarship-preparation', { body: await page.screenshot(), contentType: 'image/png' });
     // PROD-261: the same complete snapshot feeds the optional printable checklist.
     await main.getByRole('link', { name: 'Preview application brief', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/applications/${app.id}/brief$`));
     const preview = main.locator('[data-application-brief-preview]');
     const include = main.getByRole('checkbox', { name: 'Include attached scholarship checklists', exact: true });
     await expect(include).not.toBeChecked(); await expect(preview).not.toContainText('E2E Preparation Award 050');
@@ -3870,7 +3884,9 @@ test('application hub keeps tail scholarship attachments and ticks complete (PRO
     await expect(main.getByRole('button', { name: 'Print / Save PDF', exact: true })).toBeEnabled();
 
   }, async () => {
+    releaseBriefPrefetch();
     await runScopedCleanup([
+      async () => { await page.unrouteAll({ behavior: 'wait' }); },
       async () => { if (!page.isClosed()) await page.close(); },
       async () => { if (added.length) expect((await request.delete(`${api}/rest/v1/user_scholarship_prep_checks?${own}&scholarship_id=in.(${added.join(',')})`, { headers })).ok()).toBe(true); },
       async () => { if (added.length) expect((await request.delete(`${api}/rest/v1/user_bookmarked_scholarships?${own}&scholarship_id=in.(${added.join(',')})`, { headers })).ok()).toBe(true); },
