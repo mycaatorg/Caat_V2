@@ -3813,13 +3813,15 @@ test('application hub keeps tail scholarship attachments and ticks complete (PRO
       console.log('Verified real scholarship attachment and preparation tick row cap: 50');
     }
     await signInToIsolatedStudent(page);
-    await page.route(`**/applications/${app.id}/brief?*`, async route => {
+    await page.route(url => url.pathname === `/applications/${app.id}/brief`, async route => {
+      // Next 16.4.5 loading-boundary prefetch headers. On framework upgrades,
+      // recheck RED with the Link's prefetch={false} removed before trusting this gate.
       if (route.request().headers()['next-router-prefetch'] === '1' && !route.request().headers()['next-router-segment-prefetch']) {
         // PROD-276: an unfinished speculative fetch must not park a real click.
         // Leave navigation requests untouched; release this gate during cleanup.
         await briefPrefetchGate;
       }
-      await route.continue().catch(() => {});
+      await route.continue();
     });
     await page.goto(`/applications/${app.id}`);
     const main = page.getByRole('main');
@@ -3884,6 +3886,7 @@ test('application hub keeps tail scholarship attachments and ticks complete (PRO
   }, async () => {
     releaseBriefPrefetch();
     await runScopedCleanup([
+      async () => { await page.unrouteAll({ behavior: 'wait' }); },
       async () => { if (!page.isClosed()) await page.close(); },
       async () => { if (added.length) expect((await request.delete(`${api}/rest/v1/user_scholarship_prep_checks?${own}&scholarship_id=in.(${added.join(',')})`, { headers })).ok()).toBe(true); },
       async () => { if (added.length) expect((await request.delete(`${api}/rest/v1/user_bookmarked_scholarships?${own}&scholarship_id=in.(${added.join(',')})`, { headers })).ok()).toBe(true); },
