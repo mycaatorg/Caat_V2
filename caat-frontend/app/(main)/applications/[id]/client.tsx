@@ -296,7 +296,8 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
         {/* header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">{schoolName}</h1>
-          <Link href={`/applications/${application.id}/brief`} className="mt-3 inline-block text-sm text-[#9a1a27] dark:text-[#e06b78] underline underline-offset-4">Preview application brief</Link>
+          {/* A pending speculative brief fetch can block this dynamic transition (PROD-276). */}
+          <Link prefetch={false} href={`/applications/${application.id}/brief`} className="mt-3 inline-block text-sm text-[#9a1a27] dark:text-[#e06b78] underline underline-offset-4">Preview application brief</Link>
           <MajorsEditor
             applicationId={application.id}
             country={schoolCountry}
