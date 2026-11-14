@@ -279,6 +279,9 @@ jobs:
           node .github/scripts/bootstrap-local-supabase.mjs "$RUNNER_TEMP/caat-supabase-status.env"
 
       - name: Production browser journeys (one build + server)
+        env:
+          # Node-only fault injection reads this file; no database secret is exported.
+          CAAT_ISOLATED_STATUS_FILE: ${{ runner.temp }}/caat-supabase-status.env
         run: npm run test:e2e:ci
 
       - name: Low-row-cap completeness gate (reuse production build)

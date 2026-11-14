@@ -9,6 +9,7 @@ const fetchMock = vi.fn();
 beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock.mockReset());
   vi.stubEnv("AUTH_HEALTH_CHECK_TOKEN", probeSecret);
+  vi.stubEnv("VERCEL_GIT_COMMIT_SHA", "");
   vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://private-host.upstash.io");
   vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", providerToken);
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -16,6 +17,29 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("protected deployed auth-provider readiness", () => {
+  it("returns only the validated deployment revision on a healthy authorized probe", async () => {
+    const revision = "a".repeat(40);
+    vi.stubEnv("VERCEL_GIT_COMMIT_SHA", revision);
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ result: "PONG" })));
+    const response = await GET(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: "ok", revision });
+    expect(response.headers.get("cache-control")).toContain("no-store");
+  });
+
+  it.each(["", "short", "private-env-value", "a".repeat(41), "g".repeat(40)])("omits invalid revision metadata without breaking provider readiness (%s)", async revision => {
+    vi.stubEnv("VERCEL_GIT_COMMIT_SHA", revision);
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ result: "PONG" })));
+    expect(await (await GET(request())).json()).toEqual({ status: "ok" });
+  });
+
+  it("does not expose revision on unauthorized or unhealthy responses", async () => {
+    vi.stubEnv("VERCEL_GIT_COMMIT_SHA", "a".repeat(40));
+    expect(await (await GET(request("Bearer wrong"))).json()).toEqual({ status: "unavailable" });
+    fetchMock.mockResolvedValue(new Response("unavailable", { status: 503 }));
+    expect(await (await GET(request())).json()).toEqual({ status: "unavailable" });
+  });
+
   it.each(["", "Bearer wrong-token", `Basic ${probeSecret}`])("rejects unauthorized probes without contacting Redis", async auth => {
     const response = await GET(request(auth));
     expect(response.status).toBe(404);

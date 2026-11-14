@@ -1,7 +1,10 @@
 const fs = require('node:fs');
 const { setTimeout: delay } = require('node:timers/promises');
 
-async function checkAuthHealth(token, fetchImpl = fetch) {
+async function checkAuthHealth(token, fetchImpl = fetch, expectedRevision) {
+  if (expectedRevision !== undefined && (typeof expectedRevision !== 'string' || !/^[a-f0-9]{40}$/.test(expectedRevision))) {
+    return { ok: false, message: 'A valid full release revision is required.' };
+  }
   if (!token || token.length < 32) return { ok: false, message: 'Configure the AUTH_HEALTH_CHECK_TOKEN repository secret and matching Vercel production variable.' };
   try {
     const response = await fetchImpl('https://www.mycaat.com/api/health/auth', {
@@ -13,6 +16,9 @@ async function checkAuthHealth(token, fetchImpl = fetch) {
     if (response.status === 401 || response.status === 404) return { ok: false, message: 'Probe authentication or deployment is unavailable. Check the deployed route and matching probe secrets.' };
     if (response.status !== 200) return { ok: false, message: 'Production auth-provider readiness is unavailable. Follow the recovery runbook.' };
     const body = await response.json();
+    if (expectedRevision !== undefined && body?.revision !== expectedRevision) {
+      return { ok: false, message: 'Production is not serving the expected release revision.' };
+    }
     return body?.status === 'ok'
       ? { ok: true, message: 'Production auth-provider readiness is healthy.' }
       : { ok: false, message: 'The readiness response is invalid. Check the deployment and recovery runbook.' };

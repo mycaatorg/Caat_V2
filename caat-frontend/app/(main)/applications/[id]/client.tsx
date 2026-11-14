@@ -36,6 +36,7 @@ import {
   fetchSavedCoursesForSchool,
   fetchHubScholarshipAttachments,
   type ApplicationHub,
+  type EssayLine,
 } from "./api";
 import { CoursePreparationCard } from "@/components/applications/course-preparation-card";
 import { ApplicationPersonalTasks } from "@/components/applications/application-personal-tasks";
@@ -755,11 +756,11 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function EssayRow({ e }: { e: { promptId: string; title: string; status: "drafted" | "to-write"; lastEdited: string | null } }) {
+function EssayRow({ e }: { e: EssayLine }) {
   return (
     <li className="flex items-center justify-between gap-3 py-3">
       <div className="min-w-0">
-        <div className="font-medium text-sm">{e.title}</div>
+        <div className="font-medium text-sm [overflow-wrap:anywhere]">{e.draftId ? <Link className="underline underline-offset-4" href={`/essays?prompt=${encodeURIComponent(e.promptId)}&draft=${encodeURIComponent(e.draftId)}`}>{e.title}</Link> : e.title}</div>
         <div className="text-xs text-muted-foreground">
           {e.status === "drafted"
             ? e.lastEdited

@@ -524,3 +524,13 @@ it('retries a failed core preparation read without leaving the old error visible
  await click(button('Retry application'));await flush();
  expect(io.fetchApplicationHub).toHaveBeenCalledTimes(2);expect(hasText('Could not load application preparation. Try again.')).toBe(false);expect(document.querySelector('#hub-deadline')).not.toBeNull();
 });
+
+it('links custom work to the exact draft and leaves missing prompt metadata unlinked (PROD-267)',async()=>{
+ await mount(hub({}, {}, {essaysForSchool:[
+  {promptId:'custom&prompt',promptSlug:'custom',title:'My school statement',status:'drafted',lastEdited:null,draftId:'draft&version'},
+  {promptId:'missing',promptSlug:'custom',title:'Custom essay',status:'drafted',lastEdited:null},
+ ]}));
+ const link=[...document.querySelectorAll('a')].find(a=>a.textContent==='My school statement');
+ expect(link?.getAttribute('href')).toBe('/essays?prompt=custom%26prompt&draft=draft%26version');
+ expect([...document.querySelectorAll('a')].some(a=>a.textContent==='Custom essay')).toBe(false);
+});
