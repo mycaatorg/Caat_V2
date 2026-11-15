@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ANCHOR_TOLERANCE_MS,
   classifyCheck,
+  checkUrl,
   isAnchored,
   contentHash,
   createSupabaseStore,
@@ -224,6 +225,100 @@ function stubFetch(pages: Record<string, { status: number; body?: string; delay?
     return new Response(hit.body ?? '', { status: hit.status, headers: { 'content-type': 'text/html' } });
   });
 }
+
+describe('source challenge responses', () => {
+  const challenge = '<html><head><title>Just a moment...</title></head><body>Verify you are human</body></html>';
+  const response = (status: number) => new Response(challenge, {
+    status, headers: { 'content-type': 'text/html', 'CF-Mitigated': 'challenge' },
+  });
+
+  for (const apply of [false, true]) {
+    it.each([200, 403, 404, 410])('rejects HTTP%s challenges before baseline, verification or removal, apply=' + apply, async (status) => {
+      const urls = ['https://u.example/new', 'https://u.example/known', 'https://u.example/missing'];
+      const store = fakeStore(urls.map((url, i) => row(String(i), url)), {
+        [urls[1]]: { reference: { content_hash: contentHash(challenge, 'text/html'), checked_at: ago(7 * DAY) } },
+        [urls[2]]: { previous: { http_status: 404, checked_at: ago(2 * DAY) } },
+      });
+      const summary = await runRefresh({ store, apply, fetchImpl: async () => response(status), now: () => NOW, log: () => {} });
+
+      expect(summary.counts).toMatchObject({ unreachable: 3, baseline: 0, unchanged: 0, gone: 0 });
+      expect(summary.plannedUpdates).toBe(0);
+      expect(summary.scholarshipsUpdated).toBe(0);
+      expect(store.verifyScholarship).not.toHaveBeenCalled();
+      expect(store.deactivateScholarship).not.toHaveBeenCalled();
+      expect(formatSummary(summary)).toMatch(/browser challenge/i);
+      if (apply) {
+        expect(store.recordCheck).toHaveBeenCalledTimes(3);
+        for (const [check] of store.recordCheck.mock.calls) {
+          expect(check).toMatchObject({ outcome: 'unreachable', http_status: status, content_hash: null, detail: expect.stringMatching(/browser challenge/i) });
+        }
+      } else {
+        for (const write of [store.startRun, store.recordCheck, store.finishRun]) expect(write).not.toHaveBeenCalled();
+      }
+    });
+  }
+
+  it.each([404, 410])('does not reuse a stored challenged HTTP%s as a later missing-page strike', async (status) => {
+    const url = 'https://u.example/award';
+    const firstStore = fakeStore([row('r', url)]);
+    await runRefresh({ store: firstStore, apply: true, fetchImpl: async () => response(status), now: () => NOW, log: () => {} });
+    const stored = { ...firstStore.recordCheck.mock.calls[0][0], checked_at: ago(2 * DAY) };
+    const client = createMockSupabase({ resolver: (ctx) => {
+      if (ctx.calls.some((call) => call.method === 'eq' && call.args[0] === 'outcome')) return { data: [], error: null };
+      const columns = String(ctx.calls.find((call) => call.method === 'select')?.args[0]).split(',');
+      return { data: [Object.fromEntries(Object.entries(stored).filter(([key]) => columns.includes(key)))], error: null };
+    } });
+    const history = await createSupabaseStore(client).latestChecks(url);
+    expect(classifyCheck({ url, status: 404, finalUrl: url, previous: history.previous, reference: null, now: NOW }))
+      .toMatchObject({ outcome: 'unreachable', detail: expect.stringMatching(/first not-found strike/) });
+  });
+
+  it('cancels a challenge body without reading it, preserving diagnosis if cancellation rejects', async () => {
+    const res = response(200);
+    const cancel = vi.spyOn(res.body!, 'cancel').mockRejectedValueOnce(new Error('stream cleanup failed'));
+    const read = vi.spyOn(res, 'text');
+    const result = await checkUrl('https://u.example/award', { fetchImpl: async () => res, timeoutMs: 1000 });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(read).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: 200, finalUrl: 'https://u.example/award', hash: null, error: expect.stringMatching(/browser challenge/i) });
+  });
+
+  it.each(['Challenge', 'challenge, challenge', 'other, CHALLENGE'])('rejects a challenge header value formatted as %s', async (value) => {
+    const result = await checkUrl('https://u.example/award', {
+      fetchImpl: async () => new Response(challenge, { headers: { 'cf-mitigated': value } }), timeoutMs: 1000,
+    });
+    expect(result).toMatchObject({ status: 200, hash: null, error: expect.stringMatching(/browser challenge/i) });
+  });
+
+  it('keeps a persisted challenge flag effective when its human explanation changes', () => {
+    expect(classifyCheck({
+      url: 'https://u.example/award', status: 404, finalUrl: 'https://u.example/award', now: NOW,
+      previous: { http_status: 404, checked_at: ago(2 * DAY), detail: '[source_challenge] Earlier diagnostic wording' },
+    })).toMatchObject({ outcome: 'unreachable', detail: expect.stringMatching(/first not-found strike/) });
+  });
+
+  it('stores the stable challenge flag for future checker versions', async () => {
+    const store = fakeStore([row('r', 'https://u.example/award')]);
+    await runRefresh({ store, apply: true, fetchImpl: async () => response(404), now: () => NOW, log: () => {} });
+    expect(store.recordCheck.mock.calls[0][0].detail).toMatch(/^\[source_challenge\] /);
+  });
+
+  it('does not reject an unrelated mitigation header value', async () => {
+    const result = await checkUrl('https://u.example/award', {
+      fetchImpl: async () => new Response(page('Award details'), { headers: { 'cf-mitigated': 'not-challenge', 'content-type': 'text/html' } }), timeoutMs: 1000,
+    });
+    expect(result).toMatchObject({ status: 200, error: null, hash: expect.stringMatching(/^[0-9a-f]{64}$/) });
+  });
+
+  it.each(['text/html', 'application/pdf'])('keeps ordinary %s responses usable without the challenge signal', async (type) => {
+    const body = type === 'text/html' ? page('<h1>Cloudflare Challenge Scholarship</h1><p>Award details</p>') : '%PDF-1 real award';
+    const result = await checkUrl('https://u.example/award', {
+      fetchImpl: async () => new Response(body, { headers: { 'content-type': type } }), timeoutMs: 1000,
+    });
+    expect(result).toMatchObject({ status: 200, error: null, hash: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(classifyCheck({ url: 'https://u.example/award', ...result, reference: null, previous: null }).outcome).toBe('baseline');
+  });
+});
 
 describe('runRefresh', () => {
   const body = page('<p>Award</p>');
