@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "verify:local": "node ../.github/scripts/assert-isolated-e2e.js && npm run audit:production && npm run typecheck && npm run lint && npm run test:coverage && CI=1 npm run test:e2e:ci",
+    "verify:local": "node ../.github/scripts/assert-isolated-e2e.js && npm run audit:production && npm run audit:all && npm run typecheck && npm run lint && npm run test:coverage && CI=1 npm run test:e2e:ci",
     "test": "vitest run tests/unit",
     "test:unit": "vitest run tests/unit",
     "test:coverage": "vitest run tests/unit --coverage",
@@ -24,7 +24,8 @@
     "test:e2e:phone:public": "CAAT_PHONE=1 playwright test --project=phone-public-chromium --project=phone-public-webkit",
     "test:e2e:phone": "node ../.github/scripts/assert-isolated-e2e.js && CAAT_PHONE=1 playwright test --project=phone-staging-chromium --project=phone-staging-webkit",
     "test:e2e:ui": "node ../.github/scripts/assert-isolated-e2e.js && playwright test --ui",
-    "audit:production": "npm audit --omit=dev --audit-level=high"
+    "audit:production": "npm audit --omit=dev --audit-level=high",
+    "audit:all": "npm audit --audit-level=moderate"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -80,6 +81,11 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "zod": "^4.6.7"
+  },
+  "overrides": {
+    "@typescript-eslint/typescript-estree@8.72.1": {
+      "minimatch": "11.0.1"
+    }
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

@@ -159,6 +159,11 @@ jobs:
         if: ${{ matrix.project.path == 'caat-frontend' }}
         run: npm run audit:production
 
+      - name: Audit development and production dependencies
+        # Keep the patched lint-toolchain baseline from regressing on upgrades.
+        if: ${{ matrix.project.path == 'caat-frontend' }}
+        run: npm run audit:all
+
       - name: Typecheck
         # Only run type checking when a dedicated "typecheck" script exists.
         # For the Next.js apps in this repo, this will use "tsc --noEmit".

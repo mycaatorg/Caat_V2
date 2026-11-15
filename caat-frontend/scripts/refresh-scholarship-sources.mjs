@@ -482,8 +482,8 @@ export function formatSummary(summary) {
     ? `  scholarship rows updated: ${summary.scholarshipsUpdated}`
     : `  scholarship rows that --apply would update: ${summary.plannedUpdates} (nothing written)`);
   if (summary.deactivationsHeld) lines.push(`  scholarship deactivations held for review: ${summary.deactivationsHeld}`);
-  lines.push('sample:');
-  for (const s of summary.sample) lines.push(`  ${s.outcome.padEnd(11)} ${String(s.http_status ?? '-').padEnd(4)} ${s.url} rows=${s.rows} updates=${s.updates}${s.detail ? ` (${s.detail})` : ''}`);
+  lines.push('sample (candidates are potential row updates before the outage guard and write checks):');
+  for (const s of summary.sample) lines.push(`  ${s.outcome.padEnd(11)} ${String(s.http_status ?? '-').padEnd(4)} ${s.url} rows=${s.rows} candidates=${s.updates}${s.detail ? ` (${s.detail})` : ''}`);
   return lines.join('\n');
 }
 
