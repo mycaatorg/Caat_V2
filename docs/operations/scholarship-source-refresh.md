@@ -50,14 +50,14 @@ dry-run: 50 urls checked (run <random id>, not stored)
   unanchored  0
   rows left unverified because their import predates the baseline: 0
   scholarship rows that --apply would update: 0 (nothing written)
-sample:
-  baseline    200  https://... rows=4 updates=0 (first stored content hash for this url)
-  unreachable 404  https://... rows=1 updates=0 (HTTP 404; first not-found strike, needs a second at least 24 h later)
-  unreachable 200  https://... rows=1 updates=0 (redirected to https://...)
-  unreachable -    https://... rows=2 updates=0 (network error: fetch failed (ENOTFOUND))
+sample (candidates are potential row updates before the outage guard and write checks):
+  baseline    200  https://... rows=4 candidates=0 (first stored content hash for this url)
+  unreachable 404  https://... rows=1 candidates=0 (HTTP 404; first not-found strike, needs a second at least 24 h later)
+  unreachable 200  https://... rows=1 candidates=0 (redirected to https://...)
+  unreachable -    https://... rows=2 candidates=0 (network error: fetch failed (ENOTFOUND))
 ```
 
-Up to three sample lines are printed per outcome. `rows` is how many scholarships share that URL; `updates` is how many of them `--apply` would change.
+Up to three sample lines are printed per outcome. `rows` is how many scholarships share that URL; `candidates` counts potential row updates before the outage guard and conditional write checks. It is not a count of successful writes. The dry-run aggregate excludes deactivations held by the outage guard; apply reports only rows actually updated. For example, two awards sharing one missing page in a 49-URL batch can show `candidates=2` while the dry-run aggregate shows zero updates and two held deactivations. A permitted deactivation, or any verification, can still be skipped by the conditional write if the row no longer qualifies.
 
 Options: `--apply` writes; `--limit N` checks the first N distinct URLs; `--concurrency N` (default 4) parallel fetches; `--timeout-ms N` (default 15000) per page; `--url-prefix https://host/path` checks only URLs under that prefix, for one provider. The prefix is normalised like the URLs (lower-case host, fragment dropped) and matches on a path boundary: `/path` covers `/path`, `/path/...` and `/path?...`, not `/pathology`.
 
@@ -97,6 +97,8 @@ Runs and checks are never pruned. A run that has checks cannot be deleted (`ON D
 The hash covers the visible text of the page's content area: on `www.sydney.edu.au` (AEM pages with no `<main>`) the `div.content-container`; elsewhere `<main>`, else `<body>`. Scripts, styles, `noscript`, templates, SVG, `<nav>`, `<footer>`, comments and all attribute values are removed and whitespace is collapsed. A redesign that keeps the same words stays `unchanged`; a new amount or date is `changed`. Non-HTML pages (PDFs) are hashed byte for byte. Add a host to `HOST_CONTENT` in the script when a provider's pages have no `<main>`.
 
 A redirect is never hashed into a baseline: if the final URL differs from the requested one the check is `unreachable` with "redirected to ...". Fix the stored `external_url` (a re-import) if the move is permanent.
+
+Responses carrying Cloudflare's documented `cf-mitigated: challenge` header are also `unreachable`, even with HTTP 200. The runner accepts case differences and repeated header values, cancels the body without hashing it, and records "[source_challenge] Cloudflare browser challenge; source content not checked" alongside the observed status and final URL. The stable `[source_challenge]` prefix keeps these checks excluded from later missing-page strikes even if the explanatory wording changes. Such checks never verify an award. This uses the explicit response header, not a guess based on scholarship text; it does not identify every provider's challenge mechanism or restore access to blocked pages. A baseline previously hashed from challenge content is not repaired automatically: real source content may report `changed` until a genuine re-import establishes a new baseline. See [Cloudflare's response detection documentation](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/).
 
 The reference for a URL is its latest `baseline` check: its hash is the accepted content (`unchanged` and `unanchored` checks repeat it), and its `checked_at` is the time rows are anchored against. A `changed` hash never becomes the reference, so a changed page keeps reporting `changed` and cannot quietly re-verify fields extracted from the old page. It clears when the scraper re-imports a row on it: a `source_last_synced_at` later than the baseline makes the next check a new `baseline`.
 
