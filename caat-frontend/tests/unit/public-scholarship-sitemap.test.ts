@@ -4,7 +4,7 @@ import { createMockSupabase, type QueryContext } from './mock-supabase';
 const client = vi.hoisted(() => ({ current: null as unknown }));
 vi.mock('@/lib/supabase/public', () => ({ createPublicClient: () => client.current }));
 vi.mock('next/cache', () => ({ unstable_cache: <T>(fn: T) => fn }));
-import { getPublicScholarshipSlugs } from '@/lib/public-scholarships';
+import { getPublicScholarshipSlugs, getPublicScholarshipsBySlug } from '@/lib/public-scholarships';
 import sitemap from '@/app/sitemap';
 
 const at = '2026-11-01T12:00:00Z';
@@ -63,4 +63,16 @@ describe('public scholarship sitemap completeness', () => {
     expect(await getPublicScholarshipSlugs()).toEqual([{ id: 'award-a', slug: 'award-a', updated_at: at, hasSharedSlug: false }]);
     expect(sb.queries.map(offset)).toEqual([0, 2, 3]);
   });
+});
+
+
+it('selects public import metadata explicitly without exposing private payloads', async () => {
+  const sb = createMockSupabase({ resolver: () => ({ data: [], error: null }) });
+  client.current = sb;
+  await getPublicScholarshipsBySlug('award-a');
+  const selected = String(sb.queries[0].calls.find(call => call.method === 'select')?.args[0]).split(',').map(column => column.trim());
+  expect(selected).toContain('source_last_synced_at');
+  expect(selected).toContain('last_verified_at');
+  expect(selected).not.toContain('raw_payload');
+  expect(selected).not.toContain('*');
 });

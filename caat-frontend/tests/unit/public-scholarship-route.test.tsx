@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ScholarshipRow } from '@/types/scholarships';
 
 const state = vi.hoisted(() => ({ rows: [] as ScholarshipRow[] }));
@@ -137,5 +137,58 @@ describe('public scholarship choice and selected detail', () => {
   it('retains record identity through the logged-out tracking link', () => {
     const html = renderToStaticMarkup(<TrackScholarshipCta slug="shared-award" scholarshipId={second.id} />);
     expect(html).toContain(`/signup?next=${encodeURIComponent(`/scholarship/shared-award?award=${second.id}`)}`);
+  });
+});
+
+
+describe('public scholarship recorded source details', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-15T12:00:00Z')); state.rows = [first]; });
+  afterEach(() => { vi.useRealTimers(); });
+  const note = async (request = props()) => {
+    const document = new DOMParser().parseFromString(renderToStaticMarkup(await PublicScholarshipPage(request)), 'text/html');
+    return document.querySelector('section[aria-labelledby="recorded-details-heading"]');
+  };
+
+  it('shows stale verification and import dates separately without inventing a new check', async () => {
+    state.rows = [{ ...first, last_verified_at: '2026-05-25T07:31:04Z', source_last_synced_at: '2026-05-20T00:00:00Z' }];
+    const section = await note();
+    expect(section?.textContent).toContain('more than 90 days ago');
+    expect(section?.textContent).toContain('Recorded verification: 25 May 2026');
+    expect(section?.textContent).toContain('Last imported: 20 May 2026');
+    expect(section?.textContent).toContain('Importing is not a new verification');
+    expect([...section!.querySelectorAll('time')].map(t => t.getAttribute('datetime'))).toEqual(['2026-05-25T07:31:04.000Z', '2026-05-20T00:00:00.000Z']);
+  });
+
+  it('qualifies recent recorded verification instead of guaranteeing current requirements', async () => {
+    state.rows = [{ ...first, last_verified_at: '2026-11-10T23:00:00Z' }];
+    const section = await note();
+    expect(section?.textContent).toContain('requirements can still change');
+    expect(section?.textContent).toContain('Recorded verification: 10 November 2026');
+    expect(section?.textContent).not.toContain('Last imported');
+  });
+
+  it.each([null, 'not-a-date', '2026-02-30', '2999-01-01'])('does not treat invalid verification %s as a fresh check', async (last_verified_at) => {
+    state.rows = [{ ...first, last_verified_at, source_last_synced_at: '2026-11-14T00:00:00Z' }];
+    const section = await note();
+    expect(section?.textContent).toContain('No valid verification date is recorded');
+    expect(section?.textContent).toContain('Last imported: 14 November 2026');
+    expect(section?.textContent).not.toContain('Recorded verification:');
+  });
+
+  it('omits invalid import dates and keeps unknown source guidance usable', async () => {
+    state.rows = [{ ...first, external_url: null, source_last_synced_at: '2999-01-01' }];
+    const section = await note();
+    expect(section?.textContent).toContain('Find the scholarship on the provider');
+    expect(section?.textContent).not.toContain('Last imported');
+    expect(section?.querySelectorAll('time')).toHaveLength(0);
+  });
+
+  it('uses only the selected award dates and leaves archived explanations intact', async () => {
+    state.rows = [{ ...first, last_verified_at: '2026-05-01' }, { ...second, last_verified_at: '2026-11-10' }];
+    expect((await note(props(second.id)))?.textContent).toContain('10 November 2026');
+    expect((await note(props(second.id)))?.textContent).not.toContain('1 May 2026');
+    state.rows = [{ ...first, is_active: false }];
+    expect(await note()).toBeNull();
+    expect(renderToStaticMarkup(await PublicScholarshipPage(props()))).toContain('Archived listing');
   });
 });
