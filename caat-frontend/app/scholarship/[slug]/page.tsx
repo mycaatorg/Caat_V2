@@ -17,6 +17,8 @@ import {
   formatAmountDisplay,
   type ScholarshipRow,
 } from "@/types/scholarships";
+import { ScholarshipSourceNote } from "@/components/public/ScholarshipSourceNote";
+import { scholarshipSourceState } from "@/lib/scholarship-eligibility";
 import { safeHref } from "@/lib/safe-href";
 import { TAG_COLORS } from "@/constants/scholarships";
 import {
@@ -269,6 +271,8 @@ export default async function PublicScholarshipPage({ params, searchParams }: Pr
               </a>
             )}
           </div>
+
+          {s.is_active && <ScholarshipSourceNote source={scholarshipSourceState(s, new Date())} />}
 
           {(s.description || s.eligibility_summary) && (
             <section className="mb-10">

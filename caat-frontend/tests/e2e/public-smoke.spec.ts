@@ -85,6 +85,9 @@ test("public scholarship detail renders catalog content", async ({ page }) => {
   const actual = new URL(page.url());
   expect(actual.pathname + actual.search).toBe(target.pathname + target.search);
   await expect(page.getByRole("heading", { name: expectedTitle, exact: true, level: 1 })).toBeVisible();
+  const recordedDetails = page.getByRole("region", { name: "Recorded details" });
+  await expect(recordedDetails).toBeVisible();
+  await expect(recordedDetails).toContainText(/provider/);
 });
 
 test("public account forms render without submitting authentication requests", async ({ page }) => {
