@@ -36,6 +36,7 @@ import {
   fetchSavedCoursesForSchool,
   fetchHubScholarshipAttachments,
   type ApplicationHub,
+  type EssayLine,
 } from "./api";
 import { CoursePreparationCard } from "@/components/applications/course-preparation-card";
 import { ApplicationPersonalTasks } from "@/components/applications/application-personal-tasks";
@@ -295,7 +296,8 @@ export default function ApplicationHubClient({ applicationId }: { applicationId:
         {/* header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">{schoolName}</h1>
-          <Link href={`/applications/${application.id}/brief`} className="mt-3 inline-block text-sm text-[#9a1a27] dark:text-[#e06b78] underline underline-offset-4">Preview application brief</Link>
+          {/* A pending speculative brief fetch can block this dynamic transition (PROD-276). */}
+          <Link prefetch={false} href={`/applications/${application.id}/brief`} className="mt-3 inline-block text-sm text-[#9a1a27] dark:text-[#e06b78] underline underline-offset-4">Preview application brief</Link>
           <MajorsEditor
             applicationId={application.id}
             country={schoolCountry}
@@ -755,11 +757,11 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function EssayRow({ e }: { e: { promptId: string; title: string; status: "drafted" | "to-write"; lastEdited: string | null } }) {
+function EssayRow({ e }: { e: EssayLine }) {
   return (
     <li className="flex items-center justify-between gap-3 py-3">
       <div className="min-w-0">
-        <div className="font-medium text-sm">{e.title}</div>
+        <div className="font-medium text-sm [overflow-wrap:anywhere]">{e.draftId ? <Link className="underline underline-offset-4" href={`/essays?prompt=${encodeURIComponent(e.promptId)}&draft=${encodeURIComponent(e.draftId)}`}>{e.title}</Link> : e.title}</div>
         <div className="text-xs text-muted-foreground">
           {e.status === "drafted"
             ? e.lastEdited

@@ -31,3 +31,22 @@ test('a network failure is sanitized and the next healthy check recovers', async
   assert.doesNotMatch(JSON.stringify(failed), /private-host|probe-secret/);
   assert.equal((await checkAuthHealth(token, async () => new Response('{"status":"ok"}'))).ok, true);
 });
+
+const revision = 'a'.repeat(40);
+test('exact-release health requires both healthy provider and matching valid revision', async () => {
+  for (const body of [{ status: 'ok' }, { status: 'ok', revision: 'b'.repeat(40) }, { status: 'ok', revision: 'private response' }, { status: 'unavailable', revision }]) {
+    const result = await checkAuthHealth(token, async () => Response.json(body), revision);
+    assert.equal(result.ok, false);
+    assert.doesNotMatch(JSON.stringify(result), /private response/);
+  }
+  assert.equal((await checkAuthHealth(token, async () => Response.json({ status: 'ok', revision }), revision)).ok, true);
+});
+test('invalid release expectations fail before contacting production', async () => {
+  for (const invalid of ['', 'private expectation', 'a'.repeat(39), 'a'.repeat(41), null, 42]) {
+    let calls = 0;
+    const result = await checkAuthHealth(token, async () => { calls++; return Response.json({ status: 'ok', revision }); }, invalid);
+    assert.equal(calls, 0);
+    assert.equal(result.ok, false);
+    assert.doesNotMatch(JSON.stringify(result), /private expectation/);
+  }
+});

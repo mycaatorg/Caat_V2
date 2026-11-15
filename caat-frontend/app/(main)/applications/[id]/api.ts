@@ -45,9 +45,22 @@ export type ReadinessSignals = PreparationChecklist;
 export interface EssayLine {
   promptId: string;
   promptSlug: string;
+  /** Exact custom draft; absent when its prompt metadata is unavailable. */
+  draftId?: string;
   title: string;
   status: "drafted" | "to-write";
   lastEdited: string | null;
+}
+
+/** PostgreSQL timestamps may omit zero fractions and retain microseconds.
+ * Date.parse normalizes offsets but truncates below milliseconds, so compare
+ * the recorded fractional second as well when the millisecond instants tie. */
+function compareDraftTimes(a: string | null, b: string | null): number {
+  const left = a ? Date.parse(a) : Number.NEGATIVE_INFINITY;
+  const right = b ? Date.parse(b) : Number.NEGATIVE_INFINITY;
+  if (left !== right) return left > right ? 1 : -1;
+  const fraction = (value: string | null) => Number(`0.${value?.match(/\.(\d+)/)?.[1] ?? '0'}`);
+  return fraction(a) - fraction(b);
 }
 
 export interface DocLine {
@@ -236,14 +249,15 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
   // Parallel: profile, prompts (+scope), all essay drafts (+school_id), all
   // documents (+school_id), active scholarships recorded for this school.
   const preparationReadError = "Could not load application preparation. Try again.";
-  const [profileRes, promptsData, draftsData, docsData, schRes, coursesRes, savedSchRes, ticksRes, linksRes] = await Promise.all([
+  const [profileRes, promptsData, draftsData, customPromptsData, docsData, schRes, coursesRes, savedSchRes, ticksRes, linksRes] = await Promise.all([
     supabase
       .from("profiles")
       .select("target_majors")
       .eq("id", user.id)
       .maybeSingle(),
     evidencePages((from, to) => supabase.from("essay_prompts").select("id, slug, title, scope, sort_order").order("sort_order").order("id").range(from, to), preparationReadError),
-    evidencePages((from, to) => supabase.from("essay_drafts").select("prompt_id, school_id, updated_at").eq("user_id", user.id).order("id").range(from, to), preparationReadError),
+    evidencePages((from, to) => supabase.from("essay_drafts").select("id, prompt_id, school_id, updated_at, label").eq("user_id", user.id).order("id").range(from, to), preparationReadError),
+    evidencePages((from, to) => supabase.from("custom_essay_prompts").select("id, title").eq("user_id", user.id).order("id").range(from, to), preparationReadError),
     evidencePages((from, to) => supabase.from("documents").select("id, file_name, category, status, school_id").eq("user_id", user.id).order("id").range(from, to), preparationReadError),
     fetchSchoolScholarships(schoolId, school?.name ?? null),
     readSavedCourses(user.id, schoolId).then(
@@ -280,6 +294,8 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
     scope: string | null;
   }[];
   const drafts = draftsData as {
+    id: string;
+    label: string | null;
     prompt_id: string;
     school_id: number | null;
     updated_at: string | null;
@@ -309,6 +325,31 @@ export async function fetchApplicationHub(applicationId: string): Promise<Applic
       lastEdited: match?.updated_at ?? null,
     };
     (isShared ? essaysShared : essaysForSchool).push(line);
+  }
+
+  // Custom drafts follow the same shared/school rule as readiness. Pick the
+  // newest version within each scope; a newer foreign-school draft cannot win.
+  const catalogueIds = new Set(prompts.map(prompt => prompt.id));
+  const customTitles = new Map((customPromptsData as {id: string; title: string}[]).map(prompt => [prompt.id, prompt.title]));
+  for (const schoolScope of [schoolId, null]) {
+    const latest = new Map<string, typeof drafts[number]>();
+    for (const draft of drafts) {
+      if (catalogueIds.has(draft.prompt_id) || draft.school_id !== schoolScope) continue;
+      const previous = latest.get(draft.prompt_id);
+      const timeOrder = previous ? compareDraftTimes(draft.updated_at, previous.updated_at) : 1;
+      if (timeOrder > 0 || (timeOrder === 0 && previous && draft.id.localeCompare(previous.id) > 0)) latest.set(draft.prompt_id, draft);
+    }
+    const customLines = [...latest.values()].map(draft => {
+      const title = customTitles.get(draft.prompt_id)?.trim() || 'Custom essay';
+      const label = draft.label?.trim();
+      return {
+        promptId: draft.prompt_id, promptSlug: 'custom',
+        title: label ? `${title} — ${label}` : title,
+        status: 'drafted' as const, lastEdited: draft.updated_at,
+        ...(customTitles.has(draft.prompt_id) ? {draftId: draft.id} : {}),
+      };
+    }).sort((a, b) => a.title.localeCompare(b.title) || a.promptId.localeCompare(b.promptId));
+    (schoolScope === null ? essaysShared : essaysForSchool).push(...customLines);
   }
 
   // Documents — tagged-to-this-school list, plus the shared category checklist.

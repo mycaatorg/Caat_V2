@@ -15,7 +15,7 @@ const io = vi.hoisted(() => ({
   fetchUnimportedBookmarkCount: vi.fn(),
   importBookmarkedSchools: vi.fn(),
   fetchPreparationInputs: vi.fn(),
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), dismiss: vi.fn() },
 }));
 
 vi.mock("@/app/(main)/applications/api", () => ({
@@ -92,7 +92,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   io.fetchUnimportedBookmarkCount.mockResolvedValue(0);
   io.fetchPreparationInputs.mockResolvedValue({ prompts: [], drafts: [], documents: [] });
-  io.updateApplication.mockResolvedValue(undefined);
+  io.updateApplication.mockReset().mockResolvedValue(undefined);
   io.deleteApplication.mockResolvedValue(undefined);
   io.searchSchools.mockResolvedValue([]);
 });
@@ -186,6 +186,55 @@ describe("preparation checklist score", () => {
   });
 });
 
+describe("field error recovery", () => {
+  it("clears only the recovered field's error, preserving other fields and applications", async () => {
+    await mount();
+    io.updateApplication.mockRejectedValueOnce(new Error("offline"));
+    await change(statusOf("Alpha University"), "submitted"); await flush();
+    io.updateApplication.mockRejectedValueOnce(new Error("offline"));
+    await change(deadlineOf("Alpha University"), "2027-01-01"); await flush();
+    io.updateApplication.mockRejectedValueOnce(new Error("offline"));
+    await change(statusOf("Beta College"), "submitted"); await flush();
+    const ids = io.toast.error.mock.calls.map(call => call[1]?.id);
+    expect(ids.every(id => typeof id === "string")).toBe(true);
+    expect(new Set(ids).size).toBe(3);
+    expect(io.toast.dismiss).not.toHaveBeenCalled();
+    await change(statusOf("Alpha University"), "applying"); await flush();
+    expect(io.toast.dismiss.mock.calls).toEqual([[ids[0]]]);
+    expect(statusOf("Alpha University").value).toBe("applying");
+  });
+
+  it("keeps one field error across failed retries and clears it only on success", async () => {
+    await mount();
+    io.updateApplication.mockRejectedValue(new Error("offline"));
+    await change(statusOf("Alpha University"), "submitted"); await flush();
+    await change(statusOf("Alpha University"), "applying"); await flush();
+    const ids = io.toast.error.mock.calls.map(call => call[1]?.id);
+    expect(ids[0]).toEqual(expect.any(String)); expect(ids[1]).toBe(ids[0]);
+    expect(io.toast.dismiss).not.toHaveBeenCalled();
+    io.updateApplication.mockResolvedValue(undefined);
+    await change(statusOf("Alpha University"), "applying"); await flush();
+    expect(io.toast.dismiss.mock.calls).toEqual([[ids[0]]]);
+  });
+
+  it("does not clear the error on a superseded success while the latest retry can still fail", async () => {
+    await mount();
+    io.updateApplication.mockRejectedValueOnce(new Error("offline"));
+    await change(statusOf("Alpha University"), "submitted"); await flush();
+    const first = deferred(), latest = deferred();
+    io.updateApplication.mockReturnValueOnce(first.promise).mockReturnValueOnce(latest.promise);
+    await change(statusOf("Alpha University"), "applying");
+    await change(statusOf("Alpha University"), "submitted");
+    await act(async () => first.resolve()); await flush();
+    expect(io.toast.dismiss).not.toHaveBeenCalled();
+    await act(async () => latest.reject(new Error("offline"))); await flush();
+    expect(io.toast.dismiss).not.toHaveBeenCalled();
+    const ids = io.toast.error.mock.calls.map(call => call[1]?.id);
+    expect(ids[0]).toEqual(expect.any(String)); expect(ids[1]).toBe(ids[0]);
+    expect(statusOf("Alpha University").value).toBe("applying");
+  });
+});
+
 describe("status and deadline", () => {
   it("keeps a status change once the write succeeds", async () => {
     await mount();
@@ -208,7 +257,7 @@ describe("status and deadline", () => {
 
     expect(statusOf("Alpha University").value).toBe("researching");
     expect(deadlineOf("Beta College").value).toBe("2026-12-15");
-    expect(io.toast.error).toHaveBeenCalledWith("Failed to update status.");
+    expect(io.toast.error).toHaveBeenCalledWith("Failed to update status.", { id: expect.any(String) });
   });
 
   it("does not let an earlier failed status write undo a later successful one", async () => {
@@ -278,7 +327,7 @@ describe("status and deadline", () => {
     await flush();
     expect(io.updateApplication).toHaveBeenCalledWith("app-2", { deadline_at: "2027-01-10" });
     expect(deadlineOf("Beta College").value).toBe("2026-11-30");
-    expect(io.toast.error).toHaveBeenCalledWith("Failed to update deadline.");
+    expect(io.toast.error).toHaveBeenCalledWith("Failed to update deadline.", { id: expect.any(String) });
   });
 
   it("clears a deadline as null rather than an empty string", async () => {
@@ -317,7 +366,7 @@ describe("notes", () => {
     await advance(800);
     await flush();
 
-    expect(io.toast.error).toHaveBeenCalledWith("Failed to update notes.");
+    expect(io.toast.error).toHaveBeenCalledWith("Failed to update notes.", { id: expect.any(String) });
     expect(notes.value).toBe("Scholarship interview notes");
     expect(indicator("Alpha University")).toBe("Not saved");
 
@@ -325,6 +374,7 @@ describe("notes", () => {
     await flush();
     expect(io.updateApplication).toHaveBeenLastCalledWith("app-1", { notes: "Scholarship interview notes" });
     expect(indicator("Alpha University")).toBe("Saved");
+    expect(io.toast.dismiss).toHaveBeenCalledExactlyOnceWith(io.toast.error.mock.calls[0][1].id);
   });
 
   it("sends a newer save after an older one settles and ignores the older failure", async () => {

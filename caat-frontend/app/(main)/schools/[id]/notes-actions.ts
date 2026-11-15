@@ -16,32 +16,42 @@ export interface SchoolNote {
  */
 export async function fetchSchoolNoteAction(
   schoolId: number,
-): Promise<{ note: SchoolNote; error: string | null }> {
-  const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return { note: { notes: "", updated_at: null }, error: "Not signed in" };
-  }
+): Promise<{ note: SchoolNote; error: string | null; ownerId: string | null }> {
+  try {
+    const supabase = await createSupabaseServer();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError && authError.name !== "AuthSessionMissingError") {
+      return { note: { notes: "", updated_at: null }, error: "Could not load note.", ownerId: null };
+    }
+    if (!user || authError) {
+      return { note: { notes: "", updated_at: null }, error: "Not signed in", ownerId: null };
+    }
 
-  const { data, error } = await supabase
-    .from("user_school_notes")
-    .select("notes, updated_at")
-    .eq("user_id", user.id)
-    .eq("school_id", schoolId)
-    .maybeSingle();
+    const { data, error } = await supabase
+      .from("user_school_notes")
+      .select("notes, updated_at")
+      .eq("user_id", user.id)
+      .eq("school_id", schoolId)
+      .maybeSingle();
 
-  if (error) {
+    if (error) {
+      return {
+        note: { notes: "", updated_at: null },
+        error: "Could not load note.",
+        ownerId: user.id,
+      };
+    }
     return {
-      note: { notes: "", updated_at: null },
-      error: "Could not load note.",
+      note: { notes: data?.notes ?? "", updated_at: data?.updated_at ?? null },
+      error: null,
+      ownerId: user.id,
     };
+  } catch {
+    return { note: { notes: "", updated_at: null }, error: "Could not load note.", ownerId: null };
   }
-  return {
-    note: { notes: data?.notes ?? "", updated_at: data?.updated_at ?? null },
-    error: null,
-  };
 }
 
 /**
@@ -52,12 +62,17 @@ export async function fetchSchoolNoteAction(
 export async function saveSchoolNoteAction(
   schoolId: number,
   notes: string,
+  expectedOwnerId: string,
 ): Promise<{ updated_at: string | null; error: string | null }> {
   const supabase = await createSupabaseServer();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { updated_at: null, error: "Not signed in" };
+  // Queued writes must stay bound to the account that opened the editor.
+  if (!expectedOwnerId || user.id !== expectedOwnerId) {
+    return { updated_at: null, error: "Your account changed. Reload before saving this note." };
+  }
 
   if (typeof notes !== "string") {
     return { updated_at: null, error: "Invalid note." };

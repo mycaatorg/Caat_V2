@@ -46,3 +46,10 @@ it('distinguishes no attachments from unavailable sources and uses checked-with-
  expect(section.awards[0].items.find(i=>i.key.startsWith('rule:'))?.tick).toBe('Marked checked with the provider');
  expect(section.awards[0].items.find(i=>i.key==='official-link')?.href).toBeNull();
 });
+
+it('prints custom draft titles and scope without navigation IDs or essay bodies (PROD-267)',()=>{
+ const hub=briefHub({essaysForSchool:[{promptId:'custom',promptSlug:'custom',draftId:'private-draft-id',title:'My statement — School version',status:'drafted',lastEdited:null}],essaysShared:[]});
+ const result=buildApplicationBrief(hub,{preparedAt});
+ expect(result.essays).toEqual([{key:'school:custom',title:'My statement — School version',scope:'This school',status:'Draft saved'}]);
+ expect(JSON.stringify(result)).not.toContain('private-draft-id');expect(result.essays[0]).not.toHaveProperty('content');
+});

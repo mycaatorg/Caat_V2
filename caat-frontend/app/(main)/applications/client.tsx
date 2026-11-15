@@ -278,6 +278,7 @@ export default function ApplicationsClient() {
     failureMessage: string
   ): Promise<boolean> {
     const slot = `${id}:${key}`;
+    const failureToastId = `application-field:${slot}`;
     // The first write to a field starts from the loaded (server) value.
     if (!confirmedValues.current.has(slot)) {
       confirmedValues.current.set(slot, apps.find((a) => a.id === id)?.[key] ?? null);
@@ -288,12 +289,13 @@ export default function ApplicationsClient() {
     try {
       await enqueueWrite(id, () => updateApplication(id, { [key]: value }));
       confirmedValues.current.set(slot, value);
+      if (latestWrite.current.get(slot) === seq) toast.dismiss(failureToastId);
       return true;
     } catch {
       // A newer write for this field supersedes this one; a removed row's
       // field is restored from confirmed values if the removal fails.
       if (removedIds.current.has(id) || latestWrite.current.get(slot) !== seq) return false;
-      toast.error(failureMessage);
+      toast.error(failureMessage, { id: failureToastId });
       const confirmed = confirmedValues.current.get(slot) as ApplicationRow[K];
       if(key==='status' && document.activeElement?.closest('[data-application-id]')?.getAttribute('data-application-id')===id) focusAfterMove.current=id;
       setApps((cur) => cur.map((a) => (a.id === id ? { ...a, [key]: confirmed } : a)));
