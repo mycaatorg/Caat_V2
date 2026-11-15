@@ -4,7 +4,7 @@
 
 **Goal:** Prevent Cloudflare challenge documents from becoming scholarship evidence (PROD-294).
 
-**Architecture:** Detect the documented `cf-mitigated: challenge` response header in `checkUrl`, cancel the body and return an explicit error with no content hash. Existing classification records it as unreachable. Read the persisted detail when loading prior checks so a challenged 404/410 cannot become a missing-page strike later.
+**Architecture:** Detect the documented `cf-mitigated: challenge` response header in `checkUrl`, including case differences and comma-combined duplicates, cancel the body and return an explicit error with no content hash. Existing classification records it as unreachable. Read the persisted detail's stable `[source_challenge]` prefix when loading prior checks so a challenged 404/410 cannot become a missing-page strike later, even if the human-readable explanation changes.
 
 **Tech Stack:** Existing Node fetch, Supabase client and Vitest; no dependencies or schema changes.
 
@@ -32,7 +32,7 @@ Cloudflare documents its challenge response header at https://developers.cloudfl
 
 **Files:** `caat-frontend/scripts/refresh-scholarship-sources.mjs`, `caat-frontend/tests/unit/refresh-scholarship-sources.test.ts`, `docs/operations/scholarship-source-refresh.md`.
 
-**Interfaces:** Keep `checkUrl`, `classifyCheck` and `runRefresh` return shapes; add optional `detail` to prior-check input and select it from existing history. Use one stable internal challenge-detail constant for persistence and prior-check exclusion.
+**Interfaces:** Keep `checkUrl`, `classifyCheck` and `runRefresh` return shapes; add optional `detail` to prior-check input and select it from existing history. Use the stable `[source_challenge]` marker for persistence and prior-check exclusion, independently of the human-readable explanation.
 
 - [ ] Add tests for HTTP200/403/404 challenge responses in apply and dry-run, including no reference and a matching reference; prove no hash or scholarship writes and a clear sample diagnostic.
 - [ ] Add a subsequent-run regression that uses the real Supabase store reader and projected history fields to prove challenged missing responses do not become strikes. Cover 404 and 410.

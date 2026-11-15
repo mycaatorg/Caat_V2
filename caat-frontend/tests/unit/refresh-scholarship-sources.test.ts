@@ -233,7 +233,7 @@ describe('source challenge responses', () => {
   });
 
   for (const apply of [false, true]) {
-    it.each([200, 403, 404])('rejects HTTP%s challenges before baseline, verification or removal, apply=' + apply, async (status) => {
+    it.each([200, 403, 404, 410])('rejects HTTP%s challenges before baseline, verification or removal, apply=' + apply, async (status) => {
       const urls = ['https://u.example/new', 'https://u.example/known', 'https://u.example/missing'];
       const store = fakeStore(urls.map((url, i) => row(String(i), url)), {
         [urls[1]]: { reference: { content_hash: contentHash(challenge, 'text/html'), checked_at: ago(7 * DAY) } },
@@ -281,6 +281,33 @@ describe('source challenge responses', () => {
     expect(cancel).toHaveBeenCalledOnce();
     expect(read).not.toHaveBeenCalled();
     expect(result).toMatchObject({ status: 200, finalUrl: 'https://u.example/award', hash: null, error: expect.stringMatching(/browser challenge/i) });
+  });
+
+  it.each(['Challenge', 'challenge, challenge', 'other, CHALLENGE'])('rejects a challenge header value formatted as %s', async (value) => {
+    const result = await checkUrl('https://u.example/award', {
+      fetchImpl: async () => new Response(challenge, { headers: { 'cf-mitigated': value } }), timeoutMs: 1000,
+    });
+    expect(result).toMatchObject({ status: 200, hash: null, error: expect.stringMatching(/browser challenge/i) });
+  });
+
+  it('keeps a persisted challenge flag effective when its human explanation changes', () => {
+    expect(classifyCheck({
+      url: 'https://u.example/award', status: 404, finalUrl: 'https://u.example/award', now: NOW,
+      previous: { http_status: 404, checked_at: ago(2 * DAY), detail: '[source_challenge] Earlier diagnostic wording' },
+    })).toMatchObject({ outcome: 'unreachable', detail: expect.stringMatching(/first not-found strike/) });
+  });
+
+  it('stores the stable challenge flag for future checker versions', async () => {
+    const store = fakeStore([row('r', 'https://u.example/award')]);
+    await runRefresh({ store, apply: true, fetchImpl: async () => response(404), now: () => NOW, log: () => {} });
+    expect(store.recordCheck.mock.calls[0][0].detail).toMatch(/^\[source_challenge\] /);
+  });
+
+  it('does not reject an unrelated mitigation header value', async () => {
+    const result = await checkUrl('https://u.example/award', {
+      fetchImpl: async () => new Response(page('Award details'), { headers: { 'cf-mitigated': 'not-challenge', 'content-type': 'text/html' } }), timeoutMs: 1000,
+    });
+    expect(result).toMatchObject({ status: 200, error: null, hash: expect.stringMatching(/^[0-9a-f]{64}$/) });
   });
 
   it.each(['text/html', 'application/pdf'])('keeps ordinary %s responses usable without the challenge signal', async (type) => {

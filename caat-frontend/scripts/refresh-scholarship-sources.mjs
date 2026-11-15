@@ -28,7 +28,8 @@ export const ANCHOR_TOLERANCE_MS = 7 * 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 1000;
 const SAMPLE_PER_OUTCOME = 3;
 // Persisted in check history: keep this marker stable so challenges never become missing-page strikes.
-const SOURCE_CHALLENGE_DETAIL = 'Cloudflare browser challenge; source content not checked';
+const SOURCE_CHALLENGE_MARKER = '[source_challenge]';
+const SOURCE_CHALLENGE_DETAIL = `${SOURCE_CHALLENGE_MARKER} Cloudflare browser challenge; source content not checked`;
 const MIGRATION = 'supabase/migrations/20261024090000_scholarship_source_checks.sql';
 const COVERAGE_MIGRATION = 'supabase/migrations/20261115020000_scholarship_source_check_rows.sql';
 const MISSING_TABLE_CODES = new Set(['PGRST205', '42P01']);
@@ -168,7 +169,7 @@ export function classifyCheck({ url, status, error, hash, finalUrl, previous, re
   if (!sameUrl(finalUrl, url)) return { outcome: 'unreachable', detail: `redirected to ${finalUrl}` };
   if (status === 404 || status === 410) {
     const before = previous?.http_status;
-    if ((before === 404 || before === 410) && sameUrl(previous?.final_url, url) && previous?.detail !== SOURCE_CHALLENGE_DETAIL) {
+    if ((before === 404 || before === 410) && sameUrl(previous?.final_url, url) && !previous?.detail?.startsWith(SOURCE_CHALLENGE_MARKER)) {
       const gap = now - Date.parse(previous?.checked_at ?? '');
       if (gap >= GONE_GAP_MS) return { outcome: 'gone', detail: `HTTP ${status}; previous check HTTP ${before} at ${previous?.checked_at}` };
       return { outcome: 'unreachable', detail: `HTTP ${status}; previous not-found strike is less than 24 h old` };
@@ -228,7 +229,8 @@ export async function checkUrl(url, { fetchImpl, timeoutMs }) {
     });
     const status = response.status;
     const finalUrl = response.url || url;
-    if (response.headers.get('cf-mitigated') === 'challenge') {
+    const mitigations = (response.headers.get('cf-mitigated') ?? '').toLowerCase().split(',').map(value => value.trim());
+    if (mitigations.includes('challenge')) {
       await response.body?.cancel?.().catch(() => {});
       return { status, finalUrl, hash: null, error: SOURCE_CHALLENGE_DETAIL };
     }
