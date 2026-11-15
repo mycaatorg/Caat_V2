@@ -24,6 +24,7 @@ describe('school-note account binding', () => {
     io.userId = 'owner-b';
     const result = await saveSchoolNoteAction(1, text, 'owner-a');
     expect(result.error).toBeTruthy();
+    expect(result).toHaveProperty("reloadRequired", true);
     expect(io.from).not.toHaveBeenCalled();
   });
   it('does not write when the caller omits the expected owner', async () => {

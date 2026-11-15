@@ -26,7 +26,7 @@ async function settle(request: ReturnType<typeof deferred>, value = ok) {
   await act(async () => { request.resolve(value); await request.promise; });
 }
 beforeEach(() => { vi.useFakeTimers(); save.mockReset(); refresh.mockReset(); save.mockResolvedValue(ok); });
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('school note saving', () => {
   it.each(['throw', 'returned error'])('restores a queued revert after the earlier write commits but reports %s', async (failure) => {
@@ -203,5 +203,63 @@ describe('initial school note load safety', () => {
     render(<SchoolNotesPanel ownerId={null} schoolId={1} initialNotes="" initialUpdatedAt={null} />);
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry loading notes' })).toBeInTheDocument();
+  });
+});
+
+
+describe('school-note account-change recovery', () => {
+  // Observe the component's cancellation, then stop jsdom's native navigation.
+  function activateReload(options: MouseEventInit = {}) {
+    let cancelled = false;
+    document.addEventListener('click', event => { cancelled = event.defaultPrevented; event.preventDefault(); }, { once: true });
+    fireEvent.click(screen.getByText('Reload for current account', { exact: true }), options);
+    return cancelled;
+  }
+  const mismatch = { updated_at: null, error: 'Your account changed. Reload before saving this note.', reloadRequired: true };
+
+  it('preserves the draft on cancel and uses confirmed native navigation for a fresh account snapshot', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    save.mockResolvedValue(mismatch);
+    const view = render(editor(1, 'Original account note'));
+    change('Unsaved private draft'); await debounce();
+    expect(screen.getByRole('alert')).toHaveTextContent('Unsaved text will be discarded');
+    expect(activateReload()).toBe(true);
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Unsaved text will be discarded'));
+    expect(screen.getByRole('textbox')).toHaveValue('Unsaved private draft');
+    expect(screen.getByRole('link', { name: 'Reload for current account' })).toHaveAttribute('href', '/schools/1');
+    confirm.mockReturnValue(true);
+    expect(activateReload()).toBe(false);
+    fireEvent(window, new Event('beforeunload')); view.unmount();
+    expect(save.mock.calls).toEqual([[1, 'Unsaved private draft', 'owner-a']]);
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('cancels a newer debounce and all future flushes once discard is confirmed', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    save.mockResolvedValue(mismatch);
+    const view = render(editor());
+    change('Rejected draft'); await debounce();
+    change('Newest unsaved draft');
+    activateReload();
+    await debounce();
+    fireEvent(window, new Event('beforeunload')); view.unmount();
+    expect(save.mock.calls).toEqual([[1, 'Rejected draft', 'owner-a']]);
+  });
+
+  it('keeps this editor active when recovery opens in another tab', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    save.mockResolvedValue(mismatch);
+    render(editor()); change('Rejected draft'); await debounce();
+    activateReload({ ctrlKey: true });
+    expect(confirm).not.toHaveBeenCalled();
+    change('Keep editing this tab'); await debounce();
+    expect(save.mock.calls).toEqual([[1, 'Rejected draft', 'owner-a'], [1, 'Keep editing this tab', 'owner-a']]);
+  });
+
+  it('keeps ordinary save failures on the existing retry path', async () => {
+    save.mockResolvedValueOnce({ updated_at: null, error: 'Could not save note.' });
+    render(editor()); change('Keep for retry'); await debounce();
+    expect(screen.queryByRole('link', { name: 'Reload for current account' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
   });
 });

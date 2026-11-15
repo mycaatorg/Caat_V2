@@ -741,6 +741,74 @@ test("an already-saved scholarship moves from Interested to Applied and stays Ap
   }
 });
 
+for (const returnToOriginal of [false, true]) {
+test(`school notes recover ${returnToOriginal ? 'after returning to the original account' : 'after an account change'} without writing the old draft (PROD-271)`, { tag: '@phone' }, async ({ page, request }, testInfo) => {
+  const api = assertLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL, 'NEXT_PUBLIC_SUPABASE_URL').origin;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  async function account(email: string) {
+    const response = await request.post(`${api}/auth/v1/token?grant_type=password`, {
+      headers: { apikey: key }, data: { email, password: process.env.E2E_TEST_PASSWORD },
+    });
+    expect(response.ok()).toBe(true);
+    const session = await response.json();
+    return { id: session.user.id as string, headers: { apikey: key, Authorization: `Bearer ${session.access_token}` } };
+  }
+  async function notes(user: Awaited<ReturnType<typeof account>>) {
+    const response = await request.get(`${api}/rest/v1/user_school_notes?select=notes,updated_at&user_id=eq.${user.id}&school_id=eq.${SCHOOL_ID}`, { headers: user.headers });
+    expect(response.ok()).toBe(true);
+    return response.json();
+  }
+  const student = await account(STUDENT_EMAIL), peer = await account('e2e.peer@caat.local.test');
+  const originalStudent = await notes(student), originalPeer = await notes(peer);
+  await signInToIsolatedStudent(page);
+  await page.goto(`/schools/${SCHOOL_ID}`);
+  const editor = page.locator('textarea[placeholder*="Jot down anything you want to remember about this school"]:visible');
+  await expect(editor).toHaveValue(originalStudent[0]?.notes ?? '');
+  const otherTab = await page.context().newPage();
+  try {
+    // Sign into the other synthetic account in this browser context, leaving
+    // the original editor open with its original owner binding.
+    await otherTab.goto('/login');
+    await otherTab.getByLabel('Email', { exact: true }).fill('e2e.peer@caat.local.test');
+    await otherTab.getByLabel('Password', { exact: true }).fill(process.env.E2E_TEST_PASSWORD!);
+    await otherTab.getByRole('button', { name: /sign in/i }).click();
+    await otherTab.waitForURL(/\/today(?:$|\?)/, { timeout: 20_000 });
+    await otherTab.close();
+    const draft = marker('Keep private account draft');
+    await editor.fill(draft);
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    const reload = page.getByRole('link', { name: 'Reload for current account', exact: true });
+    await expect(reload).toBeVisible();
+    await expect(editor).toHaveValue(draft);
+    page.once('dialog', dialog => dialog.dismiss());
+    await reload.click();
+    await expect(editor).toHaveValue(draft);
+    await expect(reload).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('account-change-note-recovery.png') });
+    if (returnToOriginal) {
+      const returningTab = await page.context().newPage();
+      try {
+        await returningTab.goto('/login');
+        await returningTab.getByLabel('Email', { exact: true }).fill(STUDENT_EMAIL);
+        await returningTab.getByLabel('Password', { exact: true }).fill(process.env.E2E_TEST_PASSWORD!);
+        await returningTab.getByRole('button', { name: /sign in/i }).click();
+        await returningTab.waitForURL(/\/today(?:$|\?)/, { timeout: 20_000 });
+      } finally { await returningTab.close(); }
+    }
+    page.once('dialog', dialog => dialog.accept());
+    await reload.click();
+    await expect(reload).toHaveCount(0);
+    await expect(editor).toHaveValue((returnToOriginal ? originalStudent : originalPeer)[0]?.notes ?? '');
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+    expect(await notes(student)).toEqual(originalStudent);
+    expect(await notes(peer)).toEqual(originalPeer);
+  } finally {
+    if (!otherTab.isClosed()) await otherTab.close();
+    await page.close();
+  }
+});
+}
+
 test("school notes and application status/checklist persist across list and detail reloads (PROD-270, PROD-274)", { tag: "@phone" }, async ({ page }) => {
   page.setDefaultTimeout(10_000);
   await signInToIsolatedStudent(page);

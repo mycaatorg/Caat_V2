@@ -63,7 +63,7 @@ export async function saveSchoolNoteAction(
   schoolId: number,
   notes: string,
   expectedOwnerId: string,
-): Promise<{ updated_at: string | null; error: string | null }> {
+): Promise<{ updated_at: string | null; error: string | null; reloadRequired?: boolean }> {
   const supabase = await createSupabaseServer();
   const {
     data: { user },
@@ -71,7 +71,7 @@ export async function saveSchoolNoteAction(
   if (!user) return { updated_at: null, error: "Not signed in" };
   // Queued writes must stay bound to the account that opened the editor.
   if (!expectedOwnerId || user.id !== expectedOwnerId) {
-    return { updated_at: null, error: "Your account changed. Reload before saving this note." };
+    return { updated_at: null, error: "Your account changed. Reload before saving this note.", reloadRequired: true };
   }
 
   if (typeof notes !== "string") {
