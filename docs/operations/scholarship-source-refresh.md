@@ -98,6 +98,8 @@ The hash covers the visible text of the page's content area: on `www.sydney.edu.
 
 A redirect is never hashed into a baseline: if the final URL differs from the requested one the check is `unreachable` with "redirected to ...". Fix the stored `external_url` (a re-import) if the move is permanent.
 
+Responses carrying Cloudflare's documented `cf-mitigated: challenge` header are also `unreachable`, even with HTTP 200. The runner cancels the body without hashing it and records "Cloudflare browser challenge; source content not checked" alongside the observed status and final URL. Such checks never verify an award or count as a missing-page strike on a later run. This uses the explicit response header, not a guess based on scholarship text; it does not identify every provider's challenge mechanism or restore access to blocked pages. See [Cloudflare's response detection documentation](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/).
+
 The reference for a URL is its latest `baseline` check: its hash is the accepted content (`unchanged` and `unanchored` checks repeat it), and its `checked_at` is the time rows are anchored against. A `changed` hash never becomes the reference, so a changed page keeps reporting `changed` and cannot quietly re-verify fields extracted from the old page. It clears when the scraper re-imports a row on it: a `source_last_synced_at` later than the baseline makes the next check a new `baseline`.
 
 ### Anchoring: why old imports never become fresh

@@ -27,6 +27,8 @@ export const GONE_GAP_MS = 24 * 60 * 60 * 1000;
 export const ANCHOR_TOLERANCE_MS = 7 * 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 1000;
 const SAMPLE_PER_OUTCOME = 3;
+// Persisted in check history: keep this marker stable so challenges never become missing-page strikes.
+const SOURCE_CHALLENGE_DETAIL = 'Cloudflare browser challenge; source content not checked';
 const MIGRATION = 'supabase/migrations/20261024090000_scholarship_source_checks.sql';
 const COVERAGE_MIGRATION = 'supabase/migrations/20261115020000_scholarship_source_check_rows.sql';
 const MISSING_TABLE_CODES = new Set(['PGRST205', '42P01']);
@@ -156,7 +158,7 @@ export function isAnchored(row, baselineAt) {
  * re-baselines it.
  * @param {{
  *   url: string, status?: number | null, error?: string | null, hash?: string | null, finalUrl?: string | null,
- *   previous?: { http_status?: number | null, checked_at?: string | null, final_url?: string | null } | null,
+ *   previous?: { http_status?: number | null, checked_at?: string | null, final_url?: string | null, detail?: string | null } | null,
  *   reference?: { content_hash?: string | null, checked_at?: string | null } | null,
  *   rows?: Array<{ source_last_synced_at?: string | null }>, now?: number,
  * }} input
@@ -166,7 +168,7 @@ export function classifyCheck({ url, status, error, hash, finalUrl, previous, re
   if (!sameUrl(finalUrl, url)) return { outcome: 'unreachable', detail: `redirected to ${finalUrl}` };
   if (status === 404 || status === 410) {
     const before = previous?.http_status;
-    if ((before === 404 || before === 410) && sameUrl(previous?.final_url, url)) {
+    if ((before === 404 || before === 410) && sameUrl(previous?.final_url, url) && previous?.detail !== SOURCE_CHALLENGE_DETAIL) {
       const gap = now - Date.parse(previous?.checked_at ?? '');
       if (gap >= GONE_GAP_MS) return { outcome: 'gone', detail: `HTTP ${status}; previous check HTTP ${before} at ${previous?.checked_at}` };
       return { outcome: 'unreachable', detail: `HTTP ${status}; previous not-found strike is less than 24 h old` };
@@ -226,6 +228,10 @@ export async function checkUrl(url, { fetchImpl, timeoutMs }) {
     });
     const status = response.status;
     const finalUrl = response.url || url;
+    if (response.headers.get('cf-mitigated') === 'challenge') {
+      await response.body?.cancel?.().catch(() => {});
+      return { status, finalUrl, hash: null, error: SOURCE_CHALLENGE_DETAIL };
+    }
     if (status < 200 || status >= 300) {
       await response.body?.cancel?.().catch(() => {});
       return { status, finalUrl, hash: null, error: null };
@@ -301,7 +307,7 @@ export function createSupabaseStore(client) {
     /** Latest check and latest baseline. A missing table reads as no history (`missing: true`). */
     async latestChecks(url) {
       const previous = await client.from('scholarship_source_checks')
-        .select('checked_at,http_status,final_url,content_hash,outcome').eq('url', url)
+        .select('checked_at,http_status,final_url,content_hash,outcome,detail').eq('url', url)
         .order('checked_at', { ascending: false }).limit(1);
       if (missingTable(previous.error)) return { previous: null, reference: null, missing: true };
       const reference = await client.from('scholarship_source_checks')
