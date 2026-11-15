@@ -28,6 +28,7 @@ export const ANCHOR_TOLERANCE_MS = 7 * 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 1000;
 const SAMPLE_PER_OUTCOME = 3;
 const MIGRATION = 'supabase/migrations/20261024090000_scholarship_source_checks.sql';
+const COVERAGE_MIGRATION = 'supabase/migrations/20261115020000_scholarship_source_check_rows.sql';
 const MISSING_TABLE_CODES = new Set(['PGRST205', '42P01']);
 
 // Hosts whose pages have no <main>: the element that holds the page's own content.
@@ -278,9 +279,9 @@ export function createSupabaseStore(client) {
   return {
     /** Apply only: the checks table and the run counts column must exist before anything is written. */
     async assertReady() {
-      for (const [table, columns] of [['scholarship_source_checks', 'id,final_url'], ['scholarship_import_runs', 'id,check_counts']]) {
+      for (const [table, columns, migration] of [['scholarship_source_checks', 'id,final_url', MIGRATION], ['scholarship_import_runs', 'id,check_counts', MIGRATION], ['scholarship_source_check_rows', 'check_id,scholarship_id,source_url', COVERAGE_MIGRATION]]) {
         const { error } = await client.from(table).select(columns).limit(1);
-        if (error) throw new Error(`${table} is not ready (${error.code ?? ''} ${error.message}). Apply ${MIGRATION} first.`);
+        if (error) throw new Error(`${table} is not ready (${error.code ?? ''} ${error.message}). Apply ${migration} first.`);
       }
     },
     async loadActiveScholarships() {
@@ -312,8 +313,14 @@ export function createSupabaseStore(client) {
     async startRun() {
       return must(await client.from('scholarship_import_runs').insert({ status: 'started' }).select('id,started_at').single(), 'start run');
     },
-    async recordCheck(check) {
-      return must(await client.from('scholarship_source_checks').insert(check).select('id,checked_at').single(), 'record check');
+    async recordCheck(check, rows) {
+      if (!Array.isArray(rows) || rows.length === 0 || rows.some(row => normaliseUrl(row.external_url) !== check.url)) {
+        throw new Error('Covered source URL must match the checked page.');
+      }
+      return must(await client.rpc('record_scholarship_source_check', {
+        p_check: check,
+        p_rows: rows.map(row => ({id: row.id, source_url: row.external_url})),
+      }), 'record check and covered scholarships');
     },
     /** Sets last_verified_at only where it is null or earlier. Returns whether a row changed. */
     async verifyScholarship(id, at) {
@@ -341,7 +348,7 @@ export function createSupabaseStore(client) {
  *     loadActiveScholarships: () => Promise<any[]>,
  *     latestChecks: (url: string) => Promise<{ previous: any, reference: any, missing?: boolean }>,
  *     startRun: () => Promise<{ id: string }>,
- *     recordCheck: (check: Record<string, unknown>) => Promise<{ checked_at: string }>,
+ *     recordCheck: (check: Record<string, unknown>, rows: any[]) => Promise<{ checked_at: string }>,
  *     verifyScholarship: (id: string, at: string) => Promise<boolean>,
  *     deactivateScholarship: (id: string, sourceCheck: Record<string, unknown>) => Promise<boolean>,
  *     finishRun: (id: string, patch: Record<string, unknown>) => Promise<unknown>,
@@ -380,7 +387,7 @@ export async function runRefresh({ store, fetchImpl = globalThis.fetch, apply = 
       const check = { run_id: run.id, url, http_status: fetched.status, final_url: fetched.finalUrl, content_hash: fetched.hash, outcome, detail };
       // checked_at comes from the stored check row (database clock at record time).
       // Dry-run never stores, so it uses the local clock purely to count planned updates.
-      const checkedAt = apply ? (await store.recordCheck(check)).checked_at : new Date(now()).toISOString();
+      const checkedAt = apply ? (await store.recordCheck(check, rows)).checked_at : new Date(now()).toISOString();
       counts[outcome] += 1;
       if (outcome === 'unchanged' || outcome === 'unanchored') {
         counts.unanchored_rows += rows.filter((r) => !isAnchored(r, history.reference?.checked_at)).length;

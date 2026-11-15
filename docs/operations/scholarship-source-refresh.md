@@ -13,6 +13,8 @@ The scraper (`stealth-startup-2026/scholarship-scraper`) set `last_verified_at` 
 
 ## Where to run it, and the key
 
+The updated runner also requires `supabase/migrations/20261115020000_scholarship_source_check_rows.sql`. Each check and its covered scholarship IDs/original URLs are stored atomically through a service-role-only RPC. Missing, inactive or changed-URL rows fail without partial history. Groups above 5,000 awards fail explicitly. Old checks are not backfilled by guessing today's URL membership. Keep catalogue imports separate from refreshes: later legacy verification/deactivation calls remain separate transactions.
+
 Run it only where the production service role key already lives: the Mac mini. Never copy the key to a laptop, CI, a file in the repo, a chat, or the command line (it would land in shell history and `ps`). Keep it in an env file outside the repo, readable only by you, and load it with Node's `--env-file`:
 
 ```sh
@@ -65,7 +67,7 @@ Options: `--apply` writes; `--limit N` checks the first N distinct URLs; `--conc
 node --env-file="$HOME/.config/caat/source-refresh.env" scripts/refresh-scholarship-sources.mjs --apply
 ```
 
-`--apply` first checks that `scholarship_source_checks` and `scholarship_import_runs.check_counts` exist and stops with a clear message if not, before writing anything. It then creates one `scholarship_import_runs` row (`status` started, then succeeded or failed, with `records_seen` = URLs checked, `records_updated` = scholarship rows the guarded updates actually changed, and `check_counts` holding the count per outcome) and one `scholarship_source_checks` row per URL. If a write fails, no new URL starts, URLs already in flight finish, and the run is marked failed with accurate counts; if even that summary cannot be stored, a minimal failed status is written so a run never stays `started`.
+`--apply` first checks that `scholarship_source_checks`, `scholarship_source_check_rows` and `scholarship_import_runs.check_counts` exist and stops with a clear message if not, before writing anything. It then creates one `scholarship_import_runs` row (`status` started, then succeeded or failed, with `records_seen` = URLs checked, `records_updated` = scholarship rows the guarded updates actually changed, and `check_counts` holding the count per outcome) and one `scholarship_source_checks` row per URL. If a write fails, no new URL starts, URLs already in flight finish, and the run is marked failed with accurate counts; if even that summary cannot be stored, a minimal failed status is written so a run never stays `started`.
 
 Each check's `checked_at` is stamped by the database when the check is stored, and that exact value is what goes onto scholarships. The first `--apply` on a database only records baselines. From the second run, verification dates move only for rows anchored to that baseline (next section); on today's catalogue, imported months before any baseline, that is none of them.
 

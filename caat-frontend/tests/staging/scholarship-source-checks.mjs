@@ -149,7 +149,11 @@ try {
     assert.equal(after[slug].source_last_synced_at, before[slug].source_last_synced_at, `${slug} import date untouched`);
     assert.equal(Date.parse(after[slug].updated_at), Date.parse(before[slug].updated_at), `${slug} updated_at (sitemap lastModified) unchanged by verification`);
   }
-  assert.ok(Date.parse(after['same-a'].last_verified_at) <= Date.now(), 'verification date is not in the future');
+  const verificationCheck=(await checksFor(second.runId)).find(c=>c.url===pageUrl('same'));
+  assert.equal(Date.parse(after['same-a'].last_verified_at),Date.parse(verificationCheck.checked_at),'verification uses its stored check timestamp');
+  // The isolated VM may be milliseconds ahead of the host. Compare server-generated
+  // timestamps with the database clock, while also requiring the exact stored check.
+  assert.ok(Date.parse(after['same-a'].last_verified_at) <= Date.parse(sql('SELECT clock_timestamp()')), 'verification date is not in the database future');
   assert.deepEqual(after.changes, afterQuick.changes, 'changed writes nothing to scholarships');
   assert.equal(after.gone.is_active, false, 'two not-found strikes a day apart deactivate');
   assert.equal(after.gone.raw_payload.extracted, 'gone', 'raw_payload keeps extracted fields');
@@ -187,6 +191,10 @@ try {
   const failures = [];
   const step = async (what, fn) => { try { const r = await fn(); if (r?.error) throw r.error; } catch (err) { failures.push(`${what}: ${err?.message ?? err}`); } };
   if (runIds.length) {
+    await step('delete covered rows', async () => {
+      const checks = ok(await admin.from('scholarship_source_checks').select('id').in('run_id', runIds));
+      return checks.length ? admin.from('scholarship_source_check_rows').delete().in('check_id',checks.map(c=>c.id)) : {error:null};
+    });
     await step('delete checks', () => admin.from('scholarship_source_checks').delete().in('run_id', runIds));
     await step('delete runs', () => admin.from('scholarship_import_runs').delete().in('id', runIds));
   }
