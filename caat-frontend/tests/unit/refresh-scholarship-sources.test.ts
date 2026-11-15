@@ -207,7 +207,7 @@ function fakeStore(rows: Row[], history: Record<string, { previous?: object | nu
     loadActiveScholarships: vi.fn(async () => rows),
     latestChecks: vi.fn(async (url: string) => ({ previous: history[url]?.previous ?? null, reference: history[url]?.reference ?? null, missing: false })),
     startRun: vi.fn(async () => ({ id: 'run-1' })),
-    recordCheck: vi.fn<(check: Record<string, unknown>) => Promise<{ checked_at: string }>>(async () => ({ checked_at: `2026-10-24T00:00:0${n++}.000Z` })),
+    recordCheck: vi.fn<(check: Record<string, unknown>, rows: Row[]) => Promise<{ checked_at: string }>>(async () => ({ checked_at: `2026-10-24T00:00:0${n++}.000Z` })),
     verifyScholarship: vi.fn<(id: string, at: string) => Promise<boolean>>(async () => true),
     deactivateScholarship: vi.fn<(id: string, check: object) => Promise<boolean>>(async () => true),
     finishRun: vi.fn<(id: string, patch: object) => Promise<void>>(async () => undefined),
@@ -283,6 +283,18 @@ describe('runRefresh', () => {
     const summary = await runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, ...quiet });
     expect(summary.scholarshipsUpdated).toBe(2);
     expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ records_updated: 2 }));
+  });
+
+  it('records exactly the covered awards for each checked page, retaining their original fragments', async () => {
+    const store = fakeStore(rows, history);
+    await runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, ...quiet });
+    expect(store.recordCheck.mock.calls[0][1]).toEqual([
+      expect.objectContaining({ id: 'u1', external_url: 'https://u.example/same#a' }),
+      expect.objectContaining({ id: 'u2', external_url: 'https://u.example/same#b' }),
+    ]);
+    expect(store.recordCheck.mock.calls[1][1]).toEqual([
+      expect.objectContaining({ id: 'c1', external_url: 'https://u.example/changed' }),
+    ]);
   });
 
   it('respects --limit on distinct urls', async () => {
@@ -456,6 +468,12 @@ describe('supabase store', () => {
     expect(update.op).toBe('update');
     expect(update.calls).toContainEqual({ method: 'update', args: [{ last_verified_at: '2026-10-24T01:02:03.123456+00:00' }] });
     expect(update.calls).toContainEqual({ method: 'or', args: ['last_verified_at.is.null,last_verified_at.lt."2026-10-24T01:02:03.123456+00:00"'] });
+  });
+
+  it('refuses to record awards from a different page', async () => {
+    const supabase = createMockSupabase({ resolver: () => ({ data: { id: 1, checked_at: '2026-10-24' }, error: null }) });
+    await expect(createSupabaseStore(supabase).recordCheck({url: 'https://u.example/a'}, [row('a', 'https://u.example/b#award')])).rejects.toThrow(/covered source URL/i);
+    expect(supabase.queries).toEqual([]);
   });
 
   it('deactivates in one statement through scholarship_mark_gone', async () => {

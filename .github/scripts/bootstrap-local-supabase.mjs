@@ -90,8 +90,10 @@ async function main() {
   run('tests/staging/evidence-items-rls.mjs', localOnlyEnv);
   run('tests/staging/requirement-evidence-rls.mjs', localOnlyEnv);
   run('tests/staging/requirement-evidence-race.mjs', localOnlyEnv);
+  run('tests/staging/scholarship-source-associations.mjs', localOnlyEnv);
   run('tests/staging/scholarship-source-checks.mjs', localOnlyEnv);
   run('tests/staging/unsw-source-repair.mjs', localOnlyEnv);
+  run('tests/staging/exchange-achievement-source-repair.mjs', localOnlyEnv);
   run('tests/staging/course-preparation-rls.mjs', localOnlyEnv);
   run('tests/staging/course-preparation-race.mjs', localOnlyEnv);
   run('tests/staging/shortlist-sharing-rls.mjs', localOnlyEnv);
