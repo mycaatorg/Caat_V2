@@ -559,8 +559,36 @@ describe('source outage guard', () => {
     const summary = await runRefresh({ store, fetchImpl: stubFetch(pages), apply: false, ...quiet });
     expect(summary).toMatchObject({ urls: 49, plannedUpdates: 0, scholarshipsUpdated: 0, deactivationsHeld: 2 });
     expect(summary.counts.gone).toBe(1);
-    expect(formatSummary(summary)).toMatch(/deactivations held.*2/i);
+    const output = formatSummary(summary);
+    expect(output).toMatch(/deactivations held.*2/i);
+    expect(output).toContain('scholarship rows that --apply would update: 0 (nothing written)');
+    expect(output).toContain(`${rows[0].external_url} rows=2 candidates=2`);
+    expect(output).toContain('before the outage guard and write checks');
+    expect(output).not.toContain('updates=2');
     for (const write of [store.assertReady, store.startRun, store.recordCheck, store.verifyScholarship, store.deactivateScholarship, store.finishRun]) expect(write).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes candidates from applicable updates in a permitted dry run', async () => {
+    const { rows, history, pages } = batch(50, 1);
+    const store = fakeStore(rows, history);
+    const summary = await runRefresh({ store, fetchImpl: stubFetch(pages), apply: false, ...quiet });
+    const output = formatSummary(summary);
+    expect(summary).toMatchObject({ plannedUpdates: 1, scholarshipsUpdated: 0, deactivationsHeld: 0 });
+    expect(output).toContain('scholarship rows that --apply would update: 1 (nothing written)');
+    expect(output).toContain(`${rows[0].external_url} rows=1 candidates=1`);
+    expect(store.deactivateScholarship).not.toHaveBeenCalled();
+  });
+
+  it('does not present an apply candidate as an actual update when the conditional write skips it', async () => {
+    const { rows, history, pages } = batch(50, 1);
+    const store = fakeStore(rows, history);
+    store.deactivateScholarship.mockResolvedValue(false);
+    const summary = await runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, ...quiet });
+    const output = formatSummary(summary);
+    expect(output).toContain('scholarship rows updated: 0');
+    expect(output).toContain(`${rows[0].external_url} rows=1 candidates=1`);
+    expect(output).not.toContain('updates=1');
+    expect(store.deactivateScholarship).toHaveBeenCalledTimes(1);
   });
 
   it.each([{ limit: 1 }, { urlPrefix: 'https://outage.example/page/0' }])('uses the selected batch for the ratio: %j', async (scope) => {
