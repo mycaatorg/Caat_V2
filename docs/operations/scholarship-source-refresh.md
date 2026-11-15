@@ -50,14 +50,14 @@ dry-run: 50 urls checked (run <random id>, not stored)
   unanchored  0
   rows left unverified because their import predates the baseline: 0
   scholarship rows that --apply would update: 0 (nothing written)
-sample:
-  baseline    200  https://... rows=4 updates=0 (first stored content hash for this url)
-  unreachable 404  https://... rows=1 updates=0 (HTTP 404; first not-found strike, needs a second at least 24 h later)
-  unreachable 200  https://... rows=1 updates=0 (redirected to https://...)
-  unreachable -    https://... rows=2 updates=0 (network error: fetch failed (ENOTFOUND))
+sample (candidates are potential row updates before the outage guard and write checks):
+  baseline    200  https://... rows=4 candidates=0 (first stored content hash for this url)
+  unreachable 404  https://... rows=1 candidates=0 (HTTP 404; first not-found strike, needs a second at least 24 h later)
+  unreachable 200  https://... rows=1 candidates=0 (redirected to https://...)
+  unreachable -    https://... rows=2 candidates=0 (network error: fetch failed (ENOTFOUND))
 ```
 
-Up to three sample lines are printed per outcome. `rows` is how many scholarships share that URL; `updates` is how many of them `--apply` would change.
+Up to three sample lines are printed per outcome. `rows` is how many scholarships share that URL; `candidates` counts potential row updates before the outage guard and conditional write checks. It is not a count of successful writes. The dry-run aggregate excludes deactivations held by the outage guard; apply reports only rows actually updated. For example, two awards sharing one missing page in a 49-URL batch can show `candidates=2` while the dry-run aggregate shows zero updates and two held deactivations. A permitted deactivation, or any verification, can still be skipped by the conditional write if the row no longer qualifies.
 
 Options: `--apply` writes; `--limit N` checks the first N distinct URLs; `--concurrency N` (default 4) parallel fetches; `--timeout-ms N` (default 15000) per page; `--url-prefix https://host/path` checks only URLs under that prefix, for one provider. The prefix is normalised like the URLs (lower-case host, fragment dropped) and matches on a path boundary: `/path` covers `/path`, `/path/...` and `/path?...`, not `/pathology`.
 
