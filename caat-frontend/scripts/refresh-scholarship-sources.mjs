@@ -370,11 +370,13 @@ export async function runRefresh({ store, fetchImpl = globalThis.fetch, apply = 
   const sample = [];
   let plannedUpdates = 0;
   let scholarshipsUpdated = 0;
+  const deactivations = [];
+  let deactivationsHeld = 0;
   let warnedMissing = false;
   const run = apply ? await store.startRun() : { id: randomUUID() };
   log(`${apply ? 'APPLY' : 'DRY RUN'}: ${urls.length} distinct source urls from ${[...groups.values()].reduce((n, g) => n + g.length, 0)} active scholarships (run ${run.id}${apply ? '' : ', not stored'}).`);
 
-  const totals = () => ({ records_seen: urls.length, records_inserted: 0, records_updated: scholarshipsUpdated, check_counts: counts });
+  const totals = () => ({ records_seen: OUTCOMES.reduce((n, outcome) => n + counts[outcome], 0), records_inserted: 0, records_updated: scholarshipsUpdated, check_counts: counts });
   try {
     await pool(urls, concurrency, async (url) => {
       const rows = groups.get(url);
@@ -394,16 +396,26 @@ export async function runRefresh({ store, fetchImpl = globalThis.fetch, apply = 
       }
       const plan = planScholarshipUpdates(rows, { ...check, checked_at: checkedAt, baseline_at: history.reference?.checked_at ?? null });
       plannedUpdates += plan.length;
-      if (apply) {
-        for (const op of plan) {
-          const changed = op.action === 'verify' ? await store.verifyScholarship(op.id, op.at) : await store.deactivateScholarship(op.id, op.sourceCheck);
-          if (changed) scholarshipsUpdated += 1;
-        }
+      for (const op of plan) {
+        // A provider outage can look like many genuinely missing pages. Defer
+        // every removal until the complete selected batch has been recorded.
+        if (op.action === 'deactivate') deactivations.push(op);
+        else if (apply && await store.verifyScholarship(op.id, op.at)) scholarshipsUpdated += 1;
       }
       if (sample.filter((s) => s.outcome === outcome).length < SAMPLE_PER_OUTCOME) {
         sample.push({ outcome, url, http_status: fetched.status, detail, rows: rows.length, updates: plan.length });
       }
     });
+    if (counts.gone > 25 || counts.gone * 50 > urls.length) {
+      deactivationsHeld = deactivations.length;
+      counts.deactivations_held = deactivationsHeld;
+      plannedUpdates -= deactivationsHeld;
+      if (apply) throw new Error(`Scholarship deactivations held: ${counts.gone} of ${urls.length} source URLs are gone (limit 25 URLs and 2% of this batch). Investigate provider availability before another apply.`);
+    } else if (apply) {
+      for (const op of deactivations) {
+        if (await store.deactivateScholarship(op.id, op.sourceCheck)) scholarshipsUpdated += 1;
+      }
+    }
   } catch (err) {
     if (apply) await finishSafely(store, run.id, { status: 'failed', error_message: String(err?.message ?? err).slice(0, 1000), ...totals() });
     throw err;
@@ -418,7 +430,7 @@ export async function runRefresh({ store, fetchImpl = globalThis.fetch, apply = 
       throw err;
     }
   }
-  return { mode: apply ? 'apply' : 'dry-run', runId: run.id, urls: urls.length, counts, plannedUpdates, scholarshipsUpdated, sample };
+  return { mode: apply ? 'apply' : 'dry-run', runId: run.id, urls: urls.length, counts, plannedUpdates, scholarshipsUpdated, deactivationsHeld, sample };
 }
 
 /** Mark a run finished; if the full write fails, retry with the minimal columns so it never stays `started`. */
@@ -469,6 +481,7 @@ export function formatSummary(summary) {
   lines.push(summary.mode === 'apply'
     ? `  scholarship rows updated: ${summary.scholarshipsUpdated}`
     : `  scholarship rows that --apply would update: ${summary.plannedUpdates} (nothing written)`);
+  if (summary.deactivationsHeld) lines.push(`  scholarship deactivations held for review: ${summary.deactivationsHeld}`);
   lines.push('sample:');
   for (const s of summary.sample) lines.push(`  ${s.outcome.padEnd(11)} ${String(s.http_status ?? '-').padEnd(4)} ${s.url} rows=${s.rows} updates=${s.updates}${s.detail ? ` (${s.detail})` : ''}`);
   return lines.join('\n');

@@ -7,6 +7,7 @@ import {
   createSupabaseStore,
   extractVisibleText,
   groupRowsByUrl,
+  formatSummary,
   normaliseUrl,
   parseArgs,
   planScholarshipUpdates,
@@ -253,15 +254,15 @@ describe('runRefresh', () => {
     const fetchImpl = stubFetch(pages);
     const summary = await runRefresh({ store, fetchImpl, apply: false, ...quiet });
     expect(fetchImpl).toHaveBeenCalledTimes(5);
-    expect(summary.counts).toEqual({ baseline: 1, unchanged: 1, changed: 1, unreachable: 1, gone: 1, unanchored: 0, unanchored_rows: 0 });
+    expect(summary.counts).toEqual({ baseline: 1, unchanged: 1, changed: 1, unreachable: 1, gone: 1, unanchored: 0, unanchored_rows: 0, deactivations_held: 1 });
     expect(summary.mode).toBe('dry-run');
-    expect(summary.plannedUpdates).toBe(3);
+    expect(summary.plannedUpdates).toBe(2);
     for (const write of [store.assertReady, store.startRun, store.recordCheck, store.verifyScholarship, store.deactivateScholarship, store.finishRun]) expect(write).not.toHaveBeenCalled();
   });
 
   it('apply writes one check per url and verifies with that check\'s checked_at', async () => {
     const store = fakeStore(rows, history);
-    const summary = await runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, ...quiet });
+    await expect(runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, ...quiet })).rejects.toThrow(/deactivations held/i);
     expect(store.assertReady).toHaveBeenCalledBefore(store.startRun);
     expect(store.recordCheck).toHaveBeenCalledTimes(5);
     for (const [check] of store.recordCheck.mock.calls as unknown as [Record<string, unknown>][]) {
@@ -269,25 +270,24 @@ describe('runRefresh', () => {
       expect(check).not.toHaveProperty('checked_at');
     }
     expect(store.verifyScholarship.mock.calls).toEqual([['u1', '2026-10-24T00:00:00.000Z'], ['u2', '2026-10-24T00:00:00.000Z']]);
-    expect(store.deactivateScholarship.mock.calls.map(([id]) => id)).toEqual(['g1']);
+    expect(store.deactivateScholarship).not.toHaveBeenCalled();
     expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({
-      status: 'succeeded', records_seen: 5, records_inserted: 0, records_updated: 3,
-      check_counts: { baseline: 1, unchanged: 1, changed: 1, unreachable: 1, gone: 1, unanchored: 0, unanchored_rows: 0 },
+      status: 'failed', records_seen: 5, records_inserted: 0, records_updated: 2,
+      check_counts: { baseline: 1, unchanged: 1, changed: 1, unreachable: 1, gone: 1, unanchored: 0, unanchored_rows: 0, deactivations_held: 1 },
     }));
-    expect(summary.scholarshipsUpdated).toBe(3);
   });
 
   it('counts only rows the guarded update actually changed', async () => {
     const store = fakeStore(rows, history);
     store.verifyScholarship.mockResolvedValueOnce(false);
-    const summary = await runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, ...quiet });
-    expect(summary.scholarshipsUpdated).toBe(2);
-    expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ records_updated: 2 }));
+    const summary = await runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, limit: 1, ...quiet });
+    expect(summary.scholarshipsUpdated).toBe(1);
+    expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ records_updated: 1 }));
   });
 
   it('records exactly the covered awards for each checked page, retaining their original fragments', async () => {
     const store = fakeStore(rows, history);
-    await runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, ...quiet });
+    await runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, limit: 2, ...quiet });
     expect(store.recordCheck.mock.calls[0][1]).toEqual([
       expect.objectContaining({ id: 'u1', external_url: 'https://u.example/same#a' }),
       expect.objectContaining({ id: 'u2', external_url: 'https://u.example/same#b' }),
@@ -324,7 +324,7 @@ describe('runRefresh', () => {
     const store = fakeStore(rows, history);
     store.recordCheck.mockRejectedValueOnce(new Error('insert failed'));
     await expect(runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, ...quiet })).rejects.toThrow('insert failed');
-    expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ status: 'failed', records_seen: 5, check_counts: expect.objectContaining({ unchanged: 0 }) }));
+    expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ status: 'failed', records_seen: 0, check_counts: expect.objectContaining({ unchanged: 0 }) }));
   });
 
   it('matches --url-prefix only on a path boundary', async () => {
@@ -363,7 +363,7 @@ describe('runRefresh', () => {
   it('never leaves a run at started when the final write fails', async () => {
     const store = fakeStore(rows, history);
     store.finishRun.mockRejectedValueOnce(new Error('column check_counts does not exist'));
-    await expect(runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, ...quiet })).rejects.toThrow('check_counts');
+    await expect(runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 1, limit: 1, ...quiet })).rejects.toThrow('check_counts');
     expect(store.finishRun).toHaveBeenCalledTimes(2);
     expect(store.finishRun.mock.calls[1][1]).toMatchObject({ status: 'failed', error_message: expect.stringMatching(/check_counts/) });
     expect(store.finishRun.mock.calls[1][1]).not.toHaveProperty('check_counts');
@@ -499,5 +499,80 @@ describe('arguments', () => {
     expect(parseArgs(['--url-prefix', 'HTTPS://U.Example/a#frag']).urlPrefix).toBe('https://u.example/a');
     expect(parseArgs(['--url-prefix=https://u.example/a?id=2&x=y']).urlPrefix).toBe('https://u.example/a?id=2&x=y');
     expect(() => parseArgs(['--url-prefix', 'nope'])).toThrow();
+  });
+});
+
+
+describe('source outage guard', () => {
+  const quiet = { log: () => {}, now: () => NOW };
+  const batch = (total: number, gone: number) => {
+    const rows = Array.from({ length: total }, (_, i) => row(`outage-${i}`, `https://outage.example/page/${i}`));
+    const history = Object.fromEntries(rows.slice(0, gone).map(r => [r.external_url!, { previous: { http_status: 404, checked_at: ago(2 * DAY) } }]));
+    const pages = Object.fromEntries(rows.map((r, i) => [r.external_url!, { status: i < gone ? 410 : 200, body: page('Award') }]));
+    return { rows, history, pages };
+  };
+
+  it.each([[49, 1, true], [50, 1, false], [1250, 25, false], [1300, 26, true]] as const)(
+    'holds all removals for %i URLs with %i gone: %s', async (total, gone, held) => {
+      const { rows, history, pages } = batch(total, gone);
+      const store = fakeStore(rows, history);
+      const result = runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 4, ...quiet });
+      if (held) {
+        await expect(result).rejects.toThrow(/deactivation.*held/i);
+        expect(store.deactivateScholarship).not.toHaveBeenCalled();
+        expect(store.finishRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ status: 'failed', records_seen: total, records_updated: 0, check_counts: expect.objectContaining({ gone, deactivations_held: gone }) }));
+      } else {
+        expect((await result).scholarshipsUpdated).toBe(gone);
+        expect(store.deactivateScholarship).toHaveBeenCalledTimes(gone);
+        expect(store.deactivateScholarship.mock.invocationCallOrder[0]).toBeGreaterThan(Math.max(...store.recordCheck.mock.invocationCallOrder));
+      }
+      expect(store.recordCheck).toHaveBeenCalledTimes(total);
+    });
+
+  it('holds both early and late gone pages after the full concurrent batch', async () => {
+    const { rows, history, pages } = batch(50, 2);
+    const store = fakeStore(rows, history);
+    const fetched = stubFetch({ ...pages, [rows[1].external_url!]: { status: 404, delay: 30 } });
+    await expect(runRefresh({ store, fetchImpl: fetched, apply: true, concurrency: 4, ...quiet })).rejects.toThrow(/deactivation.*held/i);
+    expect(store.recordCheck).toHaveBeenCalledTimes(50);
+    expect(store.deactivateScholarship).not.toHaveBeenCalled();
+  });
+
+  it('never releases queued removals when another worker fails', async () => {
+    const { rows, history, pages } = batch(50, 1);
+    const store = fakeStore(rows, history);
+    const original = store.recordCheck.getMockImplementation()!;
+    store.recordCheck.mockImplementation(async (check, covered) => {
+      if (check.url === rows[2].external_url) throw new Error('history unavailable');
+      return original(check, covered);
+    });
+    await expect(runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, concurrency: 2, ...quiet })).rejects.toThrow('history unavailable');
+    expect(store.deactivateScholarship).not.toHaveBeenCalled();
+    expect(store.finishRun.mock.calls[0][1]).toMatchObject({ status: 'failed', records_updated: 0 });
+    expect(Number((store.finishRun.mock.calls[0][1] as Record<string, unknown>).records_seen)).toBeLessThan(50);
+  });
+
+  it('counts a shared missing page once but holds every affected row in dry-run', async () => {
+    const { rows, history, pages } = batch(49, 1);
+    rows.push(row('another-award', `${rows[0].external_url}#second-award`));
+    const store = fakeStore(rows, history);
+    const summary = await runRefresh({ store, fetchImpl: stubFetch(pages), apply: false, ...quiet });
+    expect(summary).toMatchObject({ urls: 49, plannedUpdates: 0, scholarshipsUpdated: 0, deactivationsHeld: 2 });
+    expect(summary.counts.gone).toBe(1);
+    expect(formatSummary(summary)).toMatch(/deactivations held.*2/i);
+    for (const write of [store.assertReady, store.startRun, store.recordCheck, store.verifyScholarship, store.deactivateScholarship, store.finishRun]) expect(write).not.toHaveBeenCalled();
+  });
+
+  it.each([{ limit: 1 }, { urlPrefix: 'https://outage.example/page/0' }])('uses the selected batch for the ratio: %j', async (scope) => {
+    const { rows, history, pages } = batch(50, 1);
+    const store = fakeStore(rows, history);
+    await expect(runRefresh({ store, fetchImpl: stubFetch(pages), apply: true, ...scope, ...quiet })).rejects.toThrow(/deactivation.*held/i);
+    expect(store.deactivateScholarship).not.toHaveBeenCalled();
+    expect(store.recordCheck).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows an empty batch without inventing held removals', async () => {
+    const summary = await runRefresh({ store: fakeStore([]), fetchImpl: stubFetch({}), apply: false, ...quiet });
+    expect(summary).toMatchObject({ urls: 0, plannedUpdates: 0, deactivationsHeld: 0 });
   });
 });
