@@ -67,9 +67,19 @@ Options: `--apply` writes; `--limit N` checks the first N distinct URLs; `--conc
 node --env-file="$HOME/.config/caat/source-refresh.env" scripts/refresh-scholarship-sources.mjs --apply
 ```
 
-`--apply` first checks that `scholarship_source_checks`, `scholarship_source_check_rows` and `scholarship_import_runs.check_counts` exist and stops with a clear message if not, before writing anything. It then creates one `scholarship_import_runs` row (`status` started, then succeeded or failed, with `records_seen` = URLs checked, `records_updated` = scholarship rows the guarded updates actually changed, and `check_counts` holding the count per outcome) and one `scholarship_source_checks` row per URL. If a write fails, no new URL starts, URLs already in flight finish, and the run is marked failed with accurate counts; if even that summary cannot be stored, a minimal failed status is written so a run never stays `started`.
+`--apply` first checks that `scholarship_source_checks`, `scholarship_source_check_rows` and `scholarship_import_runs.check_counts` exist and stops with a clear message if not, before writing anything. It then creates one `scholarship_import_runs` row (`status` started, then succeeded or failed, with `records_seen` = checks successfully recorded (completed checks in dry-run), `records_updated` = scholarship rows the guarded updates actually changed, and `check_counts` holding the count per outcome) and one `scholarship_source_checks` row per URL. If a write fails, no new URL starts, URLs already in flight finish, and the run is marked failed with accurate counts; if even that summary cannot be stored, a minimal failed status is written so a run never stays `started`.
 
 Each check's `checked_at` is stamped by the database when the check is stored, and that exact value is what goes onto scholarships. The first `--apply` on a database only records baselines. From the second run, verification dates move only for rows anchored to that baseline (next section); on today's catalogue, imported months before any baseline, that is none of them.
+
+### Provider outage protection (PROD-281)
+
+All deactivations wait until the complete selected batch has been checked and recorded. If more than 25 distinct URLs **or more than 2% of that batch** qualify as `gone`, every pending deactivation is held. The run retains its checks and associations, records `deactivations_held` as a row count, finishes as failed and exits with an explanation. A `gone` check alone is not proof the scholarship was deactivated; the award must actually be inactive with its recorded deactivation reason.
+
+The denominator is the distinct URL batch after `--url-prefix` and `--limit`, not the entire catalogue. Exactly one missing page in 50 is allowed; one in 49 is held. Several awards on one page count as one URL, but all their row removals are held together. A small scoped run may therefore require investigation even for one missing page. There is no override switch: confirm provider availability and fix source problems before another apply. Do not add unrelated URLs just to dilute the missing-page ratio.
+
+A scan, history-recording or ordinary verification failure also prevents all queued deactivations. Successful ordinary verifications already made are retained and counted. Once a complete batch passes the guard, deactivations remain separate guarded row transactions; a later row-write failure can leave earlier permitted deactivations applied, and the failed run records their actual count.
+
+Dry runs remain read-only. Their summary lists the number of held deactivations and excludes those rows from the number that `--apply` would update. `gone` still describes the source response; it does not become a success or a new verification. First strikes, errors and redirects keep their existing classifications.
 
 Runs and checks are never pruned. A run that has checks cannot be deleted (`ON DELETE RESTRICT`); the history is the evidence behind every verification date.
 
@@ -82,7 +92,7 @@ Runs and checks are never pruned. A run that has checks cannot be deleted (`ON D
 | `changed` | Page text differs from the baseline hash and no row was re-imported since. | Nothing. The check row records it. |
 | `unanchored` | Page text hashes the same as the baseline, but every row on it was imported before the baseline (beyond the tolerance). | Nothing. |
 | `unreachable` | Network error, timeout, 429, 5xx, any other non-2xx, a redirect to a different URL, or a 404/410 without a qualifying earlier strike. | Nothing. |
-| `gone` | 404 or 410 now, and the previous stored check was also 404/410 (at the same URL) at least 24 h earlier. | `is_active = false` (only while still active); `raw_payload.source_check` records the status, URL, time and run, merged into the row's current `raw_payload` in one statement (`scholarship_mark_gone`, service role only). The row is kept. |
+| `gone` | 404 or 410 now, and the previous stored check was also 404/410 (at the same URL) at least 24 h earlier. | `is_active = false` only after the complete batch passes the outage guard (and only while still active); `raw_payload.source_check` records the status, URL, time and run, merged into the row's current `raw_payload` in one statement (`scholarship_mark_gone`, service role only). The row is kept. |
 
 The hash covers the visible text of the page's content area: on `www.sydney.edu.au` (AEM pages with no `<main>`) the `div.content-container`; elsewhere `<main>`, else `<body>`. Scripts, styles, `noscript`, templates, SVG, `<nav>`, `<footer>`, comments and all attribute values are removed and whitespace is collapsed. A redesign that keeps the same words stays `unchanged`; a new amount or date is `changed`. Non-HTML pages (PDFs) are hashed byte for byte. Add a host to `HOST_CONTENT` in the script when a provider's pages have no `<main>`.
 

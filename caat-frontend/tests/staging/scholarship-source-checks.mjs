@@ -76,10 +76,13 @@ const rowsBySlug = async () => {
 };
 const checksFor = async (runId) => ok(await admin.from('scholarship_source_checks').select('*').eq('run_id', runId));
 const outcomesFor = async (runId) => Object.fromEntries((await checksFor(runId)).map((c) => [c.url.replace(`${base}/`, ''), c.outcome]));
-const refresh = async (pages, apply) => {
-  const summary = await runRefresh({ store: createSupabaseStore(admin), fetchImpl: stub(pages), apply, urlPrefix: base, concurrency: 2, timeoutMs: 2000, log: () => {} });
-  if (apply) runIds.push(summary.runId);
-  return summary;
+const refresh = async (pages, apply, urlPrefix = base) => {
+  const store = createSupabaseStore(admin);
+  const startRun = store.startRun;
+  store.startRun = async () => {
+    const run = await startRun(); runIds.push(run.id); return run;
+  };
+  return runRefresh({ store, fetchImpl: stub(pages), apply, urlPrefix, concurrency: 2, timeoutMs: 2000, log: () => {} });
 };
 const same = (chrome) => ({ status: 200, body: html('Award $5,000', chrome) });
 const stalePage = { [pageUrl('stale')]: { status: 200, body: html('Closes 30 June', 'v1') } };
@@ -105,6 +108,8 @@ try {
   }
   assert.equal(ok(await admin.from('scholarships').select('is_active').eq('id', probeId).single()).is_active, true, 'denied calls changed nothing');
 
+  const goneId = ok(await admin.from('scholarships').select('id').eq('slug', `source-check-${key}-gone`).single()).id;
+  ok(await admin.from('user_bookmarked_scholarships').insert({ user_id: createdUser.id, scholarship_id: goneId, status: 'interested' }));
   const before = await rowsBySlug();
 
   // Dry run reads and fetches only.
@@ -138,7 +143,8 @@ try {
   assert.deepEqual(afterQuick.stale, before.stale, 'unanchored writes nothing');
 
   // Run 2: same content under new chrome, a content change, a second 410 a day later, a 503.
-  const second = await refresh({ ...stalePage, [pageUrl('same')]: { status: 200, body: html('Award   $5,000', 'redesigned v2') }, [pageUrl('changes')]: { status: 200, body: html('Closes 2 March', 'v1') }, [pageUrl('gone')]: { status: 410 }, [pageUrl('down')]: { status: 503 } }, true);
+  await assert.rejects(refresh({ ...stalePage, [pageUrl('same')]: { status: 200, body: html('Award   $5,000', 'redesigned v2') }, [pageUrl('changes')]: { status: 200, body: html('Closes 2 March', 'v1') }, [pageUrl('gone')]: { status: 410 }, [pageUrl('down')]: { status: 503 } }, true), /deactivations held/i);
+  const second = { runId: runIds.at(-1) };
   assert.deepEqual(await outcomesFor(second.runId), { same: 'unchanged', stale: 'unanchored', changes: 'changed', gone: 'gone', down: 'unreachable' });
   const checks = Object.fromEntries((await checksFor(second.runId)).map((c) => [c.url, c]));
   const after = await rowsBySlug();
@@ -155,18 +161,37 @@ try {
   // timestamps with the database clock, while also requiring the exact stored check.
   assert.ok(Date.parse(after['same-a'].last_verified_at) <= Date.parse(sql('SELECT clock_timestamp()')), 'verification date is not in the database future');
   assert.deepEqual(after.changes, afterQuick.changes, 'changed writes nothing to scholarships');
-  assert.equal(after.gone.is_active, false, 'two not-found strikes a day apart deactivate');
-  assert.equal(after.gone.raw_payload.extracted, 'gone', 'raw_payload keeps extracted fields');
-  assert.equal(after.gone.raw_payload.source_check.http_status, 410, 'raw_payload records why');
-  assert.equal(after.gone.last_verified_at, before.gone.last_verified_at, 'gone does not verify');
-  assert.ok(Date.parse(after.gone.updated_at) > Date.parse(before.gone.updated_at), 'deactivation is a real change and bumps updated_at');
+  assert.deepEqual(after.gone, before.gone, 'one of five missing URLs holds the award without changing any field');
+  assert.equal(ok(await admin.from('user_bookmarked_scholarships').select('scholarship_id').eq('user_id', createdUser.id).eq('scholarship_id', goneId)).length, 1, 'held award keeps its bookmark');
   assert.deepEqual(after.down, before.down, 'unreachable leaves the row alone');
   for (const slug of Object.keys(before)) assert.equal(after[slug].title, before[slug].title, 'extracted fields untouched');
   const run = ok(await admin.from('scholarship_import_runs').select('*').eq('id', second.runId).single());
-  assert.equal(run.status, 'succeeded');
+  assert.equal(run.status, 'failed');
+  assert.match(run.error_message, /deactivations held/i);
   assert.equal(run.records_seen, 5);
-  assert.equal(run.records_updated, 2, 'one verified, one deactivated');
-  assert.deepEqual(run.check_counts, { baseline: 0, unchanged: 1, changed: 1, unreachable: 1, gone: 1, unanchored: 1, unanchored_rows: 2 });
+  assert.equal(run.records_updated, 1, 'ordinary verification remains, deactivation held');
+  assert.deepEqual(run.check_counts, { baseline: 0, unchanged: 1, changed: 1, unreachable: 1, gone: 1, unanchored: 1, unanchored_rows: 2, deactivations_held: 1 });
+
+  // The boundary case (one missing page in 50) permits the existing guarded
+  // deactivation. These padding pages are isolated from the normal fixture reader.
+  const padding = Array.from({ length: 49 }, (_, i) => ({
+    title: `Guard healthy ${i}`, provider_name: 'Synthetic provider', slug: `guard-padding-${key}-${i}`,
+    external_id: `guard-padding-${key}-${i}`, external_url: pageUrl(`gone/padding-${i}`), is_active: true,
+  }));
+  ok(await admin.from('scholarships').insert(padding));
+  ok(await admin.from('scholarship_source_checks').update({ checked_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() }).eq('id', checks[pageUrl('gone')].id));
+  const permitted = await refresh({ [pageUrl('gone')]: { status: 410 }, ...Object.fromEntries(padding.map(p => [p.external_url, same('guard')])) }, true, pageUrl('gone'));
+  assert.equal(permitted.urls, 50);
+  assert.equal(permitted.scholarshipsUpdated, 1);
+  const removed = (await rowsBySlug()).gone;
+  assert.equal(removed.is_active, false, 'one of 50 missing URLs permits deactivation');
+  assert.equal(removed.raw_payload.extracted, 'gone', 'raw_payload keeps extracted fields');
+  assert.equal(removed.raw_payload.source_check.http_status, 410, 'raw_payload records why');
+  assert.equal(removed.last_verified_at, before.gone.last_verified_at, 'gone does not verify');
+  assert.ok(Date.parse(removed.updated_at) > Date.parse(before.gone.updated_at), 'deactivation bumps updated_at');
+  assert.equal(ok(await admin.from('user_bookmarked_scholarships').select('scholarship_id').eq('user_id', createdUser.id).eq('scholarship_id', goneId)).length, 1, 'permitted deactivation keeps its bookmark');
+  // Exclude synthetic padding from later normal runs without deleting their evidence.
+  ok(await admin.from('scholarships').update({ is_active: false }).like('external_id', `guard-padding-${key}-%`));
 
   // Run 3: the changed page is still compared against the accepted hash, so it stays changed.
   const changedPages = { ...stalePage, [pageUrl('same')]: same('v3'), [pageUrl('changes')]: { status: 200, body: html('Closes 2 March', 'v1') }, [pageUrl('down')]: { status: 503 } };
@@ -185,7 +210,7 @@ try {
   assert.equal(Date.parse((await rowsBySlug()).changes.last_verified_at), Date.parse(fifthCheck.checked_at), 're-baselined page verifies on the next unchanged check');
 
   assert.equal((await rowsBySlug())['same-b'].last_verified_at, null, 'nothing ever makes a pre-baseline import fresh');
-  console.log('Scholarship source checks passed: service-role-only table, validated future-date CHECK, RESTRICT run FK, updated_at kept on verification, dry run writes nothing, baseline/unchanged/unanchored/changed/unreachable/gone (24 h gap, one-statement deactivation) and re-baseline rules on real rows.');
+  console.log('Scholarship source checks passed: service-role-only table, validated future-date CHECK, RESTRICT run FK, updated_at kept on verification, dry run writes nothing, baseline/unchanged/unanchored/changed/unreachable/gone (24 h gap, batch outage hold, 2% permitted boundary, preserved bookmarks) and re-baseline rules on real rows.');
 } finally {
   // Each cleanup step runs even if an earlier one fails; errors are reported together.
   const failures = [];
@@ -198,6 +223,7 @@ try {
     await step('delete checks', () => admin.from('scholarship_source_checks').delete().in('run_id', runIds));
     await step('delete runs', () => admin.from('scholarship_import_runs').delete().in('id', runIds));
   }
+  await step('delete padding', () => admin.from('scholarships').delete().like('external_id', `guard-padding-${key}-%`));
   await step('delete scholarships', () => admin.from('scholarships').delete().like('external_id', `source-check-${key}-%`));
   await step('sign out', () => student.auth.signOut());
   await step('delete user', () => admin.auth.admin.deleteUser(createdUser.id));

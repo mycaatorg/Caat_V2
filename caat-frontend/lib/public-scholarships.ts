@@ -13,7 +13,7 @@ const PUBLIC_SCHOLARSHIP_COLUMNS = `
   study_level, funding_type, citizenships, eligible_countries, excluded_countries,
   eligible_genders, minimum_gpa, requires_essay, need_based, merit_based,
   school_name, country, state_region, application_open_at, deadline_at,
-  start_term, is_recurring, is_active, is_featured, last_verified_at,
+  start_term, is_recurring, is_active, is_featured, last_verified_at, source_last_synced_at,
   tags, field_of_study, year_level, eligibility_summary,
   application_requirements, contact_info, created_at, updated_at
 `;
@@ -99,7 +99,7 @@ export const getPublicScholarshipsBySlug = unstable_cache(
       return { data: data as unknown as ScholarshipRow[] | null, error };
     }, "Could not load the scholarship listings.");
   },
-  ["public-scholarship-candidates-v1"],
+  ["public-scholarship-candidates-v2"],
   { revalidate: 3600, tags: ["scholarship-catalog"] },
 );
 
