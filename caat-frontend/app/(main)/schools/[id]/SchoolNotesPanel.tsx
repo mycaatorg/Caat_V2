@@ -16,7 +16,7 @@ type SaveState =
   | { kind: "idle" }
   | { kind: "saving" }
   | { kind: "saved"; at: Date }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string; reloadRequired?: boolean };
 
 type SchoolNotesProps = {
   ownerId: string;
@@ -73,8 +73,10 @@ function SchoolNotesEditor({ ownerId, schoolId, initialNotes, initialUpdatedAt }
   const writing = useRef(false);
   const requested = useRef(false);
   const mounted = useRef(true);
+  const discarded = useRef(false);
 
   const requestSave = useCallback(() => {
+    if (discarded.current) return;
     requested.current = true;
     if (writing.current) return;
     writing.current = true;
@@ -85,22 +87,22 @@ function SchoolNotesEditor({ ownerId, schoolId, initialNotes, initialUpdatedAt }
           const next = valueRef.current;
           if (next === lastSavedRef.current) continue;
           if (mounted.current) setState({ kind: "saving" });
-          const failed = (message: string) => {
+          const failed = (message: string, reloadRequired = false) => {
             // A failed response may follow a committed write. Invalidate the
             // dedupe baseline so a queued revert or manual retry reaches storage.
             lastSavedRef.current = null;
             if (mounted.current) {
               setLastSaved(null);
-              setState({ kind: "error", message });
+              setState({ kind: "error", message, reloadRequired });
             }
             // A later distinct edit may still be queued, but a duplicate flush
             // must not automatically retry the same failed request forever.
             if (valueRef.current === next) requested.current = false;
           };
           try {
-            const { updated_at, error } = await saveSchoolNoteAction(schoolId, next, ownerId);
+            const { updated_at, error, reloadRequired } = await saveSchoolNoteAction(schoolId, next, ownerId);
             if (error) {
-              failed(error);
+              failed(error, reloadRequired);
               continue;
             }
             lastSavedRef.current = next;
@@ -193,6 +195,31 @@ function SchoolNotesEditor({ ownerId, schoolId, initialNotes, initialUpdatedAt }
         className="min-h-[160px] resize-y text-sm leading-relaxed"
         maxLength={MAX_LENGTH}
       />
+
+      {state.kind === "error" && state.reloadRequired && (
+        <div className="mt-3 space-y-2">
+          <p role="alert" className="text-sm text-muted-foreground">
+            Reload to view notes for the current account. Unsaved text will be discarded; copy it first if you need it.
+          </p>
+          <Button size="sm" variant="outline" asChild>
+            {/* Native navigation resets the editor even if the session returns to its original owner. */}
+            <a href={`/schools/${schoolId}`} onClick={(event) => {
+              // Opening another tab must not discard this tab's draft.
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+              if (!window.confirm("Reload notes for the current account? Unsaved text will be discarded; copy it first if you need it.")) {
+                event.preventDefault();
+                return;
+              }
+              discarded.current = true;
+              requested.current = false;
+              if (debounceRef.current) {
+                clearTimeout(debounceRef.current);
+                debounceRef.current = null;
+              }
+            }}>Reload for current account</a>
+          </Button>
+        </div>
+      )}
 
       <div className="mt-2 flex items-center justify-between gap-3">
         <span
